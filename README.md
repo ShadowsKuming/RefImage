@@ -1,35 +1,34 @@
-# RefImage — Cosplay Shooting Planner / 角色扮演拍摄策划系统
+# RefImage — Cosplay Shooting Planner
 
-> Upload an anime character reference image → AI extracts the visual spec → generate reference shots → export actionable shooting guides.
->
-> 上传动漫角色参考图，AI 自动提取外貌设定、生成拍摄参考例图、输出可操作的拍摄指南。
+**[English](README.md) | [中文](README.zh.md)**
+
+Upload an anime character reference image → AI extracts the visual spec → generate reference shots → export actionable shooting guides.
 
 ---
 
-## Quick Start (Docker) / 快速启动（Docker）
+## Quick Start (Docker)
 
 ```bash
 cp .env.example .env
 # Fill in OPENAI_API_KEY and ANTHROPIC_API_KEY
-# 填入 OPENAI_API_KEY 和 ANTHROPIC_API_KEY
 
 docker compose up --build
 ```
 
-Open / 打开 `http://localhost:3001`
+Open `http://localhost:3001`
 
 ---
 
-## Local Development / 本地开发
+## Local Development
 
-**Backend / 后端**
+**Backend**
 ```bash
 cd backend
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
-**Frontend / 前端**
+**Frontend**
 ```bash
 cd frontend
 npm install
@@ -38,7 +37,7 @@ npm run dev   # http://localhost:3333
 
 ---
 
-## Environment Variables / 环境变量
+## Environment Variables
 
 Copy `.env.example` to `.env` and fill in:
 
@@ -54,30 +53,22 @@ Copy `.env.example` to `.env` and fill in:
 
 ---
 
-## User Flow / 用户流程
+## User Flow
 
 ```
 1. Upload character reference image
-   上传角色参考图
         ↓ AI extracts visual spec (hair / costume / color palette …)
-          AI 提取外貌特征（发型/服装/配色等）
 2. Confirm character profile
-   确认角色设定
         ↓ AI searches background, generates character profile
-          AI 搜索角色背景，生成人设档案
 3. Enter project page
-   进入项目页
         ↓ Chat with AI planning assistant, build shooting brief
-          与 AI 规划助手讨论，生成拍摄总结
-4. Create shots, chat to design composition, generate reference images
-   创建单个 shot，对话设计构图，生成参考例图
+4. Create shots, design composition, generate reference images
         ↓ View shooting guides: Action / Expression / Camera / Background
-          查看拍摄指南：动作 / 表情 / 构图 / 背景
 ```
 
 ---
 
-## Project Structure / 项目结构
+## Project Structure
 
 ```
 reference_image_system/
@@ -100,7 +91,7 @@ reference_image_system/
 
 ---
 
-## Tech Stack / 技术栈
+## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
