@@ -1,0 +1,46 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Backend user data
+backend/storage/projects/
+
+# Large model files
+models/
+
+# Test outputs
+test_outputs/
+outputs_modtest/
+
+# macOS
+.DS_Store
+
+# Claude Code local settings
+.claude/
+
+# Test / scratch images in root
+*.jpg
+*.jpeg
+*.webp
+*.gif
+
+# Root-level test scripts
+test_*.py
+
+# Test outputs
+outputs_modtest/
+test_outputs/
+
+# Node / Nuxt (frontend has its own .gitignore)
+node_modules/
+frontend/.output/
+frontend/.nuxt/
+frontend/.cache/
