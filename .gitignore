@@ -25,6 +25,11 @@ outputs_modtest/
 
 # Claude Code local settings
 .claude/
+CLAUDE.md
+
+# Internal planning docs
+PIPELINE.md
+prototypes/
 
 # Test / scratch images in root
 *.jpg
