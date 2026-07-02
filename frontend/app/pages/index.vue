@@ -47,7 +47,7 @@ const api = useApi()
 const projects  = ref<any[]>([])
 const importing = ref(false)
 const importError = ref('')
-const BASE_URL = 'http://localhost:8000'
+const { public: { apiBase: BASE_URL } } = useRuntimeConfig()
 
 onMounted(async () => {
   try {

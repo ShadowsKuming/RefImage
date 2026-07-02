@@ -329,7 +329,7 @@ const project = computed(() => ({
   character: projectData.value?.character ?? '—',
 }))
 
-const BASE_URL = 'http://localhost:8000'
+const { public: { apiBase: BASE_URL } } = useRuntimeConfig()
 
 const refUrls = computed<string[]>(() =>
   (projectData.value?.refs ?? []).map((r: string) => BASE_URL + r)

@@ -253,7 +253,7 @@ definePageMeta({ ssr: false })
 const route = useRoute()
 const api = useApi()
 
-const BASE_URL = 'http://localhost:8000'
+const { public: { apiBase: BASE_URL } } = useRuntimeConfig()
 
 const projectId = computed(() =>
   Array.isArray(route.params.id) ? route.params.id[0] : route.params.id
