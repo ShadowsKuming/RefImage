@@ -23,6 +23,9 @@ outputs_modtest/
 # macOS
 .DS_Store
 
+# SSH keys
+*.pem
+
 # Claude Code local settings
 .claude/
 CLAUDE.md

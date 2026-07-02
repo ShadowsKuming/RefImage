@@ -99,7 +99,9 @@ TOOLS = [
 def _build_system(project: dict, project_id: str) -> str:
     char_data   = project.get("character_data", {})
     char_bg     = char_data.get("characterBackground", {})
+    if not isinstance(char_bg, dict): char_bg = {}
     world       = project.get("world", {}).get("worldSetting", {})
+    if not isinstance(world, dict): world = {}
     visual_spec = project.get("visual_spec", {})
 
     char_name   = char_data.get("character", "未知角色")
