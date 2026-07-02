@@ -230,6 +230,7 @@ def chat(
         tools=[WEB_SEARCH_TOOL, UPDATE_PROFILE_TOOL],
         tool_executor={"web_search": lambda inp: _web_search(inp["query"], num=8, lang=inp.get("lang", "zh-cn"))},
         max_turns=8,
+        max_tokens=4000,
     )
 
     # Extract the profile from the first update_profile passthrough call (if any)
