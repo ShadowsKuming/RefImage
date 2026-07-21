@@ -155,11 +155,28 @@
               </template>
             </div>
 
-            <!-- Empty hint -->
-            <div v-else class="empty-hint" @mousedown.stop>
+            <!-- Empty hint — click or drag-drop to upload a user image -->
+            <div
+              v-else
+              class="empty-hint"
+              :class="{ 'drag-over': isDragOver }"
+              @mousedown.stop
+              @click.stop="triggerUpload"
+              @dragover.prevent="isDragOver = true"
+              @dragleave.prevent="isDragOver = false"
+              @drop.prevent="onDropImage"
+            >
               <span class="eh-icon">{{ shot.icon }}</span>
               <span class="eh-text">在左侧输入描述，点击「生成」</span>
+              <span class="eh-upload">或点击 / 拖拽上传参考图</span>
             </div>
+            <input
+              ref="uploadFileInput"
+              type="file"
+              accept="image/*"
+              style="display:none"
+              @change="onFileInputChange"
+            />
 
           </div>
 
@@ -379,9 +396,11 @@ const gridStyle = computed(() => ({
 }))
 
 // ── Image object ──────────────────────────────────────────
-const generatedImage = ref<string | null>(null)
-const imgSelected    = ref(false)
+const generatedImage  = ref<string | null>(null)
+const imgSelected     = ref(false)
 const img = ref<{ x: number; y: number; w: number; h: number } | null>(null)
+const uploadFileInput = ref<HTMLInputElement | null>(null)
+const isDragOver      = ref(false)
 
 // ── Image editor state ─────────────────────────────────────
 type HistoryEntry = { url: string; imgState: { x: number; y: number; w: number; h: number } }
@@ -872,6 +891,34 @@ function fitToView() {
 }
 
 // ── Image placement helpers ───────────────────────────────
+// ── User image upload ─────────────────────────────────────
+function triggerUpload() {
+  uploadFileInput.value?.click()
+}
+
+function onFileInputChange(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (file) uploadUserImage(file)
+  ;(e.target as HTMLInputElement).value = ''
+}
+
+function onDropImage(e: DragEvent) {
+  isDragOver.value = false
+  const file = e.dataTransfer?.files[0]
+  if (file && file.type.startsWith('image/')) uploadUserImage(file)
+}
+
+async function uploadUserImage(file: File) {
+  const url = URL.createObjectURL(file)
+  generatedImage.value = url
+  await placeImage(url)
+  await initEditHistory(url)
+  imgSelected.value = true
+  // Save to backend so guides cache is invalidated and image persists
+  const blob = new Blob([await file.arrayBuffer()], { type: file.type })
+  await api.saveImage(projectId.value, shotId.value, blob)
+}
+
 function placeImage(url: string, centered = true) {
   return new Promise<void>(resolve => {
     const el = new window.Image()
@@ -1124,11 +1171,16 @@ async function sendChat() {
   border: 2px dashed var(--border-md);
   border-radius: 16px;
   background: var(--surface);
-  user-select: none; pointer-events: none;
+  user-select: none;
   box-shadow: 0 4px 24px var(--shadow);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
 }
+.empty-hint:hover { border-color: var(--accent-dim); background: var(--surface-inset); }
+.empty-hint.drag-over { border-color: var(--accent); background: var(--surface-inset); }
 .eh-icon { font-size: 52px; opacity: 0.3; }
 .eh-text { font-size: 12px; color: var(--text-ghost); }
+.eh-upload { font-size: 11px; color: var(--text-ghost); opacity: 0.6; }
 
 /* ── Image object ── */
 .img-obj {
