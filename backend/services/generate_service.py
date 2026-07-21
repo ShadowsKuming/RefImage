@@ -38,6 +38,10 @@ def generate_shot_image(project_id: str, shot_id: str, prompt_parts: dict) -> No
         image_bytes = image_gen.generate(project_id, full_parts)
         out_path = STORAGE_ROOT / project_id / "shots" / shot_id / "generated.png"
         out_path.write_bytes(image_bytes)
+        # Invalidate all guide caches — they were derived from the old image
+        guide_dir = STORAGE_ROOT / project_id / "shots" / shot_id / "guides"
+        for f in guide_dir.glob("*.json"):
+            f.unlink(missing_ok=True)
         image_url = f"/projects/{project_id}/shots/{shot_id}/image"
         project_service.append_shot_messages(project_id, shot_id, [
             {"role": "agent", "text": "例图已生成！点击图上的标注点查看各部分拍摄指南。"},

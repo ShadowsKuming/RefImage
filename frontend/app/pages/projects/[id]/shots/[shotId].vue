@@ -8,7 +8,18 @@
         <span class="bc-sep">/</span>
         <span class="bc-item">{{ characterName }}</span>
         <span class="bc-sep">/</span>
-        <span class="bc-current">{{ shot.title }}{{ hasUnsavedChanges ? ' *' : '' }}</span>
+        <span v-if="!editingTitle" class="bc-current" title="点击重命名" @click="startRenameTitle">
+          {{ shot.title }}{{ hasUnsavedChanges ? ' *' : '' }}
+        </span>
+        <input
+          v-else
+          ref="titleInputRef"
+          v-model="titleDraft"
+          class="bc-title-input"
+          @blur="commitRename"
+          @keydown.enter.prevent="commitRename"
+          @keydown.escape.prevent="cancelRename"
+        />
         <span class="shot-mood-badge">{{ shot.mood }}</span>
       </div>
       <div class="tb-actions">
@@ -274,6 +285,35 @@ const shot = computed(() => ({
 }))
 
 const isRefined = computed(() => shot.value.status === 'refined')
+
+// ── Inline title rename ───────────────────────────────────
+const editingTitle  = ref(false)
+const titleDraft    = ref('')
+const titleInputRef = ref<HTMLInputElement | null>(null)
+
+function startRenameTitle() {
+  titleDraft.value   = shotData.value?.title ?? ''
+  editingTitle.value = true
+  nextTick(() => {
+    titleInputRef.value?.select()
+  })
+}
+
+async function commitRename() {
+  const newTitle = titleDraft.value.trim()
+  editingTitle.value = false
+  if (!newTitle || newTitle === shotData.value?.title) return
+  try {
+    await api.updateShotTitle(projectId.value, shotId.value, newTitle)
+    if (shotData.value) shotData.value.title = newTitle
+  } catch (e) {
+    console.error('Failed to rename shot', e)
+  }
+}
+
+function cancelRename() {
+  editingTitle.value = false
+}
 
 const characterName = computed(() =>
   projectData.value?.character ?? projectData.value?.character_data?.character ?? ''
@@ -955,7 +995,14 @@ async function sendChat() {
 .back-btn:hover { color: var(--text); }
 .bc-sep      { color: var(--border-md); }
 .bc-item     { color: var(--text-dim); }
-.bc-current  { color: var(--text-accent); font-weight: 600; }
+.bc-current  { color: var(--text-accent); font-weight: 600; cursor: text; border-radius: 4px; padding: 1px 4px; }
+.bc-current:hover { background: var(--surface-inset); }
+.bc-title-input {
+  color: var(--text-accent); font-weight: 600; font-size: 13px; font-family: inherit;
+  background: var(--surface-inset); border: 1px solid var(--accent-dim);
+  border-radius: 4px; padding: 1px 6px; outline: none;
+  min-width: 80px; max-width: 260px;
+}
 .shot-mood-badge { padding: 2px 8px; background: var(--surface-2); border-radius: 10px; font-size: 10px; color: var(--text-muted); margin-left: 4px; }
 .tb-actions  { display: flex; gap: 8px; }
 .tb-btn      { padding: 5px 14px; background: var(--border); border: 1px solid var(--border-strong); border-radius: 6px; color: var(--text-muted); font-size: 12px; cursor: pointer; transition: background 0.15s, color 0.15s; }

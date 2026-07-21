@@ -80,8 +80,8 @@
                   <button class="sc-del" @click.stop="removeShot(shot.shot_id)" title="删除">✕</button>
                 </div>
               </div>
-              <div class="shot-add" @click="shotModalOpen = true">
-                <span class="add-icon">+</span>
+              <div class="shot-add" :class="{ adding: shotAdding }" @click="quickAddShot">
+                <span class="add-icon">{{ shotAdding ? '…' : '+' }}</span>
                 <span class="add-text">新增拍摄</span>
               </div>
             </div>
@@ -109,7 +109,9 @@
                   <button class="sc-del" @click.stop="removeShot(shot.shot_id)" title="删除">✕</button>
                 </div>
               </div>
-              <button class="sl-add" @click="shotModalOpen = true">+ 新增拍摄</button>
+              <button class="sl-add" :disabled="shotAdding" @click="quickAddShot">
+                {{ shotAdding ? '…' : '+ 新增拍摄' }}
+              </button>
             </div>
           </div>
         </template>
@@ -271,22 +273,6 @@
       </DockLayout>
     </div>
 
-    <!-- New shot modal -->
-    <Teleport to="body">
-      <div v-if="shotModalOpen" class="shot-modal-overlay" @click.self="shotModalOpen = false">
-        <div class="shot-modal">
-          <div class="sm-title">新增拍摄</div>
-          <input v-model="newShotTitle" class="sm-input" placeholder="如「雨中漫步」" @keydown.enter="addShot" />
-          <div class="sm-actions">
-            <button class="sm-btn sm-cancel" @click="shotModalOpen = false">取消</button>
-            <button class="sm-btn sm-ok" :disabled="!newShotTitle.trim() || shotAdding" @click="addShot">
-              {{ shotAdding ? '…' : '添加' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
     <!-- Lightbox -->
     <Teleport to="body">
       <div v-if="lightboxIndex !== null" class="lightbox" @click.self="lightboxIndex = null">
@@ -419,23 +405,21 @@ onMounted(async () => {
 })
 
 // ── Shots ─────────────────────────────────────────────────
-const shots       = computed<any[]>(() => projectData.value?.shots ?? [])
-const viewMode    = ref<'grid' | 'list'>('grid')
-const shotModalOpen = ref(false)
-const newShotTitle  = ref('')
-const newShotMood   = ref('')
-const shotAdding    = ref(false)
+const shots    = computed<any[]>(() => projectData.value?.shots ?? [])
+const viewMode = ref<'grid' | 'list'>('grid')
+const shotAdding = ref(false)
 
-async function addShot() {
-  if (!newShotTitle.value.trim() || shotAdding.value) return
+async function quickAddShot() {
+  if (shotAdding.value) return
   shotAdding.value = true
+  const n = (projectData.value?.shots?.length ?? 0) + 1
+  const title = `新分镜 ${n}`
   try {
-    const shot = await api.createShot(projectId.value, newShotTitle.value.trim(), '')
+    const shot = await api.createShot(projectId.value, title, '')
     if (projectData.value) {
       projectData.value.shots = [...(projectData.value.shots ?? []), shot]
     }
-    newShotTitle.value = ''
-    shotModalOpen.value = false
+    navigateTo(`/projects/${projectId.value}/shots/${shot.shot_id}`)
   } catch (e) {
     console.error('Failed to create shot', e)
   }
@@ -768,43 +752,9 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
   cursor: pointer; transition: border-color 0.2s;
 }
 .shot-add:hover { border-color: var(--accent-dim); }
+.shot-add.adding { opacity: 0.6; cursor: not-allowed; }
 .add-icon { font-size: 20px; color: var(--text-ghost); }
 .add-text { font-size: 11px; color: var(--text-ghost); }
-
-/* ── Shot modal ── */
-.shot-modal-overlay {
-  position: fixed; inset: 0; z-index: 10001;
-  background: rgba(0,0,0,0.55);
-  display: flex; align-items: center; justify-content: center;
-}
-.shot-modal {
-  background: var(--surface); border: 1px solid var(--border-md);
-  border-radius: 14px; padding: 24px 28px; width: 320px;
-  display: flex; flex-direction: column; gap: 12px;
-}
-.sm-title { font-size: 14px; font-weight: 600; color: var(--text-hi); }
-.sm-input {
-  width: 100%; box-sizing: border-box;
-  background: var(--surface-inset); border: 1px solid var(--border-md);
-  border-radius: 8px; color: var(--text-hi); font-size: 12px;
-  padding: 8px 10px; font-family: inherit;
-  transition: border-color 0.15s;
-}
-.sm-input:focus { outline: none; border-color: var(--accent-dim); }
-.sm-input::placeholder { color: var(--text-ghost); }
-.sm-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
-.sm-btn {
-  padding: 6px 16px; border-radius: 7px; font-size: 12px;
-  cursor: pointer; border: 1px solid var(--border-md);
-  transition: background 0.15s, color 0.15s;
-}
-.sm-cancel { background: var(--surface-inset); color: var(--text-muted); }
-.sm-cancel:hover { background: var(--border); }
-.sm-ok {
-  background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
-}
-.sm-ok:hover:not(:disabled) { background: var(--accent-hover); }
-.sm-ok:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── Summary ── */
 .summary-row { display: flex; gap: 10px; margin-bottom: 14px; }

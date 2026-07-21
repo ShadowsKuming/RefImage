@@ -102,6 +102,14 @@ export const useApi = () => {
     return api<{ ok: boolean }>(`/projects/${projectId}/shots/${shotId}`, { method: 'DELETE' })
   }
 
+  function updateShotTitle(projectId: string, shotId: string, title: string) {
+    return api<{ ok: boolean }>(`/projects/${projectId}/shots/${shotId}/title`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    })
+  }
+
   function shotChat(
     projectId: string,
     shotId: string,
@@ -214,6 +222,7 @@ export const useApi = () => {
     addExtraRef,
     createShot,
     deleteShot,
+    updateShotTitle,
     shotChat,
     getShot,
     updateShotStatus,

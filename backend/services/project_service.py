@@ -255,6 +255,16 @@ def create_shot(project_id: str, title: str, mood: str, description: str = "") -
     return shot
 
 
+def rename_shot(project_id: str, shot_id: str, title: str) -> None:
+    """Update the title of an existing shot."""
+    shot_file = STORAGE_ROOT / project_id / "shots" / shot_id / "shot.json"
+    if not shot_file.exists():
+        raise FileNotFoundError(f"Shot {shot_id!r} not found")
+    shot = json.loads(shot_file.read_text())
+    shot["title"] = title
+    shot_file.write_text(json.dumps(shot, ensure_ascii=False, indent=2))
+
+
 def delete_shot(project_id: str, shot_id: str) -> None:
     """Remove a shot directory entirely."""
     import shutil

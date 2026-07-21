@@ -38,6 +38,10 @@ class UpdateStatusRequest(BaseModel):
     status: str
 
 
+class RenameShotRequest(BaseModel):
+    title: str
+
+
 @router.post("/{project_id}/shots")
 def create_shot(project_id: str, req: CreateShotRequest):
     """Create a new shot under the project."""
@@ -89,6 +93,16 @@ async def save_shot_image(project_id: str, shot_id: str, file: UploadFile = File
     camera_cache = shot_dir / "guides" / "camera.json"
     if camera_cache.exists():
         camera_cache.unlink()
+    return {"ok": True}
+
+
+@router.patch("/{project_id}/shots/{shot_id}/title")
+def rename_shot_endpoint(project_id: str, shot_id: str, req: RenameShotRequest):
+    """Rename a shot."""
+    try:
+        project_service.rename_shot(project_id, shot_id, req.title)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Shot not found")
     return {"ok": True}
 
 
