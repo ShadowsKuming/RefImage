@@ -26,6 +26,10 @@ _EMPTY_EXTRACTED = {f: None for f in FIELDS}  # English only during accumulation
 
 _NULL_STRINGS = {"null", "none", "unknown", "n/a", "not visible", "cannot determine", "undetermined"}
 
+# shoes/proportions are conditional: shoes only if feet visible, proportions only for full standing shots.
+# Null values for these fields should NOT block done=True.
+_OPTIONAL_FIELDS = {"shoes", "proportions"}
+
 # Human-readable labels per language, used when compiling the display text
 _LABELS: dict[str, dict[str, str]] = {
     "zh": {
@@ -55,8 +59,20 @@ def _is_null(v) -> bool:
 
 
 def _missing(extracted: dict) -> list[str]:
-    """Return field names that still have no English value."""
-    return [f for f, v in extracted.items() if _is_null(v)]
+    """Return REQUIRED field names that still have no English value.
+    Optional fields (shoes, proportions) are excluded — they're only visible
+    in specific shots and should not block done=True."""
+    return [f for f, v in extracted.items() if _is_null(v) and f not in _OPTIONAL_FIELDS]
+
+
+def _build_visual_spec(extracted_en: dict) -> dict:
+    """Translate extracted English fields and compile visual spec.
+    Falls back to English-only if the translation LLM call fails."""
+    try:
+        multilang = translate_visual_spec(extracted_en)
+    except Exception:
+        multilang = {"zh": dict(extracted_en), "en": dict(extracted_en), "ja": dict(extracted_en)}
+    return _compile_visual_spec(multilang)
 
 
 def _compile_visual_spec(multilang_fields: dict) -> dict:
@@ -138,9 +154,13 @@ def start_or_continue(image_bytes: bytes, session_id: str | None) -> dict:
     session = _sessions[session_id]
 
     if session["done"]:
+        # Retry translation if it failed on a previous call
+        if session["visual_spec"] is None:
+            session["visual_spec"] = _build_visual_spec(session["extracted"])
         return {
             "session_id":    session_id,
             "done":          True,
+            "gender":        session["gender"],
             "message":       "角色信息已完整。",
             "visual_spec":   session["visual_spec"],
             "extracted":     session["extracted"],
@@ -163,9 +183,7 @@ def start_or_continue(image_bytes: bytes, session_id: str | None) -> dict:
 
     if done:
         session["done"] = True
-        # Translate English fields to zh + ja, then compile labelled text per language
-        multilang_fields      = translate_visual_spec(session["extracted"])
-        session["visual_spec"] = _compile_visual_spec(multilang_fields)
+        session["visual_spec"] = _build_visual_spec(session["extracted"])
 
     print(f"[analyze] session={session_id} done={done} missing={missing_after}")
 
