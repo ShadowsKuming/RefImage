@@ -23,6 +23,7 @@ Hallucination guardrails baked into the system prompt:
 import json
 from tools.llm import call_agent, call
 from tools.search import web_search as _web_search
+import tools.vision as vision
 
 
 SYSTEM_PROMPT = """你是一个动漫/游戏/影视角色档案助手。
@@ -178,6 +179,34 @@ UPDATE_PROFILE_TOOL = {
 }
 
 
+# ── Vision pre-identification ─────────────────────────────────────────────────
+
+def _identify_from_image(image_bytes: bytes) -> str:
+    """Ask the vision LLM to guess which character is in the image.
+    Returns a short Chinese description of the identification result."""
+    b64, media_type = vision.encode_image(image_bytes)
+    messages = [{
+        "role": "user",
+        "content": [
+            {
+                "type": "image",
+                "source": {"type": "base64", "media_type": media_type, "data": b64},
+            },
+            {
+                "type": "text",
+                "text": (
+                    "这是一张角色参考图。根据图片中角色的外貌特征（发型、发色、服装、配饰等），"
+                    "你能判断这是哪个动漫/游戏/影视作品中的角色吗？"
+                    "如果能确认，请说明角色名和所属作品；如果有多个可能，列出前2个候选；"
+                    "如果实在无法判断，描述能看到的最显著特征。"
+                    "用中文回答，100字以内。"
+                ),
+            },
+        ],
+    }]
+    return vision.call(messages, "你是一个熟悉动漫、游戏、影视作品的角色识别专家。")
+
+
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 def chat(
@@ -185,6 +214,7 @@ def chat(
     history: list[dict],
     visual_spec: str | None = None,
     current_profile: dict | None = None,
+    session_id: str | None = None,
 ) -> dict:
     """
     Process one user message and return an agent reply + optional profile update.
@@ -205,6 +235,28 @@ def chat(
         profile is non-null only when the agent called update_profile this turn.
     """
     system = SYSTEM_PROMPT
+
+    # Vision identification: run once per session on first chat turn, cache in session
+    if session_id:
+        from services import analyze_service
+        session = analyze_service.get_session(session_id)
+        if session:
+            if session.get("char_hint") is None and session.get("first_image"):
+                try:
+                    session["char_hint"] = _identify_from_image(session["first_image"])
+                except Exception:
+                    session["char_hint"] = ""
+            char_hint = session.get("char_hint") or ""
+            if char_hint:
+                system += (
+                    f"\n\n【图像视觉识别】系统已对用户上传的参考图进行了初步识别：\n{char_hint}\n"
+                    "【重要】在第一轮回复时，先把识别结果告诉用户并请求确认，例如：\n"
+                    "  「图片里看起来是XXX（《作品名》），对吗？」\n"
+                    "  或「从图片特征看，这可能是XXX或YYY，请问是哪个？」\n"
+                    "  或「图片特征不太好确认，能告诉我是哪个角色吗？」\n"
+                    "用户确认或纠正后，再调用 web_search 搜索建档。"
+                    "禁止在用户确认前就调用 web_search 或 update_profile。"
+                )
 
     if visual_spec:
         system += (

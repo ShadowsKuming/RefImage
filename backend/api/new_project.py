@@ -22,6 +22,7 @@ class ChatRequest(BaseModel):
     history:         list[dict] = []
     visual_spec:     str | None = None
     current_profile: dict | None = None
+    session_id:      str | None = None
 
 
 @router.post("/chat")
@@ -30,9 +31,11 @@ async def chat(req: ChatRequest):
     One turn of the character profile agent.
     The frontend sends the full chat history and current profile state on every
     request so the agent always has the live context (including manual edits).
+    session_id links back to the Step 1 analysis session so the agent can
+    visually inspect the reference image.
     """
     return analyze_service.profile_chat(
-        req.message, req.history, req.visual_spec, req.current_profile
+        req.message, req.history, req.visual_spec, req.current_profile, req.session_id
     )
 
 

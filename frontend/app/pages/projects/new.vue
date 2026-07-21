@@ -250,7 +250,7 @@ async function sendMessage() {
   await scrollBottom()
 
   try {
-    const res = await api.chat(text, chatHistory.value, visualSpec.value?.zh ?? null, personality.value)
+    const res = await api.chat(text, chatHistory.value, visualSpec.value?.zh ?? null, personality.value, sessionId.value)
     chatHistory.value.push({ role: 'user', content: text })
     chatHistory.value.push({ role: 'assistant', content: res.reply })
     if (res.profile) personality.value = deepMerge(personality.value ?? {}, res.profile)

@@ -94,11 +94,17 @@ def _compile_visual_spec(multilang_fields: dict) -> dict:
 
 # ── Step 2: profile chat ──────────────────────────────────────────────────────
 
+def get_session(session_id: str) -> dict | None:
+    """Return the raw session dict, or None if it doesn't exist."""
+    return _sessions.get(session_id)
+
+
 def profile_chat(
     message: str,
     history: list[dict],
     visual_spec: str | None = None,
     current_profile: dict | None = None,
+    session_id: str | None = None,
 ) -> dict:
     """
     Multi-turn agent chat for Step 2 profile building.
@@ -106,7 +112,7 @@ def profile_chat(
       - reply is always present (the agent's conversational response)
       - profile is non-null only when the agent updated the profile this turn
     """
-    return _character_chat(message, history, visual_spec, current_profile)
+    return _character_chat(message, history, visual_spec, current_profile, session_id)
 
 
 # ── Step 1: image analysis ────────────────────────────────────────────────────
@@ -149,9 +155,15 @@ def start_or_continue(image_bytes: bytes, session_id: str | None) -> dict:
             "gender":      "female",
             "done":        False,
             "visual_spec": None,
+            "first_image": None,   # bytes of the first uploaded image
+            "char_hint":   None,   # cached vision identification result
         }
 
     session = _sessions[session_id]
+
+    # Keep the first uploaded image for Step 2 vision identification
+    if session["first_image"] is None:
+        session["first_image"] = image_bytes
 
     if session["done"]:
         # Retry translation if it failed on a previous call

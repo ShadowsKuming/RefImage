@@ -162,6 +162,7 @@ export const useApi = () => {
     history: { role: 'user' | 'assistant'; content: string }[],
     visualSpec?: string | null,
     currentProfile?: object | null,
+    sessionId?: string | null,
   ) {
     return api<{
       reply: string
@@ -179,6 +180,7 @@ export const useApi = () => {
         history,
         visual_spec: visualSpec ?? null,
         current_profile: currentProfile ?? null,
+        session_id: sessionId ?? null,
       }),
     })
   }
