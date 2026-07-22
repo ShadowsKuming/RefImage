@@ -6,7 +6,7 @@ services:
       - "8000:8000"
     env_file: .env
     environment:
-      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3001}"
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3001,http://localhost:3333}"
     volumes:
       - storage:/app/storage
     restart: unless-stopped

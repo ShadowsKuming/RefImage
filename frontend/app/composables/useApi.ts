@@ -1,15 +1,30 @@
-const { public: { apiBase: BASE } } = useRuntimeConfig()
-
-async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
-  const r = await fetch(BASE + path, opts)
-  if (!r.ok) {
-    const msg = await r.text().catch(() => r.statusText)
-    throw new Error(msg)
-  }
-  return r.json()
-}
-
 export const useApi = () => {
+  const { public: { apiBase: BASE } } = useRuntimeConfig()
+  const { token } = useAuth()
+
+  function _authHeader(): Record<string, string> {
+    return token.value ? { Authorization: `Bearer ${token.value}` } : {}
+  }
+
+  async function _fetchAuth(input: string, init: RequestInit = {}): Promise<Response> {
+    const headers = { ..._authHeader(), ...(init.headers as Record<string, string> ?? {}) }
+    const r = await fetch(input, { ...init, headers })
+    if (r.status === 401) {
+      await navigateTo('/login')
+      throw new Error('Unauthorized')
+    }
+    return r
+  }
+
+  async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
+    const r = await _fetchAuth(BASE + path, opts)
+    if (!r.ok) {
+      const msg = await r.text().catch(() => r.statusText)
+      throw new Error(msg)
+    }
+    return r.json()
+  }
+
   function createProject(params: {
     images: { file: File; url: string }[]
     extracted: Record<string, any>
@@ -55,7 +70,7 @@ export const useApi = () => {
   }
 
   async function exportProject(projectId: string): Promise<void> {
-    const r = await fetch(`${BASE}/projects/${projectId}/export`)
+    const r = await _fetchAuth(`${BASE}/projects/${projectId}/export`)
     if (!r.ok) throw new Error(await r.text())
     const blob = await r.blob()
     const url = URL.createObjectURL(blob)
@@ -114,24 +129,73 @@ export const useApi = () => {
     projectId: string,
     shotId: string,
     message: string,
+    selectedVersionIds: string[] = [],
+    selectedRefIds: string[] = [],
   ): Promise<{ reply: string; generating: boolean }> {
     return api<{ reply: string; generating: boolean }>(
       `/projects/${projectId}/shots/${shotId}/chat`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({
+          message,
+          selected_version_ids: selectedVersionIds,
+          selected_ref_ids: selectedRefIds,
+        }),
       },
     )
+  }
+
+  function uploadShotRef(projectId: string, shotId: string, file: File) {
+    const fd = new FormData()
+    fd.append('image', file, file.name)
+    return api<{ id: string; type: null; status: string; created_at: string }>(
+      `/projects/${projectId}/shots/${shotId}/refs`,
+      { method: 'POST', body: fd },
+    )
+  }
+
+  function listShotRefs(projectId: string, shotId: string) {
+    return api<Array<{
+      id: string; type: string | null; status: string; created_at: string
+      original_url: string; processed_url?: string | null; processed_text?: string
+    }>>(`/projects/${projectId}/shots/${shotId}/refs`)
+  }
+
+  function deleteShotRef(projectId: string, shotId: string, refId: string) {
+    return api<{ ok: boolean }>(
+      `/projects/${projectId}/shots/${shotId}/refs/${refId}`,
+      { method: 'DELETE' },
+    )
+  }
+
+  function listVersions(projectId: string, shotId: string) {
+    return api<Array<{
+      id: string; parent_ids: string[]; prompt: string; created_at: string; image_url: string | null
+    }>>(`/projects/${projectId}/shots/${shotId}/versions`)
+  }
+
+  function deleteVersion(projectId: string, shotId: string, versionId: string) {
+    return api<{ ok: boolean }>(`/projects/${projectId}/shots/${shotId}/versions/${versionId}`, { method: 'DELETE' })
+  }
+
+  function activateVersion(projectId: string, shotId: string, versionId: string) {
+    return api<{ ok: boolean }>(`/projects/${projectId}/shots/${shotId}/versions/${versionId}/activate`, { method: 'PATCH' })
   }
 
   function getShot(projectId: string, shotId: string): Promise<any> {
     return api<any>(`/projects/${projectId}/shots/${shotId}`)
   }
 
-  async function saveImage(projectId: string, shotId: string, blob: Blob): Promise<void> {
+  async function saveImage(
+    projectId: string,
+    shotId: string,
+    blob: Blob,
+    parentVersionId?: string,   // omit for fresh uploads (root node); pass for crop saves (child)
+  ): Promise<void> {
     const fd = new FormData()
     fd.append('file', new File([blob], 'generated.png', { type: 'image/png' }))
+    if (parentVersionId) fd.append('parent_version_id', parentVersionId)
     await api<{ ok: boolean }>(`/projects/${projectId}/shots/${shotId}/image`, {
       method: 'PUT',
       body: fd,
@@ -147,7 +211,7 @@ export const useApi = () => {
   }
 
   async function getGuide(projectId: string, shotId: string, guideType: string) {
-    const r = await fetch(`${BASE}/projects/${projectId}/shots/${shotId}/guides/${guideType}`)
+    const r = await _fetchAuth(`${BASE}/projects/${projectId}/shots/${shotId}/guides/${guideType}`)
     if (r.status === 404) return null
     if (!r.ok) throw new Error(await r.text())
     return r.json() as Promise<{ guide: any; sketch_url: string | null }>
@@ -226,10 +290,16 @@ export const useApi = () => {
     deleteShot,
     updateShotTitle,
     shotChat,
+    listVersions,
+    deleteVersion,
+    activateVersion,
     getShot,
     updateShotStatus,
     saveImage,
     getGuide,
     generateGuide,
+    uploadShotRef,
+    listShotRefs,
+    deleteShotRef,
   }
 }

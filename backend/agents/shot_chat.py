@@ -12,6 +12,36 @@ from tools.search import web_search as _web_search
 
 TOOLS = [
     {
+        "name": "classify_ref",
+        "description": (
+            "当用户上传了参考图（r 节点）且你已经知道用户想参考什么时，调用此工具设置类型并启动处理。"
+            "如果用户还没说清楚，先问用户：「这张图你想参考哪个方面？动作姿势、背景环境、武器道具，还是服装？」"
+            "确认后再调用。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ref_id": {
+                    "type": "string",
+                    "description": "r 节点的 ID（从对话上下文中获取）",
+                },
+                "ref_type": {
+                    "type": "string",
+                    "enum": ["pose", "background", "weapon", "costume", "lighting", "expression"],
+                    "description": (
+                        "pose        — 动作/姿势参考 → 转成 mannequin 草图\n"
+                        "background  — 背景/环境参考 → 抠掉人物留背景\n"
+                        "weapon      — 武器/道具参考 → 提取道具白底图\n"
+                        "costume     — 服装参考 → 保留服装换无脸人台\n"
+                        "lighting    — 打光/机位参考 → 提取文字描述注入 prompt\n"
+                        "expression  — 表情参考 → 提取文字描述注入 prompt"
+                    ),
+                },
+            },
+            "required": ["ref_id", "ref_type"],
+        },
+    },
+    {
         "name": "web_search",
         "description": "搜索拍摄参考资料：场地实景、布光方案、pose 参考、cosplay 案例等。",
         "input_schema": {
@@ -86,21 +116,33 @@ TOOLS = [
                     "type": "string",
                     "enum": ["square", "portrait", "landscape", "landscape_wide"],
                     "description": (
-                        "可选，默认 square（1:1）。根据构图自动判断，无需用户指定。\n"
-                        "square         = 1:1   通用\n"
-                        "portrait       = 2:3   全身站姿、角色特写\n"
-                        "landscape      = 3:2   场景横图、环境感\n"
-                        "landscape_wide = 16:9  电影宽画面"
+                        "必填。生成前必须向用户确认画幅，不可自行决定。\n"
+                        "square         = 1:1   方图（特殊构图时用）\n"
+                        "portrait       = 2:3   竖图（全身、角色特写）\n"
+                        "landscape      = 3:2   横图（场景、环境感）\n"
+                        "landscape_wide = 16:9  宽横图（电影感）\n"
+                        "用户说「竖图/竖版」→ portrait；「横图/横版」→ landscape；"
+                        "「16:9/电影感」→ landscape_wide；方图罕见，只在用户明确说时用。"
+                    ),
+                },
+                "ref_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "可选。用户框选的 r 节点 ID 列表（已处理完毕的参考图）。"
+                        "只填已处理完成（status=ready）的 ref_id。"
+                        "系统自动将处理后的图片（mannequin 草图/背景图/道具图/服装图）"
+                        "加进生成输入，文字类型（lighting/expression）注入对应字段。"
                     ),
                 },
             },
-            "required": ["atmosphere", "scene", "pose", "composition"],
+            "required": ["atmosphere", "scene", "pose", "composition", "orientation"],
         },
     },
 ]
 
 
-def _build_system(project: dict, shot: dict) -> str:
+def _build_system(project: dict, shot: dict, shot_refs: list[dict] | None = None, selected_ref_ids: list[str] | None = None) -> str:
     char_data   = project.get("character_data", {})
     char_bg     = char_data.get("characterBackground", {})
     if not isinstance(char_bg, dict): char_bg = {}
@@ -126,8 +168,11 @@ def _build_system(project: dict, shot: dict) -> str:
         "  示例：「我先走赛博楼顶+双刀前冲这个方向，背景粉紫霓虹，低角度仰拍压迫感。你觉得呢？」",
         "- 用户说「没思路」「你来定」「给个例子」→ 给 2-3 个简短风格选项，用户选一个。",
         "  示例：「三个方向你选一个：① 楼顶突袭（霓虹背景，冲刺姿态）② 巷战瞬间（雨夜，刀光特写）③ 虚拟空间（星光碎片环绕，像宣传图）」",
-        "- 方案细节足够后（有场景/姿势/构图/氛围）→ 一句话总结，问用户要不要生成。",
-        "- 用户确认（「可以」「好的」「生成」「就这样」等）→ 调用 generate_image。",
+        "- 方案细节足够后（有场景/姿势/构图/氛围）→ 先问用户「横图还是竖图？」（如果对话中还没确认过画幅）。",
+        "  示例：「方案定了，最后确认一下——横图还是竖图？」",
+        "- 用户确认画幅后 → 调用 generate_image，不再需要额外确认。",
+        "- 如果用户在方案讨论中已经明确提到画幅（如「竖图」「横版」「16:9」），跳过画幅提问直接等确认生成。",
+        "- 用户确认（「可以」「好的」「生成」「就这样」等）且画幅已知 → 调用 generate_image。",
         "- 禁止在未经用户确认的情况下调用 generate_image。",
         "",
         "你熟悉这个角色的性格、标志性瞬间和经典场景，主动把它们融入方案。",
@@ -179,19 +224,59 @@ def _build_system(project: dict, shot: dict) -> str:
     if desc:
         lines.append(f"备注：{desc}")
 
+    # ── r-node context ────────────────────────────────────────────
+    if shot_refs:
+        pending = [r for r in shot_refs if r.get("status") == "pending_type"]
+        ready   = [r for r in shot_refs if r.get("status") == "ready"]
+        if pending:
+            lines += ["", "═══ 待分类参考图 ═══"]
+            for r in pending:
+                lines.append(f"- ref_id={r['id']}（尚未分类，需要问用户想参考什么）")
+        if ready:
+            lines += ["", "═══ 可用参考图（已处理）═══"]
+            _type_zh = {
+                "pose": "动作姿势", "background": "背景环境",
+                "weapon": "武器道具", "costume": "服装",
+                "lighting": "打光/机位", "expression": "表情",
+            }
+            for r in ready:
+                lines.append(f"- ref_id={r['id']} 类型={_type_zh.get(r['type'], r['type'])}")
+
+    if selected_ref_ids:
+        lines += ["", "═══ 本次框选的参考图 ═══"]
+        sel_map = {r["id"]: r for r in (shot_refs or [])}
+        for rid in selected_ref_ids:
+            r = sel_map.get(rid)
+            if r:
+                status = r.get("status", "unknown")
+                rtype  = r.get("type") or "未分类"
+                lines.append(f"- ref_id={rid} 类型={rtype} 状态={status}")
+            else:
+                lines.append(f"- ref_id={rid}")
+        lines.append(
+            "生成时可在 generate_image 的 ref_ids 字段填入 status=ready 的 ref_id，"
+            "系统会自动将处理后的图片纳入生成输入。"
+        )
+
     return "\n".join(lines)
 
 
-def chat(message: str, history: list[dict], project: dict, shot: dict) -> dict:
+def chat(
+    message: str,
+    history: list[dict],
+    project: dict,
+    shot: dict,
+    shot_refs: list[dict] | None = None,
+    selected_ref_ids: list[str] | None = None,
+) -> dict:
     """
     Process one shot-level chat message.
 
     Returns:
-        { reply: str, generating: bool, prompt: str | None }
-        generating is True when the AI called generate_image this turn.
-        prompt is the captured image prompt (passed to the background task by the caller).
+        { reply: str, generating: bool, prompt_parts: dict | None,
+          classify_ref: dict | None }
     """
-    system   = _build_system(project, shot)
+    system   = _build_system(project, shot, shot_refs, selected_ref_ids)
     messages = history + [{"role": "user", "content": message}]
 
     captured: dict = {}
@@ -204,12 +289,23 @@ def chat(message: str, history: list[dict], project: dict, shot: dict) -> dict:
             "composition": inp.get("composition", ""),
             **({"style":       inp["style"]}       if inp.get("style")       else {}),
             **({"orientation": inp["orientation"]} if inp.get("orientation") else {}),
+            **({"ref_ids":     inp["ref_ids"]}     if inp.get("ref_ids")     else {}),
         }
         return "生成指令已收到，正在生成参考例图，请在回复中告知用户稍等片刻。"
+
+    def _execute_classify_ref(inp: dict) -> str:
+        captured["classify_ref"] = {"ref_id": inp["ref_id"], "ref_type": inp["ref_type"]}
+        _type_zh = {
+            "pose": "动作姿势", "background": "背景环境",
+            "weapon": "武器道具", "costume": "服装",
+            "lighting": "打光/机位", "expression": "表情",
+        }
+        return f"已标记为「{_type_zh.get(inp['ref_type'], inp['ref_type'])}」，正在处理中，完成后即可使用。"
 
     tool_executor = {
         "web_search":     lambda inp: _web_search(inp["query"], lang=inp.get("lang", "zh-cn")),
         "generate_image": _execute_generate,
+        "classify_ref":   _execute_classify_ref,
     }
 
     result = call_agent(
@@ -221,9 +317,9 @@ def chat(message: str, history: list[dict], project: dict, shot: dict) -> dict:
         max_tokens=800,
     )
 
-    prompt_parts = captured.get("prompt_parts")
     return {
         "reply":        result["text"],
-        "generating":   prompt_parts is not None,
-        "prompt_parts": prompt_parts,
+        "generating":   captured.get("prompt_parts") is not None,
+        "prompt_parts": captured.get("prompt_parts"),
+        "classify_ref": captured.get("classify_ref"),
     }

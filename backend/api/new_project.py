@@ -8,8 +8,9 @@ Step 1 — image upload & analysis:
 Step 2 — character profile chat:
   POST /new-project/chat               Send a message to the profile agent; get reply + optional profile
 """
-from fastapi import APIRouter, UploadFile, File, Form
+from fastapi import APIRouter, Depends, UploadFile, File, Form
 from pydantic import BaseModel
+from api.auth import get_current_user
 from services import analyze_service
 
 router = APIRouter()
@@ -26,7 +27,7 @@ class ChatRequest(BaseModel):
 
 
 @router.post("/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, _: str = Depends(get_current_user)):
     """
     One turn of the character profile agent.
     The frontend sends the full chat history and current profile state on every
@@ -45,6 +46,7 @@ async def chat(req: ChatRequest):
 async def verify_character(
     file:       UploadFile = File(...),
     session_id: str        = Form(...),
+    _:          str        = Depends(get_current_user),
 ):
     """
     Check if an image shows the same character as the current session.
@@ -59,6 +61,7 @@ async def verify_character(
 async def analyze_image(
     file:       UploadFile  = File(...),
     session_id: str | None  = Form(default=None),
+    _:          str         = Depends(get_current_user),
 ):
     """
     Extract visual features from a reference image.

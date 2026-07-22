@@ -15,7 +15,7 @@ export const THEMES: { id: Theme; label: string; accent: string }[] = [
   { id: 'parchment', label: '书卷', accent: '#8b6a3e' },
 ]
 
-const theme = ref<Theme>('dark')
+const theme = ref<Theme>('sakura')
 
 export function useTheme() {
   function apply(t: Theme) {
@@ -30,7 +30,7 @@ export function useTheme() {
     const saved = typeof localStorage !== 'undefined'
       ? (localStorage.getItem('theme') as Theme | null)
       : null
-    apply(saved ?? 'dark')
+    apply(saved ?? 'sakura')
   }
 
   return { theme, THEMES, init, apply }

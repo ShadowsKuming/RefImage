@@ -28,10 +28,10 @@ from PIL import Image
 STORAGE_ROOT = Path(__file__).parent.parent / "storage" / "projects"
 
 
-def generate(project_id: str, prompt_parts: dict) -> bytes:
+def generate(project_id: str, prompt_parts: dict, extra_images: list[bytes] | None = None) -> bytes:
     from config import IMAGE_GEN_PROVIDER
     if IMAGE_GEN_PROVIDER == "openai":
-        return _openai(project_id, prompt_parts)
+        return _openai(project_id, prompt_parts, extra_images or [])
     elif IMAGE_GEN_PROVIDER == "fal":
         return _fal(project_id, prompt_parts)
     else:
@@ -40,18 +40,29 @@ def generate(project_id: str, prompt_parts: dict) -> bytes:
 
 # ── OpenAI / gpt-image-2 ─────────────────────────────────────────────────────
 
-def _build_prompt_openai(parts: dict, num_refs: int = 1) -> str:
-    """Assemble the 7-section structured prompt for gpt-image-2."""
+def _build_prompt_openai(parts: dict, num_refs: int = 1, num_extra: int = 0) -> str:
+    """Assemble the structured prompt for gpt-image-2."""
     style = parts.get("style", "anime illustration")
-    ref_note = (
-        "All input images show the same character from different angles or detail shots. "
-        "Use them together as the character reference — do not mix features from different characters."
-    ) if num_refs > 1 else ""
+    char_note = (
+        f"The first {num_refs} image(s) show the same character from different angles. "
+        "Use them together as the character reference — reproduce this character exactly, "
+        "do not mix features from other images."
+    ) if num_refs > 1 else (
+        "The first image is the character reference — reproduce this character exactly."
+    )
+    extra_note = ""
+    if num_extra > 0:
+        extra_note = (
+            f"The remaining {num_extra} image(s) after the character reference(s) are "
+            "pose/background/prop/costume guides. Use them for composition and context "
+            "but do NOT copy any characters or faces from them."
+        )
     sections = [
         f"Anime illustration, {style}.",
         "\n".join(filter(None, [
             "Character — do not change:",
-            ref_note,
+            char_note,
+            extra_note,
             parts["character"],
         ])),
     ]
@@ -79,16 +90,21 @@ _ORIENTATION_TO_SIZE = {
 }
 
 
-def _openai(project_id: str, parts: dict) -> bytes:
+def _openai(project_id: str, parts: dict, extra_images: list[bytes] | None = None) -> bytes:
     from openai import OpenAI
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     size = _ORIENTATION_TO_SIZE[parts.get("orientation", "square")]
-    ref_images = _all_ref_pngs(project_id)
-    prompt = _build_prompt_openai(parts, num_refs=len(ref_images))
+
+    # Character reference images always come first (project-level, locked)
+    char_refs  = _all_ref_pngs(project_id)
+    # Processed r-node assets (mannequin sketches, backgrounds, props, costumes) appended after
+    all_images = char_refs + (extra_images or [])
+
+    prompt = _build_prompt_openai(parts, num_refs=len(char_refs), num_extra=len(extra_images or []))
     from config import IMAGE_GEN_MODEL, IMAGE_GEN_PROVIDER
     result = client.images.edit(
         model=IMAGE_GEN_MODEL[IMAGE_GEN_PROVIDER],
-        image=[(f"ref{i+1}.png", b, "image/png") for i, b in enumerate(ref_images)],
+        image=[(f"img{i+1}.png", b, "image/png") for i, b in enumerate(all_images)],
         prompt=prompt,
         size=size,
         quality="low",

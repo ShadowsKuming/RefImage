@@ -5,21 +5,24 @@ Only reads meta.json and counts shots/ subdirectories per project.
 Does not load full project context (world, character, visual_spec) — that's project_service's job.
 """
 import json
+import os
 from pathlib import Path
 
 STORAGE_ROOT = Path(__file__).parent.parent / "storage" / "projects"
 
 
-def list_projects() -> list[dict]:
+def list_projects(owner_id: str) -> list[dict]:
     """
-    Return a summary card for every project on disk, sorted newest first.
+    Return summary cards for projects owned by owner_id, sorted newest first.
 
     Each item: { project_id, character, series, created_at, shot_count, ref_thumb }
     ref_thumb is the URL path to the first reference image, or None if none exist.
+    Existing projects without owner_id are treated as owned by DEFAULT_OWNER_ID env var.
     """
     if not STORAGE_ROOT.exists():
         return []
 
+    default_owner = os.getenv("DEFAULT_OWNER_ID", "default")
     results = []
     for project_dir in STORAGE_ROOT.iterdir():
         if not project_dir.is_dir():
@@ -30,6 +33,10 @@ def list_projects() -> list[dict]:
 
         meta = json.loads(meta_file.read_text())
         project_id = meta.get("project_id", project_dir.name)
+
+        project_owner = meta.get("owner_id") or default_owner
+        if project_owner != owner_id:
+            continue
 
         shots_dir = project_dir / "shots"
         shot_count = sum(1 for d in shots_dir.iterdir() if d.is_dir()) if shots_dir.exists() else 0
