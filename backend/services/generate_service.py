@@ -93,7 +93,11 @@ def _analyze_moderation_error(project_id: str, shot_id: str) -> None:
     ]
 
     result = _shot_chat(
-        "图片生成被安全审核系统拦截了。请根据我们刚才讨论的方案，分析最可能触发审核的原因，并给出具体的调整建议。",
+        (
+            "图片被安全审核拦截了（sexual 标签）。"
+            "用一句话说明最可能的原因，然后给出调整后的方案，问用户「要按这个生成吗？」。"
+            "回复不超过 60 字，不要列清单，不要解释原理。"
+        ),
         llm_history,
         project,
         shot,

@@ -74,7 +74,12 @@ def _build_prompt_openai(parts: dict, num_refs: int = 1, num_extra: int = 0) -> 
         sections.append(f"Pose / Expression:\n{parts['pose']}")
     if parts.get("composition"):
         sections.append(f"Composition:\n{parts['composition']}")
-    sections.append("Constraints:\n- No text, no watermarks")
+    sections.append(
+        "Constraints:\n"
+        "- No text, no watermarks\n"
+        "- Anatomically correct: feet and body face the same base direction, "
+        "no impossible torso twists, head turn no more than 45 degrees from shoulder line"
+    )
     return "\n\n".join(sections)
 
 
