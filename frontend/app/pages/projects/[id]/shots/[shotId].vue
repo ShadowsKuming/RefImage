@@ -84,6 +84,18 @@
 
       <!-- ── Center: Canvas ── -->
       <div class="canvas-col">
+
+        <!-- Generating overlay — blocks all canvas interaction during image gen -->
+        <Transition name="gen-overlay">
+          <div v-if="generating" class="gen-overlay">
+            <div class="gen-overlay-card">
+              <div class="gen-spinner"></div>
+              <span class="gen-label">参考图生成中</span>
+              <span class="gen-sub">大约需要 30–60 秒</span>
+            </div>
+          </div>
+        </Transition>
+
         <div
           class="canvas-wrap"
           ref="canvasWrapRef"
@@ -1324,7 +1336,7 @@ onUnmounted(() => {
 /* ── Layout ── */
 .main-layout { flex: 1; display: flex; overflow: hidden; background-image: radial-gradient(circle, var(--border-md) 1px, transparent 1px); background-size: 32px 32px; }
 .ai-col { flex-shrink: 0; display: flex; flex-direction: column; background: var(--surface); overflow: hidden; min-width: 180px; border-right: 1px solid var(--border); box-shadow: 4px 0 20px var(--shadow); z-index: 2; }
-.canvas-col { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.canvas-col { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; position: relative; }
 .detail-col { flex-shrink: 0; display: flex; flex-direction: column; background: var(--surface); overflow: hidden; min-width: 180px; border-left: 1px solid var(--border); box-shadow: -4px 0 20px var(--shadow); z-index: 2; }
 .resizer { width: 10px; flex-shrink: 0; background: transparent; cursor: col-resize; z-index: 3; }
 .col-header { height: 44px; display: flex; align-items: center; padding: 0 18px; font-size: 12px; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border); flex-shrink: 0; }
@@ -1531,4 +1543,32 @@ onUnmounted(() => {
 .ud-discard:hover { background: var(--border-md); }
 .ud-save    { background: var(--accent); color: white; }
 .ud-save:hover { background: var(--accent-dim, #2d8f5f); }
+
+/* ── Generating overlay ── */
+.gen-overlay {
+  position: absolute; inset: 0; z-index: 50;
+  background: rgba(0,0,0,.52);
+  backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: all;
+}
+.gen-overlay-card {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  background: var(--surface); border: 1px solid var(--border-md);
+  border-radius: 16px; padding: 32px 40px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.28);
+}
+.gen-spinner {
+  width: 36px; height: 36px;
+  border: 3px solid var(--border-md);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+.gen-label { font-size: 15px; font-weight: 600; color: var(--text); }
+.gen-sub   { font-size: 12px; color: var(--text-lo, #999); }
+
+/* fade-in / fade-out transition */
+.gen-overlay-enter-active, .gen-overlay-leave-active { transition: opacity .25s ease; }
+.gen-overlay-enter-from, .gen-overlay-leave-to { opacity: 0; }
 </style>
