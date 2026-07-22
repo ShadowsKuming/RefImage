@@ -11,12 +11,6 @@
           {{ importing ? '导入中…' : '导入项目' }}
         </label>
       </div>
-
-      <!-- Limit warning -->
-      <div v-if="limitWarning" class="limit-banner">
-        <span>已达项目上限（{{ PROJECT_LIMIT }} 个）。请先导出并删除旧项目，再新建。</span>
-        <button class="limit-dismiss" @click="limitWarning = false">×</button>
-      </div>
       <div v-if="importError" class="import-error">{{ importError }}</div>
 
       <!-- Existing projects -->
@@ -39,18 +33,24 @@
             <span class="pr-name">{{ p.character }}</span>
             <span class="pr-meta">{{ p.series }}{{ p.shot_count ? ' · ' + p.shot_count + ' 个拍摄' : '' }}</span>
           </div>
-          <div class="pr-actions" @click.stop>
-            <button
-              class="pr-export-btn"
-              title="导出备份"
-              @click.stop="onExport(p.project_id)"
-            >↓</button>
-            <button
-              class="pr-delete-btn"
-              title="删除项目"
-              @click.stop="confirmDelete(p)"
-            >🗑</button>
-          </div>
+          <span class="pr-arrow">→</span>
+          <!-- Delete button top-right -->
+          <button class="pr-delete-btn" title="删除项目" @click.stop="confirmDelete(p)">×</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Limit dialog -->
+    <div v-if="showLimitDialog" class="dialog-backdrop" @click.self="showLimitDialog = false">
+      <div class="dialog">
+        <div class="dialog-icon">⚠️</div>
+        <div class="dialog-title">已达项目上限</div>
+        <div class="dialog-body">
+          每位用户最多保存 {{ PROJECT_LIMIT }} 个项目。<br>
+          请进入旧项目导出备份后再删除，腾出空间新建。
+        </div>
+        <div class="dialog-footer">
+          <button class="dialog-btn primary" @click="showLimitDialog = false">知道了</button>
         </div>
       </div>
     </div>
@@ -58,10 +58,10 @@
     <!-- Delete confirmation dialog -->
     <div v-if="deleteTarget" class="dialog-backdrop" @click.self="deleteTarget = null">
       <div class="dialog">
-        <div class="dialog-title">删除项目「{{ deleteTarget.character }}」？</div>
+        <div class="dialog-title">删除「{{ deleteTarget.character }}」？</div>
         <div class="dialog-body">
-          此操作不可恢复，项目数据将被永久删除。<br>
-          建议先<button class="inline-link" @click="onExport(deleteTarget!.project_id)">导出备份</button>再删除。
+          项目数据将被永久删除，无法恢复。<br>
+          如需保留，请先进入项目页面导出备份。
         </div>
         <div class="dialog-footer">
           <button class="dialog-btn cancel" @click="deleteTarget = null">取消</button>
@@ -80,28 +80,39 @@ import { useApi } from '~/composables/useApi'
 
 definePageMeta({ ssr: false })
 
-const PROJECT_LIMIT = 5   // mirror of backend config default
+const PROJECT_LIMIT = 5
 
 const api = useApi()
-const projects    = ref<any[]>([])
-const importing   = ref(false)
-const importError = ref('')
-const limitWarning = ref(false)
-const deleteTarget = ref<any | null>(null)
-const deleting     = ref(false)
+const projects       = ref<any[]>([])
+const importing      = ref(false)
+const importError    = ref('')
+const showLimitDialog = ref(false)
+const deleteTarget   = ref<any | null>(null)
+const deleting       = ref(false)
 const { public: { apiBase: BASE_URL } } = useRuntimeConfig()
 
 onMounted(async () => {
-  try {
-    projects.value = await api.listProjects()
-  } catch (e) {
-    console.error('Failed to load projects', e)
-  }
+  try { projects.value = await api.listProjects() }
+  catch (e) { console.error('Failed to load projects', e) }
 })
+
+function playDing() {
+  try {
+    const ctx = new AudioContext()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain); gain.connect(ctx.destination)
+    osc.type = 'sine'; osc.frequency.value = 880
+    gain.gain.setValueAtTime(0.35, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6)
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.6)
+  } catch {}
+}
 
 function onNewProject() {
   if (projects.value.length >= PROJECT_LIMIT) {
-    limitWarning.value = true
+    showLimitDialog.value = true
+    playDing()
     return
   }
   navigateTo('/projects/new')
@@ -110,8 +121,7 @@ function onNewProject() {
 async function onImport(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   if (!file) return
-  importing.value  = true
-  importError.value = ''
+  importing.value = true; importError.value = ''
   try {
     const result = await api.importProject(file)
     projects.value = await api.listProjects()
@@ -121,14 +131,6 @@ async function onImport(e: Event) {
   }
   importing.value = false
   ;(e.target as HTMLInputElement).value = ''
-}
-
-async function onExport(projectId: string) {
-  try {
-    await api.exportProject(projectId)
-  } catch (e) {
-    console.error('export failed', e)
-  }
 }
 
 function confirmDelete(p: any) {
@@ -141,11 +143,8 @@ async function doDelete() {
   try {
     await api.deleteProject(deleteTarget.value.project_id)
     projects.value = projects.value.filter(p => p.project_id !== deleteTarget.value!.project_id)
-    if (projects.value.length < PROJECT_LIMIT) limitWarning.value = false
     deleteTarget.value = null
-  } catch (e: any) {
-    console.error('delete failed', e)
-  }
+  } catch (e: any) { console.error('delete failed', e) }
   deleting.value = false
 }
 </script>
@@ -153,146 +152,84 @@ async function doDelete() {
 <style scoped>
 .home-page {
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg, var(--bg));
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg);
 }
-
 .home-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  width: 100%;
-  max-width: 400px;
-  padding: 40px 24px;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 16px; width: 100%; max-width: 400px; padding: 40px 24px;
 }
+.logo-mark  { font-size: 48px; color: var(--accent); line-height: 1; }
+.home-title { font-size: 36px; font-weight: 700; color: var(--text-hi, var(--text)); letter-spacing: -0.5px; }
+.home-subtitle { font-size: 14px; color: var(--text-quiet, var(--text-sub)); margin-bottom: 8px; }
 
-.logo-mark {
-  font-size: 48px;
-  color: var(--accent);
-  line-height: 1;
-}
-
-.home-title {
-  font-size: 36px;
-  font-weight: 700;
-  color: var(--text-hi, var(--text));
-  letter-spacing: -0.5px;
-}
-
-.home-subtitle {
-  font-size: 14px;
-  color: var(--text-quiet, var(--text-sub));
-  margin-bottom: 8px;
-}
-
-.action-row {
-  display: flex; gap: 10px; align-items: center;
-}
+.action-row { display: flex; gap: 10px; align-items: center; }
 .new-project-btn {
-  padding: 12px 28px;
-  background: var(--accent);
-  border: none;
-  border-radius: 8px;
-  color: white;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s, transform 0.1s;
+  padding: 12px 28px; background: var(--accent); border: none;
+  border-radius: 8px; color: white; font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: background .2s, transform .1s;
 }
 .new-project-btn:hover  { background: var(--accent-hover); }
-.new-project-btn:active { transform: scale(0.98); }
+.new-project-btn:active { transform: scale(.98); }
+
 .import-btn {
-  padding: 12px 20px;
-  background: var(--surface);
-  border: 1px solid var(--border-md);
-  border-radius: 8px;
-  color: var(--text-muted);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  padding: 12px 20px; background: var(--surface); border: 1px solid var(--border-md);
+  border-radius: 8px; color: var(--text-muted); font-size: 14px; font-weight: 500;
+  cursor: pointer; transition: border-color .15s, color .15s;
 }
 .import-btn:hover  { border-color: var(--accent); color: var(--accent); }
-.import-btn.loading { opacity: 0.6; cursor: not-allowed; }
-
-/* Limit warning */
-.limit-banner {
-  width: 100%; padding: 10px 14px;
-  background: #fff8e1; border: 1px solid #f0c040;
-  border-radius: 8px; font-size: 12px; color: #7a5f00;
-  display: flex; align-items: flex-start; gap: 8px;
-}
-.limit-dismiss {
-  margin-left: auto; background: none; border: none;
-  cursor: pointer; color: #7a5f00; font-size: 14px; line-height: 1; flex-shrink: 0;
-}
+.import-btn.loading { opacity: .6; cursor: not-allowed; }
 
 .import-error {
-  font-size: 12px; color: var(--error);
-  background: var(--surface); border: 1px solid var(--error);
-  border-radius: 6px; padding: 8px 14px; width: 100%; text-align: center;
+  font-size: 12px; color: var(--error); background: var(--surface);
+  border: 1px solid var(--error); border-radius: 6px;
+  padding: 8px 14px; width: 100%; text-align: center;
 }
 
 /* Projects list */
-.projects-list {
-  width: 100%;
-  margin-top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
+.projects-list { width: 100%; margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
 .projects-label {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-ghost, var(--text-ghost));
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-bottom: 4px;
+  font-size: 10px; font-weight: 600; color: var(--text-ghost);
+  text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;
   display: flex; align-items: center; justify-content: space-between;
 }
 .proj-count { font-size: 10px; color: var(--text-ghost); font-weight: 400; letter-spacing: 0; }
 
 .project-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  position: relative;
+  display: flex; align-items: center; gap: 10px;
   padding: 10px 14px;
-  background: var(--surface, var(--surface));
-  border: 1px solid var(--border, var(--border-md));
-  border-radius: 10px;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  background: var(--surface); border: 1px solid var(--border, var(--border-md));
+  border-radius: 10px; cursor: pointer;
+  transition: border-color .15s, background .15s;
 }
-.project-row:hover { border-color: var(--accent); background: var(--surface-2, var(--surface-2)); }
+.project-row:hover { border-color: var(--accent); background: var(--surface-2); }
+
 .pr-thumb-wrap {
-  width: 40px; height: 40px; flex-shrink: 0;
-  border-radius: 8px; overflow: hidden;
-  background: var(--surface-inset);
-  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; flex-shrink: 0; border-radius: 8px; overflow: hidden;
+  background: var(--surface-inset); display: flex; align-items: center; justify-content: center;
 }
 .pr-thumb       { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pr-thumb-empty { font-size: 16px; color: var(--accent); }
 .pr-info  { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .pr-name  { font-size: 13px; font-weight: 600; color: var(--text-hi, var(--text)); }
-.pr-meta  { font-size: 11px; color: var(--text-quiet, var(--text-sub)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pr-meta  { font-size: 11px; color: var(--text-quiet); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pr-arrow { font-size: 14px; color: var(--text-ghost); flex-shrink: 0; }
 
-.pr-actions { display: flex; gap: 4px; flex-shrink: 0; }
-.pr-export-btn, .pr-delete-btn {
-  width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border-md);
-  background: var(--surface); cursor: pointer; display: flex; align-items: center;
-  justify-content: center; font-size: 13px; color: var(--text-muted);
-  transition: border-color .15s, color .15s, background .15s;
-  opacity: 0;
+/* × delete button — top-right corner of card */
+.pr-delete-btn {
+  position: absolute; top: -7px; right: -7px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--border-md);
+  color: var(--text-muted); font-size: 13px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; opacity: 0;
+  transition: opacity .15s, background .15s, border-color .15s, color .15s;
 }
-.project-row:hover .pr-export-btn,
 .project-row:hover .pr-delete-btn { opacity: 1; }
-.pr-export-btn:hover { border-color: var(--accent); color: var(--accent); }
-.pr-delete-btn:hover { border-color: #e55; color: #e55; background: #fff0f0; }
+.pr-delete-btn:hover { background: #e55; border-color: #e55; color: white; }
 
-/* Delete dialog */
+/* Dialog */
 .dialog-backdrop {
   position: fixed; inset: 0; z-index: 200;
   background: rgba(0,0,0,.45);
@@ -300,23 +237,22 @@ async function doDelete() {
 }
 .dialog {
   background: var(--surface); border: 1px solid var(--border-md);
-  border-radius: 14px; padding: 28px; min-width: 300px; max-width: 380px;
-  display: flex; flex-direction: column; gap: 14px;
+  border-radius: 14px; padding: 28px 28px 22px; min-width: 300px; max-width: 360px;
+  display: flex; flex-direction: column; gap: 12px;
   box-shadow: 0 8px 32px rgba(0,0,0,.22);
 }
-.dialog-title { font-size: 15px; font-weight: 700; color: var(--text-hi, var(--text)); }
-.dialog-body  { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
-.inline-link {
-  background: none; border: none; color: var(--accent);
-  cursor: pointer; padding: 0; font-size: 13px; text-decoration: underline;
-}
-.dialog-footer { display: flex; gap: 8px; justify-content: flex-end; }
+.dialog-icon  { font-size: 28px; text-align: center; }
+.dialog-title { font-size: 15px; font-weight: 700; color: var(--text-hi, var(--text)); text-align: center; }
+.dialog-body  { font-size: 13px; color: var(--text-muted); line-height: 1.65; text-align: center; }
+.dialog-footer { display: flex; gap: 8px; justify-content: center; margin-top: 4px; }
 .dialog-btn {
-  padding: 8px 18px; border-radius: 8px; font-size: 13px;
+  padding: 8px 22px; border-radius: 8px; font-size: 13px;
   font-weight: 600; cursor: pointer; border: none;
   transition: background .15s, opacity .15s;
 }
-.dialog-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.dialog-btn:disabled { opacity: .55; cursor: not-allowed; }
+.dialog-btn.primary { background: var(--accent); color: white; }
+.dialog-btn.primary:hover { background: var(--accent-hover); }
 .dialog-btn.cancel { background: var(--surface-2, var(--border)); color: var(--text); }
 .dialog-btn.cancel:hover { background: var(--border-md); }
 .dialog-btn.danger { background: #e55; color: white; }
