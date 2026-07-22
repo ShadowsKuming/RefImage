@@ -892,15 +892,32 @@ async function onDropToBlankNode(bn: BlankNode, e: DragEvent) {
 async function _uploadToBlankSlot(bn: BlankNode, file: File) {
   const savedPos = { x: bn.x, y: bn.y }
   const savedId  = bn.id
-  const blob = new Blob([await file.arrayBuffer()], { type: file.type })
-  await api.saveImage(projectId.value, shotId.value, blob)
   blankNodes.value = blankNodes.value.filter(b => b.id !== savedId)
   selectedBlankIds.value = selectedBlankIds.value.filter(s => s !== savedId)
-  await loadVersions()
-  // Place new version at where the blank node was
-  const newest = versions.value[versions.value.length - 1]
-  if (newest && !(newest.id in cardPositions.value)) {
-    cardPositions.value = { ...cardPositions.value, [newest.id]: savedPos }
+
+  if (versions.value.length === 0) {
+    // No versions yet → first upload becomes v1
+    const blob = new Blob([await file.arrayBuffer()], { type: file.type })
+    await api.saveImage(projectId.value, shotId.value, blob)
+    await loadVersions()
+    const newest = versions.value[versions.value.length - 1]
+    if (newest && !(newest.id in cardPositions.value)) {
+      cardPositions.value = { ...cardPositions.value, [newest.id]: savedPos }
+    }
+  } else {
+    // Versions already exist → treat upload as r-node reference
+    const entry = await api.uploadShotRef(projectId.value, shotId.value, file)
+    const placed: RefNode = {
+      ...entry,
+      original_url: `/projects/${projectId.value}/shots/${shotId.value}/refs/${entry.id}/original`,
+      processed_url: null,
+      x: savedPos.x,
+      y: savedPos.y,
+      w: REF_W,
+      h: REF_H,
+    }
+    refNodes.value.push(placed)
+    chatInput.value = `我上传了一张参考图（ref_id=${entry.id}），请问我想参考什么方面`
   }
 }
 
