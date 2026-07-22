@@ -52,7 +52,17 @@ async def create(
     """
     Persist a completed new-project session to disk.
     Returns: { project_id, character, series, created_at }
+    Raises 429 if the user has reached PROJECT_LIMIT projects.
     """
+    from config import PROJECT_LIMIT
+    if PROJECT_LIMIT > 0:
+        current = project_service.count_user_projects(user_id)
+        if current >= PROJECT_LIMIT:
+            raise HTTPException(
+                status_code=429,
+                detail=f"已达项目上限（{PROJECT_LIMIT} 个）。请先导出并删除旧项目，再新建。",
+            )
+
     image_data  = [await f.read() for f in images]
     image_names = [f.filename or "image.jpg" for f in images]
 
@@ -66,6 +76,17 @@ async def create(
         owner_id=user_id,
     )
     return meta
+
+
+@router.delete("/{project_id}")
+def delete_project(project_id: str, user_id: str = Depends(get_current_user)):
+    """Delete a project and all its data. Irreversible."""
+    _check_owner(project_id, user_id)
+    try:
+        project_service.delete_project(project_id, user_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"ok": True}
 
 
 @router.get("/{project_id}")

@@ -91,6 +91,31 @@ def assert_owner(project_id: str, user_id: str) -> None:
         raise PermissionError("Access denied")
 
 
+def count_user_projects(owner_id: str) -> int:
+    """Return the number of projects owned by owner_id."""
+    if not STORAGE_ROOT.exists():
+        return 0
+    default_owner = os.getenv("DEFAULT_OWNER_ID", "default")
+    count = 0
+    for project_dir in STORAGE_ROOT.iterdir():
+        if not project_dir.is_dir():
+            continue
+        meta_file = project_dir / "meta.json"
+        if not meta_file.exists():
+            continue
+        meta = json.loads(meta_file.read_text())
+        if (meta.get("owner_id") or default_owner) == owner_id:
+            count += 1
+    return count
+
+
+def delete_project(project_id: str, owner_id: str) -> None:
+    """Delete a project directory after verifying ownership."""
+    import shutil
+    assert_owner(project_id, owner_id)  # raises PermissionError / FileNotFoundError
+    shutil.rmtree(STORAGE_ROOT / project_id)
+
+
 def set_project_owner(project_id: str, owner_id: str) -> None:
     """Set owner_id on an existing project (used after import)."""
     meta_file = STORAGE_ROOT / project_id / "meta.json"

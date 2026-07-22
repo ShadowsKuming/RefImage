@@ -43,6 +43,10 @@ export const useApi = () => {
     )
   }
 
+  function deleteProject(projectId: string) {
+    return api<{ ok: boolean }>(`/projects/${projectId}`, { method: 'DELETE' })
+  }
+
   function uploadReference(projectId: string, file: File) {
     const fd = new FormData()
     fd.append('file', file)
@@ -274,6 +278,7 @@ export const useApi = () => {
   return {
     chat,
     verifyCharacter,
+    deleteProject,
     analyzeImage,
     createProject,
     uploadReference,

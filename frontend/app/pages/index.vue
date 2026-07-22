@@ -5,17 +5,26 @@
       <h1 class="home-title">RefImage</h1>
       <p class="home-subtitle">动漫角色真实摄影参考系统</p>
       <div class="action-row">
-        <button class="new-project-btn" @click="navigateTo('/projects/new')">+ 新建项目</button>
+        <button class="new-project-btn" @click="onNewProject">+ 新建项目</button>
         <label class="import-btn" :class="{ loading: importing }">
           <input type="file" accept=".refimg" hidden @change="onImport" />
           {{ importing ? '导入中…' : '导入项目' }}
         </label>
       </div>
+
+      <!-- Limit warning -->
+      <div v-if="limitWarning" class="limit-banner">
+        <span>已达项目上限（{{ PROJECT_LIMIT }} 个）。请先导出并删除旧项目，再新建。</span>
+        <button class="limit-dismiss" @click="limitWarning = false">×</button>
+      </div>
       <div v-if="importError" class="import-error">{{ importError }}</div>
 
       <!-- Existing projects -->
       <div v-if="projects.length > 0" class="projects-list">
-        <div class="projects-label">已有项目</div>
+        <div class="projects-label">
+          已有项目
+          <span class="proj-count">{{ projects.length }} / {{ PROJECT_LIMIT }}</span>
+        </div>
         <div
           v-for="p in projects"
           :key="p.project_id"
@@ -30,7 +39,35 @@
             <span class="pr-name">{{ p.character }}</span>
             <span class="pr-meta">{{ p.series }}{{ p.shot_count ? ' · ' + p.shot_count + ' 个拍摄' : '' }}</span>
           </div>
-          <span class="pr-arrow">→</span>
+          <div class="pr-actions" @click.stop>
+            <button
+              class="pr-export-btn"
+              title="导出备份"
+              @click.stop="onExport(p.project_id)"
+            >↓</button>
+            <button
+              class="pr-delete-btn"
+              title="删除项目"
+              @click.stop="confirmDelete(p)"
+            >🗑</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete confirmation dialog -->
+    <div v-if="deleteTarget" class="dialog-backdrop" @click.self="deleteTarget = null">
+      <div class="dialog">
+        <div class="dialog-title">删除项目「{{ deleteTarget.character }}」？</div>
+        <div class="dialog-body">
+          此操作不可恢复，项目数据将被永久删除。<br>
+          建议先<button class="inline-link" @click="onExport(deleteTarget!.project_id)">导出备份</button>再删除。
+        </div>
+        <div class="dialog-footer">
+          <button class="dialog-btn cancel" @click="deleteTarget = null">取消</button>
+          <button class="dialog-btn danger" :disabled="deleting" @click="doDelete">
+            {{ deleting ? '删除中…' : '确认删除' }}
+          </button>
         </div>
       </div>
     </div>
@@ -43,10 +80,15 @@ import { useApi } from '~/composables/useApi'
 
 definePageMeta({ ssr: false })
 
+const PROJECT_LIMIT = 5   // mirror of backend config default
+
 const api = useApi()
-const projects  = ref<any[]>([])
-const importing = ref(false)
+const projects    = ref<any[]>([])
+const importing   = ref(false)
 const importError = ref('')
+const limitWarning = ref(false)
+const deleteTarget = ref<any | null>(null)
+const deleting     = ref(false)
 const { public: { apiBase: BASE_URL } } = useRuntimeConfig()
 
 onMounted(async () => {
@@ -56,6 +98,14 @@ onMounted(async () => {
     console.error('Failed to load projects', e)
   }
 })
+
+function onNewProject() {
+  if (projects.value.length >= PROJECT_LIMIT) {
+    limitWarning.value = true
+    return
+  }
+  navigateTo('/projects/new')
+}
 
 async function onImport(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
@@ -71,6 +121,32 @@ async function onImport(e: Event) {
   }
   importing.value = false
   ;(e.target as HTMLInputElement).value = ''
+}
+
+async function onExport(projectId: string) {
+  try {
+    await api.exportProject(projectId)
+  } catch (e) {
+    console.error('export failed', e)
+  }
+}
+
+function confirmDelete(p: any) {
+  deleteTarget.value = p
+}
+
+async function doDelete() {
+  if (!deleteTarget.value) return
+  deleting.value = true
+  try {
+    await api.deleteProject(deleteTarget.value.project_id)
+    projects.value = projects.value.filter(p => p.project_id !== deleteTarget.value!.project_id)
+    if (projects.value.length < PROJECT_LIMIT) limitWarning.value = false
+    deleteTarget.value = null
+  } catch (e: any) {
+    console.error('delete failed', e)
+  }
+  deleting.value = false
 }
 </script>
 
@@ -141,6 +217,19 @@ async function onImport(e: Event) {
 }
 .import-btn:hover  { border-color: var(--accent); color: var(--accent); }
 .import-btn.loading { opacity: 0.6; cursor: not-allowed; }
+
+/* Limit warning */
+.limit-banner {
+  width: 100%; padding: 10px 14px;
+  background: #fff8e1; border: 1px solid #f0c040;
+  border-radius: 8px; font-size: 12px; color: #7a5f00;
+  display: flex; align-items: flex-start; gap: 8px;
+}
+.limit-dismiss {
+  margin-left: auto; background: none; border: none;
+  cursor: pointer; color: #7a5f00; font-size: 14px; line-height: 1; flex-shrink: 0;
+}
+
 .import-error {
   font-size: 12px; color: var(--error);
   background: var(--surface); border: 1px solid var(--error);
@@ -162,7 +251,10 @@ async function onImport(e: Event) {
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-bottom: 4px;
+  display: flex; align-items: center; justify-content: space-between;
 }
+.proj-count { font-size: 10px; color: var(--text-ghost); font-weight: 400; letter-spacing: 0; }
+
 .project-row {
   display: flex;
   align-items: center;
@@ -186,5 +278,47 @@ async function onImport(e: Event) {
 .pr-info  { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .pr-name  { font-size: 13px; font-weight: 600; color: var(--text-hi, var(--text)); }
 .pr-meta  { font-size: 11px; color: var(--text-quiet, var(--text-sub)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pr-arrow { font-size: 14px; color: var(--text-ghost, var(--text-ghost)); flex-shrink: 0; }
+
+.pr-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.pr-export-btn, .pr-delete-btn {
+  width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border-md);
+  background: var(--surface); cursor: pointer; display: flex; align-items: center;
+  justify-content: center; font-size: 13px; color: var(--text-muted);
+  transition: border-color .15s, color .15s, background .15s;
+  opacity: 0;
+}
+.project-row:hover .pr-export-btn,
+.project-row:hover .pr-delete-btn { opacity: 1; }
+.pr-export-btn:hover { border-color: var(--accent); color: var(--accent); }
+.pr-delete-btn:hover { border-color: #e55; color: #e55; background: #fff0f0; }
+
+/* Delete dialog */
+.dialog-backdrop {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,.45);
+  display: flex; align-items: center; justify-content: center;
+}
+.dialog {
+  background: var(--surface); border: 1px solid var(--border-md);
+  border-radius: 14px; padding: 28px; min-width: 300px; max-width: 380px;
+  display: flex; flex-direction: column; gap: 14px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.22);
+}
+.dialog-title { font-size: 15px; font-weight: 700; color: var(--text-hi, var(--text)); }
+.dialog-body  { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+.inline-link {
+  background: none; border: none; color: var(--accent);
+  cursor: pointer; padding: 0; font-size: 13px; text-decoration: underline;
+}
+.dialog-footer { display: flex; gap: 8px; justify-content: flex-end; }
+.dialog-btn {
+  padding: 8px 18px; border-radius: 8px; font-size: 13px;
+  font-weight: 600; cursor: pointer; border: none;
+  transition: background .15s, opacity .15s;
+}
+.dialog-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.dialog-btn.cancel { background: var(--surface-2, var(--border)); color: var(--text); }
+.dialog-btn.cancel:hover { background: var(--border-md); }
+.dialog-btn.danger { background: #e55; color: white; }
+.dialog-btn.danger:hover { background: #c33; }
 </style>
