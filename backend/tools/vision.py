@@ -64,13 +64,14 @@ def _call_claude(messages: list, system: str) -> str:
     return response.content[0].text
 
 
-def _call_openai(messages: list, system: str) -> str:
+def _call_openai(messages: list, system: str | None) -> str:
     from openai import OpenAI
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    sys_msgs = [{"role": "system", "content": system}] if system else []
     response = client.chat.completions.create(
         model=VISION_MODEL["openai"],
         max_tokens=2000,
-        messages=[{"role": "system", "content": system}] + _to_openai_messages(messages),
+        messages=sys_msgs + _to_openai_messages(messages),
     )
     return response.choices[0].message.content
 
