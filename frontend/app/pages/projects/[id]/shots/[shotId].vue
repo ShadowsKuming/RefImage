@@ -60,15 +60,7 @@
           <template v-if="selectedRefIds.length > 0">{{ selectedRefIds.length }} 张参考图</template>
           · 框选内容将告知 AI 助手
         </div>
-        <div class="ref-upload-row">
-          <button class="ref-upload-btn" @click="triggerRefUpload" title="上传参考图（姿势/背景/武器/服装等）">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" width="13" height="13">
-              <path d="M10 3v10M6 7l4-4 4 4"/><path d="M3 14v1a2 2 0 002 2h10a2 2 0 002-2v-1"/>
-            </svg>
-            上传参考图
-          </button>
-          <input ref="refFileInput" type="file" accept="image/*" style="display:none" @change="onRefFileInputChange" />
-        </div>
+        <input ref="refFileInput" type="file" accept="image/*" style="display:none" @change="onRefFileInputChange" />
 
         <div class="ai-input-row">
           <input v-model="chatInput" class="ai-input"
@@ -221,12 +213,12 @@
                 <template v-if="bn.isInitial">
                   <span class="eh-icon">{{ shot.icon }}</span>
                   <span class="eh-text">在左侧输入描述，AI 生成例图</span>
-                  <span class="eh-sub">或点击 / 拖拽上传参考图</span>
-                  <span class="eh-dbl">双击画布空白处可添加图片框</span>
+                  <span class="eh-sub">或点击 / 拖拽上传图片</span>
+                  <span class="eh-dbl">双击画布空白处可添加参考图框</span>
                 </template>
                 <template v-else>
                   <span class="blank-icon">+</span>
-                  <span class="blank-hint">拖入或点击上传</span>
+                  <span class="blank-hint">拖入或点击上传参考图</span>
                 </template>
               </div>
               <button class="card-delete" @click.stop="removeBlankNode(bn.id)" title="移除">×</button>

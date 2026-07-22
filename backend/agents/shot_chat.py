@@ -232,31 +232,33 @@ def _build_system(project: dict, shot: dict, shot_refs: list[dict] | None = None
         lines.append(f"备注：{desc}")
 
     # ── r-node context ────────────────────────────────────────────
+    _type_zh = {
+        "pose": "动作姿势", "background": "背景环境",
+        "weapon": "武器道具", "costume": "服装",
+        "lighting": "打光/机位", "expression": "表情",
+    }
     if shot_refs:
         pending = [r for r in shot_refs if r.get("status") == "pending_type"]
         ready   = [r for r in shot_refs if r.get("status") == "ready"]
         if pending:
-            lines += ["", "═══ 待分类参考图 ═══"]
+            lines += ["", "═══ 待分类参考图（用户已上传，在画布上）═══"]
+            lines.append("⚠️ 这些图已经上传到画布上了，不要让用户再发图。直接问用户「这张图你想参考哪个方面」，确认后调用 classify_ref。")
             for r in pending:
-                lines.append(f"- ref_id={r['id']}（尚未分类，需要问用户想参考什么）")
+                lines.append(f"- ref_id={r['id']}（待分类）")
         if ready:
             lines += ["", "═══ 可用参考图（已处理）═══"]
-            _type_zh = {
-                "pose": "动作姿势", "background": "背景环境",
-                "weapon": "武器道具", "costume": "服装",
-                "lighting": "打光/机位", "expression": "表情",
-            }
             for r in ready:
                 lines.append(f"- ref_id={r['id']} 类型={_type_zh.get(r['type'], r['type'])}")
 
     if selected_ref_ids:
-        lines += ["", "═══ 本次框选的参考图 ═══"]
+        lines += ["", "═══ 本次用户框选的参考图 ═══"]
+        lines.append("用户主动框选了这些图，说明他想用它们参考。如果是待分类状态，先问类型再调用 classify_ref；如果已 ready，生成时填入 ref_ids。")
         sel_map = {r["id"]: r for r in (shot_refs or [])}
         for rid in selected_ref_ids:
             r = sel_map.get(rid)
             if r:
                 status = r.get("status", "unknown")
-                rtype  = r.get("type") or "未分类"
+                rtype  = _type_zh.get(r.get("type") or "", r.get("type") or "未分类")
                 lines.append(f"- ref_id={rid} 类型={rtype} 状态={status}")
             else:
                 lines.append(f"- ref_id={rid}")
