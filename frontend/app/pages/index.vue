@@ -33,7 +33,6 @@
             <span class="pr-name">{{ p.character }}</span>
             <span class="pr-meta">{{ p.series }}{{ p.shot_count ? ' · ' + p.shot_count + ' 个拍摄' : '' }}</span>
           </div>
-          <span class="pr-arrow">→</span>
           <!-- Delete button top-right -->
           <button class="pr-delete-btn" title="删除项目" @click.stop="confirmDelete(p)">×</button>
         </div>
@@ -216,18 +215,15 @@ async function doDelete() {
 .pr-meta  { font-size: 11px; color: var(--text-quiet); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pr-arrow { font-size: 14px; color: var(--text-ghost); flex-shrink: 0; }
 
-/* × delete button — inside card, top-right with margin */
+/* × delete button — inside card, top-right, always visible, no border */
 .pr-delete-btn {
   position: absolute; top: 8px; right: 10px;
-  width: 18px; height: 18px; border-radius: 4px;
-  background: transparent; border: 1px solid var(--border-md);
-  color: var(--border-md); font-size: 12px; line-height: 1;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer; opacity: 0;
-  transition: opacity .15s, background .15s, border-color .15s, color .15s;
+  background: transparent; border: none;
+  color: var(--text-ghost); font-size: 14px; line-height: 1;
+  padding: 0; cursor: pointer;
+  transition: color .15s;
 }
-.project-row:hover .pr-delete-btn { opacity: 1; }
-.pr-delete-btn:hover { background: #fee; border-color: #e55; color: #e55; }
+.pr-delete-btn:hover { color: #e55; }
 
 /* Dialog */
 .dialog-backdrop {
