@@ -216,18 +216,18 @@ async function doDelete() {
 .pr-meta  { font-size: 11px; color: var(--text-quiet); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pr-arrow { font-size: 14px; color: var(--text-ghost); flex-shrink: 0; }
 
-/* × delete button — top-right corner of card */
+/* × delete button — inside card, top-right with margin */
 .pr-delete-btn {
-  position: absolute; top: -7px; right: -7px;
-  width: 20px; height: 20px; border-radius: 50%;
-  background: var(--surface); border: 1px solid var(--border-md);
-  color: var(--text-muted); font-size: 13px; line-height: 1;
+  position: absolute; top: 8px; right: 10px;
+  width: 18px; height: 18px; border-radius: 4px;
+  background: transparent; border: 1px solid var(--border-md);
+  color: var(--border-md); font-size: 12px; line-height: 1;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; opacity: 0;
   transition: opacity .15s, background .15s, border-color .15s, color .15s;
 }
 .project-row:hover .pr-delete-btn { opacity: 1; }
-.pr-delete-btn:hover { background: #e55; border-color: #e55; color: white; }
+.pr-delete-btn:hover { background: #fee; border-color: #e55; color: #e55; }
 
 /* Dialog */
 .dialog-backdrop {
