@@ -117,7 +117,7 @@
            character guess, so that's the only moment a small input appears.
            Placeholder circular avatar for now; swap for the illustrated mascot
            once that asset exists. -->
-      <div class="assistant-widget">
+      <div class="assistant-widget" :style="assistantDrag.style">
         <div v-if="widgetExpanded" class="assistant-log-panel">
           <div class="assistant-log" ref="chatContainer">
             <div
@@ -204,7 +204,11 @@
           <button class="quick-confirm-btn" @click="step = 2">{{ t('newProject.nextStep') }}</button>
         </div>
 
-        <button class="assistant-avatar" @click="widgetExpanded = !widgetExpanded">
+        <button
+          class="assistant-avatar"
+          @pointerdown="assistantDrag.onPointerDown"
+          @click="assistantDrag.consumeClick() || (widgetExpanded = !widgetExpanded)"
+        >
           <span>AI</span>
         </button>
       </div>
@@ -306,6 +310,7 @@ const chatLoading   = ref(false)
 const chatInputEl   = ref<HTMLInputElement | null>(null)
 const chatContainer = ref<HTMLElement | null>(null)
 const widgetExpanded = ref(false)
+const assistantDrag = useDraggableCorner('newproject-ai-pos')   // drag the avatar to reposition
 // Whether the agent's latest reply is a plain yes/no identity-confirm
 // question (single vision candidate) — only then does a quick "yes" chip
 // make sense; open-ended asks (candidates, "tell me the name") get only
@@ -861,12 +866,13 @@ onUnmounted(() => {
 .assistant-avatar {
   width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0;
   background: var(--accent); border: none; color: white;
-  font-size: 12px; font-weight: 700; cursor: pointer;
+  font-size: 12px; font-weight: 700; cursor: grab; touch-action: none;
   display: flex; align-items: center; justify-content: center;
   box-shadow: 0 6px 20px var(--shadow);
   transition: transform 0.15s;
 }
 .assistant-avatar:hover { transform: scale(1.06); }
+.assistant-avatar:active { cursor: grabbing; }
 
 /* Bare speech bubble — the default, no chat-box chrome around it */
 .assistant-bubble {

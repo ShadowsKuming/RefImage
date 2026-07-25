@@ -35,6 +35,9 @@ CLAUDE.md
 PIPELINE.md
 prototypes/
 
+# Raw icon/asset source (used ones are converted into components in the app)
+ui components/
+
 # Test / scratch images in root
 *.jpg
 *.jpeg
