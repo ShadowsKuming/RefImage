@@ -160,10 +160,18 @@
 
               <!-- 细节区:显示当前选中方块的内容 -->
               <div class="plan-detail">
+              <!-- 内容区头部:图标 + 标题 + 说明(四块统一) -->
+              <div class="detail-header">
+                <span class="dh-icon"><component :is="detailHeader.icon" /></span>
+                <div class="dh-text">
+                  <span class="dh-title">{{ detailHeader.title }}</span>
+                  <span class="dh-desc">{{ detailHeader.desc }}</span>
+                </div>
+              </div>
+
               <template v-if="summaryTab === 'equipment'">
                 <div class="equip">
                   <template v-if="equipmentList.length">
-                    <p class="equip-summary">{{ equipSummary }}</p>
 
                     <!-- 准备进度条:勾选项 / 总数 -->
                     <div class="prep-bar">
@@ -195,7 +203,7 @@
                             class="ei-del"
                             :class="{ armed: pendingDelete === e }"
                             :title="pendingDelete === e ? '再次点击确认删除' : '删除'"
-                            @click="clickDelete(e)"
+                            @click="armDelete(e, () => removeEquipment(e))"
                           >
                             <template v-if="pendingDelete === e">删除</template>
                             <X v-else />
@@ -223,38 +231,166 @@
               </template>
 
               <template v-else-if="summaryTab === 'locations'">
-                <div v-if="plan.locations.length" class="detail-list">
-                  <div v-for="l in plan.locations" :key="l" class="detail-item">
-                    <span class="di-dot req" />
-                    <span class="di-name">{{ l }}</span>
+                <div v-if="locationCards.length" class="loc-list">
+                  <div v-for="(loc, i) in locationCards" :key="i" class="loc-card">
+                    <div class="loc-body">
+                      <div class="loc-line1">
+                        <span class="loc-name">{{ loc.scene }}</span>
+                        <span class="loc-type">{{ sceneType(loc.scene) }}</span>
+                      </div>
+                      <div class="loc-meta">
+                        <span v-if="loc.times.length" class="loc-mrow"><Clock class="loc-mi" />{{ loc.times.join('、') }}</span>
+                        <span class="loc-mrow"><Clapperboard class="loc-mi" />{{ shotLabels(loc.shotIds) || '待关联镜头' }}</span>
+                        <span v-if="loc.lights.length" class="loc-mrow"><Sun class="loc-mi" />{{ loc.lights.join('、') }}</span>
+                      </div>
+                      <div class="loc-field">
+                        <MapPin class="loc-fi" />
+                        <input v-model="locAddr[loc.scene]" class="loc-input" placeholder="实际地址(如 樱丘高中 教学楼 3F)" @change="saveLocationMeta" />
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <p v-else class="detail-empty">场地待 AI 规划</p>
               </template>
 
               <template v-else-if="summaryTab === 'schedule'">
-                <table v-if="plan.schedule.length" class="sched-table">
-                  <thead>
-                    <tr><th>时间</th><th>场景</th><th>镜头</th><th>内容</th><th>时长</th></tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="(row, i) in plan.schedule" :key="i">
-                      <td>{{ row.time }}</td>
-                      <td>{{ row.scene }}</td>
-                      <td>{{ shotLabels(row.shotIds) }}</td>
-                      <td>{{ row.content }}</td>
-                      <td>{{ row.duration }}</td>
-                    </tr>
-                  </tbody>
-                </table>
+                <div v-if="plan.schedule.length" class="sched">
+                  <!-- 总结统计:段数 / 时长 / 场地 / 必拍 -->
+                  <div class="sched-stats">
+                    <div v-for="(st, i) in schedStats" :key="i" class="ss-tile">
+                      <span class="ss-metric"><span v-if="st.pre" class="ss-pre">{{ st.pre }}</span><span class="ss-num">{{ st.num }}</span><span v-if="st.unit" class="ss-unit">{{ st.unit }}</span></span>
+                      <span class="ss-sub">{{ st.sub }}</span>
+                    </div>
+                  </div>
+
+                  <div
+                    ref="schedScroll"
+                    class="sched-track"
+                    @scroll="onSchedScroll"
+                    @pointerdown="schedDown"
+                    @pointermove="schedMove"
+                    @pointerup="schedUp"
+                    @pointerleave="schedUp"
+                  >
+                    <div v-for="(row, i) in plan.schedule" :key="i" class="sched-card">
+                      <div class="scd-hd">
+                        <span class="scd-num">{{ i + 1 }}</span>
+                        <div class="scd-time">
+                          <span class="scd-range">{{ row.time }}</span>
+                          <span class="scd-dur"><Clock class="scd-i" />{{ row.duration }}</span>
+                        </div>
+                        <span v-if="row.priority" class="ni-prio" :class="'p-' + row.priority">{{ notePriorityLabel(row.priority) }}</span>
+                      </div>
+
+                      <div class="scd-thumb">
+                        <template v-if="schedThumbs(row).length">
+                          <div
+                            v-for="(u, k) in schedThumbs(row).slice(0, 3)"
+                            :key="k"
+                            class="scd-layer"
+                            :style="pileStyle(k, Math.min(schedThumbs(row).length, 3))"
+                          >
+                            <img :src="u" :alt="row.scene" draggable="false" />
+                          </div>
+                          <span v-if="schedThumbs(row).length > 1" class="scd-count">共 {{ schedThumbs(row).length }} 张</span>
+                        </template>
+                        <span v-else class="scd-ph"><ImageIcon /></span>
+                      </div>
+
+                      <div class="scd-info">
+                        <div class="scd-row"><MapPin class="scd-ri" /><span class="scd-scene">{{ row.scene }}</span></div>
+                        <div class="scd-row"><Clapperboard class="scd-ri" /><span class="scd-k">镜头</span><span class="scd-v">{{ shotLabels(row.shotIds) || '待关联' }}</span></div>
+                        <div class="scd-row"><FileText class="scd-ri" /><span class="scd-v">{{ row.content }}</span></div>
+                        <div v-if="row.light" class="scd-row"><Sun class="scd-ri" /><span class="scd-v">{{ row.light }}</span></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div v-if="plan.schedule.length > 1" class="sched-dots">
+                    <span class="sd-count">{{ schedActive + 1 }}/{{ plan.schedule.length }}</span>
+                    <button
+                      v-for="(row, i) in plan.schedule"
+                      :key="i"
+                      class="sd-dot"
+                      :class="{ on: schedActive === i }"
+                      :aria-label="`第 ${i + 1} 段`"
+                      @click="schedGo(i)"
+                    />
+                  </div>
+
+                  <div v-if="plan.schedule.length > 1" class="sched-hint">
+                    <Lightbulb class="sh-ico" /><span>提示:可左右滑动查看全部拍摄阶段</span>
+                  </div>
+                </div>
                 <p v-else class="detail-empty">拍摄日程待 AI 生成</p>
               </template>
 
               <template v-else-if="summaryTab === 'notes'">
-                <ol v-if="plan.notes.length" class="detail-notes">
-                  <li v-for="(n, i) in plan.notes" :key="i">{{ n }}</li>
-                </ol>
-                <p v-else class="detail-empty">注意事项待 AI 生成</p>
+                <div class="equip">
+                  <template v-if="notesList.length">
+                    <!-- 确认进度条 -->
+                    <div class="prep-bar">
+                      <span class="pb-head"><CircleCheck class="pb-ico" /> 已确认 {{ noteDoneCount }} / {{ notesList.length }}</span>
+                      <div class="pb-track"><div class="pb-fill" :style="{ width: notePct + '%' }" /></div>
+                      <span class="pb-pct">{{ notePct }}%</span>
+                    </div>
+
+                    <div v-for="grp in noteGroups" :key="grp.key" class="equip-group">
+                      <div class="equip-group-head"><span class="egh-dot req" />{{ grp.label }} <span class="egh-count">{{ grp.items.length }} 项</span></div>
+                      <div
+                        v-for="n in grp.items"
+                        :key="n.title"
+                        class="note-item"
+                        :class="{ 'is-ready': isNoteDone(n) }"
+                      >
+                        <button class="ei-check" :class="{ on: isNoteDone(n) }" @click="toggleNoteDone(n)">
+                          <Check v-if="isNoteDone(n)" class="ei-check-ico" />
+                        </button>
+                        <div class="ni-body">
+                          <div class="ni-line1">
+                            <span class="ni-title">{{ n.title }}</span>
+                            <button
+                              class="ei-del"
+                              :class="{ armed: pendingDelete === n }"
+                              :title="pendingDelete === n ? '再次点击确认删除' : '删除'"
+                              @click="armDelete(n, () => removeNote(n))"
+                            >
+                              <template v-if="pendingDelete === n">删除</template>
+                              <X v-else />
+                            </button>
+                          </div>
+                          <span v-if="n.desc" class="ni-desc">{{ n.desc }}</span>
+                          <div class="ni-meta">
+                            <span class="ei-status" :class="isNoteDone(n) ? 'ready' : 'pending'">
+                              <component :is="isNoteDone(n) ? CircleCheck : Clock" class="eis-ico" />{{ isNoteDone(n) ? '已确认' : '待确认' }}
+                            </span>
+                            <span class="ni-prio" :class="'p-' + n.priority">{{ notePriorityLabel(n.priority) }}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+                  <p v-else class="detail-empty">还没有注意事项,点下面添加。</p>
+
+                  <!-- 添加注意事项 -->
+                  <button v-if="!showAddNote" class="equip-add-btn" @click="showAddNote = true">+ 添加事项</button>
+                  <div v-else class="equip-form">
+                    <input v-model="newNote.title" class="ef-input" placeholder="事项(如:场地需提前申请)" @keydown.enter="submitAddNote" />
+                    <input v-model="newNote.desc" class="ef-input" placeholder="细节(可选)" @keydown.enter="submitAddNote" />
+                    <div class="ef-row2">
+                      <select v-model="newNote.phase" class="ef-select">
+                        <option v-for="p in NOTE_PHASES" :key="p.key" :value="p.key">{{ p.label }}</option>
+                      </select>
+                      <select v-model="newNote.priority" class="ef-select">
+                        <option v-for="p in NOTE_PRIORITIES" :key="p.key" :value="p.key">{{ p.label }}</option>
+                      </select>
+                    </div>
+                    <div class="ef-actions">
+                      <button class="ef-cancel" @click="showAddNote = false">取消</button>
+                      <button class="ef-submit" :disabled="!newNote.title.trim()" @click="submitAddNote">添加</button>
+                    </div>
+                  </div>
+                </div>
               </template>
               </div>
             </div>
@@ -426,7 +562,7 @@
 import { nextTick, onMounted, ref, reactive, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  MapPin, Clock, TriangleAlert, Package, Check, CircleCheck, X,
+  MapPin, Clock, TriangleAlert, Package, Check, CircleCheck, X, Sun, Clapperboard, FileText,
   Camera, Aperture, Lightbulb, Disc, BatteryFull, Plug, Mic, Image as ImageIcon, Wrench,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
@@ -529,7 +665,10 @@ type PlanTab = 'equipment' | 'locations' | 'schedule' | 'notes'
 const summaryTab = ref<PlanTab>('equipment')
 
 interface EquipmentItem { name: string; required?: boolean; desc?: string; category?: string }
-interface ScheduleRow { time: string; scene: string; shotIds: string[]; content: string; duration: string }
+interface ScheduleRow { time: string; scene: string; shotIds: string[]; content: string; duration: string; light?: string; priority?: NotePriority }
+type NotePhase = 'pre' | 'onsite' | 'other'
+type NotePriority = 'high' | 'mid' | 'low'
+interface NoteItem { title: string; desc?: string; phase: NotePhase; priority: NotePriority }
 
 // ⚠️ TEMP MOCK — 临时假数据,仅用于设计四个标签的内容样式。
 // 接后端(brief)真数据时:把 PLAN_MOCK 设为 null,并删除下面 plan computed 里
@@ -549,17 +688,19 @@ const PLAN_MOCK = {
   ] as EquipmentItem[],
   locations: ['音乐教室', '音乐教室窗边', '校园走廊', '舞台'],
   schedule: [
-    { time: '14:00–14:40', scene: '音乐教室',   shotIds: [], content: '日常练习与互动', duration: '40 分钟' },
-    { time: '14:40–15:20', scene: '音乐教室窗边', shotIds: [], content: '安静独处',       duration: '40 分钟' },
-    { time: '15:20–15:50', scene: '校园走廊',   shotIds: [], content: '走廊行走',       duration: '30 分钟' },
-    { time: '16:00–17:00', scene: '舞台',       shotIds: [], content: '舞台演出状态',   duration: '60 分钟' },
+    { time: '14:00–14:40', scene: '音乐教室',   shotIds: [], content: '日常练习与互动', duration: '40 分钟', light: '自然光',   priority: 'high' },
+    { time: '14:40–15:20', scene: '音乐教室窗边', shotIds: [], content: '安静独处',       duration: '40 分钟', light: '自然光',   priority: 'high' },
+    { time: '15:20–15:50', scene: '校园走廊',   shotIds: [], content: '走廊行走',       duration: '30 分钟', light: '自然光',   priority: 'mid' },
+    { time: '16:00–17:00', scene: '舞台',       shotIds: [], content: '舞台演出状态',   duration: '60 分钟', light: '灯光为主', priority: 'low' },
   ] as ScheduleRow[],
   notes: [
-    '音乐教室使用需提前申请许可',
-    '舞台开放时间需确认',
-    '更衣空间确认',
-    '拍摄自然光方向确认',
-  ],
+    { title: '音乐教室使用需提前申请许可', desc: '部分学校场地需要提前提交申请材料并等待审批,建议至少提前 3 个工作日联系。', phase: 'pre',    priority: 'high' },
+    { title: '舞台开放时间需确认',        desc: '不同校区开放时间可能不同,需确认可拍摄时段及是否有其他活动冲突。',       phase: 'pre',    priority: 'mid' },
+    { title: '更衣空间确认',             desc: '确认更衣室位置、可用时间与储物空间,确保换装顺利且物品安全存放。',       phase: 'pre',    priority: 'mid' },
+    { title: '拍摄自然光方向确认',        desc: '到达场地后确认光线方向与强度,根据天气情况调整拍摄计划与机位。',        phase: 'onsite', priority: 'mid' },
+    { title: '设备电量与存储卡检查',      desc: '检查相机、电池、补光灯等设备电量,确认存储卡空间充足,避免拍摄中断。',   phase: 'onsite', priority: 'high' },
+    { title: '备用方案准备',             desc: '如遇天气变化或场地临时调整,准备备选场地或室内拍摄方案。',            phase: 'other',  priority: 'low' },
+  ] as NoteItem[],
 }
 
 const plan = computed(() => {
@@ -573,7 +714,7 @@ const plan = computed(() => {
     crew:       (brief.crew ?? PLAN_MOCK.crew) as { photographers?: number; cosers?: number; logistics?: number },
     locations:  (brief.locations?.length ? brief.locations : PLAN_MOCK.locations) as string[],
     schedule:   (brief.schedule?.length  ? brief.schedule  : PLAN_MOCK.schedule) as ScheduleRow[],
-    notes:      (brief.notes?.length     ? brief.notes     : PLAN_MOCK.notes) as string[],
+    // notes handled by the editable notesList below (like equipment)
   }
 })
 
@@ -620,18 +761,20 @@ function removeEquipment(item: EquipmentItem) {
   saveEquipment()
 }
 
-// Inline two-step delete confirm (no modal — the × arms into a red 删除 button
-// that must be clicked again; auto-reverts after 3s). Guards against mis-taps.
-const pendingDelete = ref<EquipmentItem | null>(null)
+// Inline two-step delete confirm (no modal — the × arms into a 删除 button that
+// must be clicked again; auto-reverts after 3s). Guards against mis-taps.
+// Generic over any item object (compared by reference) so equipment + notes
+// share one implementation; caller passes the actual remove action.
+const pendingDelete = ref<unknown>(null)
 let delTimer: ReturnType<typeof setTimeout> | null = null
-function clickDelete(e: EquipmentItem) {
+function armDelete(item: unknown, onConfirm: () => void) {
   if (delTimer) clearTimeout(delTimer)
-  if (pendingDelete.value === e) {
-    removeEquipment(e)
+  if (pendingDelete.value === item) {
+    onConfirm()
     pendingDelete.value = null
   } else {
-    pendingDelete.value = e
-    delTimer = setTimeout(() => { if (pendingDelete.value === e) pendingDelete.value = null }, 3000)
+    pendingDelete.value = item
+    delTimer = setTimeout(() => { if (pendingDelete.value === item) pendingDelete.value = null }, 3000)
   }
 }
 
@@ -657,6 +800,77 @@ const equipGroups = computed(() => [
   { cls: 'req', label: '必要设备', items: requiredEquip.value },
   { cls: 'opt', label: '可选设备', items: optionalEquip.value },
 ].filter(g => g.items.length))
+
+// ── Notes (注意事项): same editable/confirm/CRUD pattern as equipment, but
+// grouped by shoot phase + carries a priority. add/removeNote mirror the future
+// AI-tool params { title, desc, phase, priority }.
+const NOTE_PHASES: { key: NotePhase; label: string }[] = [
+  { key: 'pre',    label: '拍摄前确认' },
+  { key: 'onsite', label: '拍摄当天确认' },
+  { key: 'other',  label: '其他准备' },
+]
+const NOTE_PRIORITIES: { key: NotePriority; label: string }[] = [
+  { key: 'high', label: '高优先级' },
+  { key: 'mid',  label: '中优先级' },
+  { key: 'low',  label: '低优先级' },
+]
+const notePriorityLabel = (p: NotePriority) => NOTE_PRIORITIES.find(x => x.key === p)?.label ?? ''
+
+const notesList = ref<NoteItem[]>([])
+const notesListKey = computed(() => `notes-list-${projectId.value}`)
+function saveNotes() { localStorage.setItem(notesListKey.value, JSON.stringify(notesList.value)) }
+function loadNotes() {
+  try {
+    const raw = localStorage.getItem(notesListKey.value)
+    if (raw) { notesList.value = JSON.parse(raw); return }
+  } catch { /* ignore */ }
+  const brief = projectData.value?.plan?.brief ?? {}
+  notesList.value = (brief.notes?.length ? brief.notes : PLAN_MOCK.notes) as NoteItem[]
+}
+function addNote(item: NoteItem) { notesList.value.push({ ...item }); saveNotes() }
+function removeNote(item: NoteItem) {
+  const i = notesList.value.indexOf(item)
+  if (i >= 0) notesList.value.splice(i, 1)
+  delete noteDone[item.title]
+  saveNotes()
+}
+
+// confirmed (已确认) checklist state, per project
+const noteDone = reactive<Record<string, boolean>>({})
+const noteDoneKey = computed(() => `notes-done-${projectId.value}`)
+function loadNoteDone() {
+  try {
+    const raw = localStorage.getItem(noteDoneKey.value)
+    const titles: string[] = raw ? JSON.parse(raw) : []
+    for (const k of Object.keys(noteDone)) delete noteDone[k]
+    titles.forEach(t => { noteDone[t] = true })
+  } catch { /* ignore */ }
+}
+function toggleNoteDone(n: NoteItem) {
+  noteDone[n.title] = !noteDone[n.title]
+  localStorage.setItem(noteDoneKey.value, JSON.stringify(Object.keys(noteDone).filter(t => noteDone[t])))
+}
+const isNoteDone = (n: NoteItem) => !!noteDone[n.title]
+const noteDoneCount = computed(() => notesList.value.filter(n => noteDone[n.title]).length)
+const notePct = computed(() => {
+  const t = notesList.value.length
+  return t ? Math.round((noteDoneCount.value / t) * 100) : 0
+})
+const noteGroups = computed(() =>
+  NOTE_PHASES.map(p => ({ ...p, items: notesList.value.filter(n => n.phase === p.key) }))
+    .filter(g => g.items.length))
+
+// Add-note inline form
+const showAddNote = ref(false)
+const newNote = reactive<{ title: string; desc: string; phase: NotePhase; priority: NotePriority }>({
+  title: '', desc: '', phase: 'pre', priority: 'mid',
+})
+function submitAddNote() {
+  if (!newNote.title.trim()) return
+  addNote({ title: newNote.title.trim(), desc: newNote.desc.trim() || undefined, phase: newNote.phase, priority: newNote.priority })
+  newNote.title = ''; newNote.desc = ''   // keep phase/priority for quick repeat
+  showAddNote.value = false
+}
 // "已准备" checklist state — user ticks items as they pack. No backend field
 // for this, so it's persisted per-project in localStorage (survives reload).
 const prepared = reactive<Record<string, boolean>>({})
@@ -679,17 +893,6 @@ const preparedCount = computed(() => equipmentList.value.filter(e => prepared[e.
 const preparedPct = computed(() => {
   const t = equipmentList.value.length
   return t ? Math.round((preparedCount.value / t) * 100) : 0
-})
-
-// Summary line: "本次拍摄建议携带 6 项设备,其中必要 4 项,可选 2 项。"
-const equipSummary = computed(() => {
-  const total = equipmentList.value.length
-  if (!total) return ''
-  const req = requiredEquip.value.length
-  const opt = optionalEquip.value.length
-  return opt
-    ? `本次拍摄建议携带 ${total} 项设备,其中必要 ${req} 项、可选 ${opt} 项。`
-    : `本次拍摄建议携带 ${total} 项设备。`
 })
 
 // Always-editable overview meta (theme/date). Session-local for now — there's
@@ -724,9 +927,122 @@ function shotLabels(ids: string[]): string {
   }).join('、')
 }
 
+// ── Schedule carousel: one full-width card per segment, horizontal snap-scroll
+// + drag + clickable dots. Cover = the segment's shot images stacked (book-pile).
+function schedThumbs(row: ScheduleRow): string[] {
+  return (row.shotIds ?? [])
+    .map(id => shots.value.find((s: any) => s.shot_id === id))
+    .filter((s: any) => s?.image_url)
+    .map((s: any) => BASE_URL + s.image_url)
+}
+// pile layer transform: k=0 is the top card (first shot); later cards tuck to
+// the bottom-right so their edges peek out.
+function pileStyle(k: number, n: number) {
+  return {
+    transform: `translate(${k * 6}px, ${k * 6}px)`,
+    zIndex: n - k,
+    ...(k > 0 ? { filter: `brightness(${Math.max(0.6, 1 - k * 0.12)})` } : {}),
+  }
+}
+// 日程头部小统计:段数 / 总时长 / 场地数 / 必拍(高优段)数
+// 场地:按地点聚合的"这里拍什么"视图。当前从 schedule 归组(临时);等 shot
+// 加上 location 字段后,数据源改成从 shots 派生即可,此处 UI 不变。
+const locationCards = computed(() => {
+  const map = new Map<string, { scene: string; shotIds: string[]; segments: number; times: string[]; lights: string[] }>()
+  for (const row of plan.value.schedule) {
+    const e = map.get(row.scene) ?? { scene: row.scene, shotIds: [], segments: 0, times: [], lights: [] }
+    e.shotIds.push(...(row.shotIds ?? []))
+    e.segments += 1
+    if (row.time) e.times.push(row.time)
+    if (row.light && !e.lights.includes(row.light)) e.lights.push(row.light)   // 光线由镜头需要决定,派生自日程
+    map.set(row.scene, e)
+  }
+  // 日程为空时,退回用孤立的 locations 名单当占位
+  if (map.size === 0) {
+    return plan.value.locations.map(name => ({ scene: name, shotIds: [] as string[], segments: 0, times: [] as string[], lights: [] as string[] }))
+  }
+  return [...map.values()]
+})
+
+// 室内/室外/棚子:根据场景自动判定(不由用户选)。mock 阶段用场景名关键词
+// 猜;等 AI 给出 location.type 字段后,把这里换成读那个字段即可。
+function sceneType(scene: string): string {
+  if (/棚|影棚/.test(scene)) return '棚子'
+  if (/室外|户外|街|公园|操场|天台|门口|广场|野外|马路|路口/.test(scene)) return '室外'
+  return '室内'
+}
+
+// 地点唯一的用户元数据:实际地址(系统推不出、只有用户知道)。其余(类型/时间/
+// 镜头/光线)全是派生的。按地点名存 localStorage;接后端时改成读写 API 即可。
+const locAddr = reactive<Record<string, string>>({})
+const locMetaKey = computed(() => `loc-meta-${projectId.value}`)
+function loadLocationMeta() {
+  try {
+    const obj = JSON.parse(localStorage.getItem(locMetaKey.value) || '{}')
+    for (const name in obj) if (obj[name].address) locAddr[name] = obj[name].address
+  } catch { /* ignore */ }
+}
+function saveLocationMeta() {
+  const out: Record<string, { address?: string }> = {}
+  for (const n in locAddr) if (locAddr[n]?.trim()) out[n] = { address: locAddr[n].trim() }
+  localStorage.setItem(locMetaKey.value, JSON.stringify(out))
+}
+
+const schedStats = computed(() => {
+  const s = plan.value.schedule
+  const total = scheduleTotal(s)
+  const scenes = new Set(s.map(r => r.scene)).size
+  const mustShoot = s.filter(r => r.priority === 'high').length
+  return [
+    { num: String(s.length), unit: '段', sub: '拍摄阶段' },
+    total
+      ? { pre: total.pre, num: total.num, unit: total.unit, sub: '总时长' }
+      : { num: '—', unit: '', sub: '总时长' },
+    { num: String(scenes), unit: '个场地', sub: '拍摄地点' },
+    { num: String(mustShoot), unit: '', sub: '必拍段' },
+  ]
+})
+const schedScroll = ref<HTMLElement | null>(null)
+const schedActive = ref(0)
+function onSchedScroll() {
+  const el = schedScroll.value
+  if (el) schedActive.value = Math.round(el.scrollLeft / el.clientWidth)
+}
+function schedGo(i: number) {
+  schedScroll.value?.scrollTo({ left: i * schedScroll.value.clientWidth, behavior: 'smooth' })
+}
+// drag-to-scroll (mouse); native swipe/trackpad works without this
+let schedDrag = false, schedStartX = 0, schedStartLeft = 0, schedMoved = false
+function schedDown(e: PointerEvent) {
+  const el = schedScroll.value; if (!el) return
+  schedDrag = true; schedMoved = false
+  schedStartX = e.clientX; schedStartLeft = el.scrollLeft
+}
+function schedMove(e: PointerEvent) {
+  if (!schedDrag || !schedScroll.value) return
+  const dx = e.clientX - schedStartX
+  if (Math.abs(dx) > 3) schedMoved = true
+  schedScroll.value.scrollLeft = schedStartLeft - dx
+}
+function schedUp() {
+  if (!schedDrag) return
+  schedDrag = false
+  // snap to nearest card after a free drag
+  if (schedMoved) schedGo(schedActive.value)
+}
+
 // Each tile's metric is split into a big number (`num`) + normal-size `unit`
 // (and optional small `pre` like "约"), so only the number reads large.
 // When there's no data, `ph` holds the placeholder text instead.
+// 内容区头部:图标 + 标题 + 一句说明,按当前标签切换(四块统一)
+const DETAIL_HEADERS: Record<PlanTab, { icon: any; title: string; desc: string }> = {
+  equipment: { icon: Package,       title: '设备清单', desc: '本次拍摄需要携带的设备,逐项勾选以确认已准备。' },
+  locations: { icon: MapPin,        title: '拍摄场地', desc: '本次拍摄涉及的场景与地点。' },
+  schedule:  { icon: Clock,         title: '拍摄日程', desc: '建议的拍摄顺序与各时段安排。' },
+  notes:     { icon: TriangleAlert, title: '注意事项', desc: '拍摄过程中需重点关注的事项,提前确认可确保拍摄顺利进行。' },
+}
+const detailHeader = computed(() => DETAIL_HEADERS[summaryTab.value])
+
 const planTiles = computed(() => {
   const p = plan.value
   const eq = equipmentList.value
@@ -746,8 +1062,8 @@ const planTiles = computed(() => {
       // 头条用"段数"(计数,不折行);总时长降级到副标题
       sub: sched ? `共${sched.pre ?? ''}${sched.num}${sched.unit}` : '' },
     { id: 'notes' as PlanTab, label: '注意事项', icon: TriangleAlert,
-      num: p.notes.length ? String(p.notes.length) : '', unit: '点', ph: p.notes.length ? '' : '待生成',
-      sub: '' },
+      num: notesList.value.length ? String(notesList.value.length) : '', unit: '点', ph: notesList.value.length ? '' : '待生成',
+      sub: noteDoneCount.value ? `已确认 ${noteDoneCount.value}` : '' },
   ]
 })
 
@@ -774,6 +1090,9 @@ onMounted(async () => {
     draft.shootDate = plan.value.shootDate
     loadEquipment()
     loadPrepared()
+    loadNotes()
+    loadNoteDone()
+    loadLocationMeta()
   } catch (e) {
     console.error('Failed to load project', e)
   }
@@ -1224,20 +1543,72 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 10px; padding: 12px; overflow-y: auto;
 }
-.detail-list { display: flex; flex-direction: column; gap: 6px; }
-.detail-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); }
-.di-dot  { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.di-dot.req { background: var(--accent); }
-.di-dot.opt { background: var(--border-focus); }
-.di-name { flex: 1; min-width: 0; }
-.di-tag  { font-size: 10px; color: var(--text-quiet); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; }
+/* 场地:按地点的卡片(地点名 + 这里拍哪些镜头/多久),无封面 */
+.loc-list { display: flex; flex-direction: column; gap: 8px; }
+.loc-card {
+  padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--surface-inset);
+}
+.loc-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.loc-line1 { display: flex; align-items: center; gap: 8px; }
+.loc-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text-hi); line-height: 1.3; }
+/* 室内/室外/棚子:自动判定,只读小标签 */
+.loc-type {
+  flex-shrink: 0; font-size: 10px; font-weight: 600;
+  border: 1px solid var(--accent-dim); border-radius: 5px; padding: 1px 7px;
+  color: var(--accent);
+}
+.loc-meta { display: flex; flex-wrap: wrap; gap: 3px 12px; }
+.loc-mrow { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-quiet); }
+.loc-mi { width: 12px; height: 12px; flex-shrink: 0; }
+/* 光线 / 地址:可填,轻样式(平时无边框,hover/focus 出下划线) */
+.loc-field { display: flex; align-items: center; gap: 5px; }
+.loc-fi { width: 12px; height: 12px; flex-shrink: 0; color: var(--text-quiet); }
+.loc-input {
+  flex: 1; min-width: 0; font-size: 11px; font-family: inherit;
+  color: var(--text-hi); background: transparent;
+  border: none; border-bottom: 1px solid transparent; padding: 1px 0; outline: none;
+  transition: border-color 0.15s;
+}
+.loc-input::placeholder { color: var(--text-ghost); }
+.loc-input:hover  { border-bottom-color: var(--border); }
+.loc-input:focus  { border-bottom-color: var(--accent-dim); }
 .detail-empty { font-size: 12px; color: var(--text-ghost); margin: 4px 0; }
-.detail-notes { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
-.detail-notes li { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+/* 注意事项条目:窄栏适配 —— checkbox + 正文(标题/删除、细节、状态+优先级) */
+.note-item {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 9px 10px; border-radius: 9px;
+  border: 1px solid var(--border); background: var(--surface-inset);
+}
+.note-item.is-ready { border-color: var(--accent-dim); }
+.note-item .ei-check { margin-top: 1px; }
+.ni-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ni-line1 { display: flex; align-items: flex-start; gap: 6px; }
+.ni-title { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--text-hi); line-height: 1.4; }
+.ni-desc  { font-size: 10.5px; color: var(--text-quiet); line-height: 1.5; }
+.ni-meta  { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 1px; flex-wrap: wrap; }
+/* 优先级药丸(主题色,不写死红):高=error 中=orange 低=quiet */
+.ni-prio {
+  font-size: 10px; font-weight: 600; border-radius: 5px; padding: 1px 7px;
+  border: 1px solid transparent;
+}
+.ni-prio.p-high { color: var(--error);  border-color: var(--error);  }
+.ni-prio.p-mid  { color: var(--orange); border-color: var(--orange); }
+.ni-prio.p-low  { color: var(--text-quiet); border-color: var(--border); }
 
 /* Equipment detail — summary line + 准备进度 + 必要/可选 grouped cards */
 .equip { display: flex; flex-direction: column; gap: 14px; }
-.equip-summary { font-size: 11.5px; color: var(--text-muted); line-height: 1.6; margin: 0; }
+/* 内容区头部:图标 + 标题 + 说明 */
+.detail-header { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 14px; }
+.dh-icon {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px;
+  background: var(--surface-inset);
+  display: flex; align-items: center; justify-content: center; color: var(--accent);
+}
+.dh-icon :deep(svg) { width: 17px; height: 17px; stroke-width: 2; }
+.dh-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.dh-title { font-size: 13px; font-weight: 700; color: var(--text-hi); line-height: 1.3; }
+.dh-desc  { font-size: 11px; color: var(--text-quiet); line-height: 1.55; }
 
 /* 准备进度条 */
 .prep-bar {
@@ -1333,6 +1704,8 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 .ef-input::placeholder { color: var(--text-ghost); }
 .ef-req { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); cursor: pointer; }
 .ef-req input { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; }
+.ef-row2 { display: flex; gap: 8px; }
+.ef-row2 .ef-select { flex: 1; min-width: 0; }
 .ef-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 2px; }
 .ef-cancel, .ef-submit {
   padding: 6px 14px; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer;
@@ -1343,12 +1716,85 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 .ef-submit:hover:not(:disabled) { background: var(--accent-hover, var(--accent)); }
 .ef-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.sched-table { width: 100%; border-collapse: collapse; font-size: 11px; }
-.sched-table th {
-  text-align: left; font-weight: 600; color: var(--text-quiet);
-  padding: 4px 6px; border-bottom: 1px solid var(--border);
+/* 拍摄日程:横向滑动卡片(每张=一个时段/场景),snap + 拖动 + 圆点指示 */
+.sched { display: flex; flex-direction: column; gap: 12px; }
+/* 头部统计:一排小方块(数字大、说明小,同方块标签风格) */
+.sched-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ss-tile {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  padding: 8px 7px; border-radius: 9px;
+  border: 1px solid var(--border); background: var(--surface-inset);
 }
-.sched-table td { padding: 5px 6px; color: var(--text-muted); border-bottom: 1px solid var(--border); vertical-align: top; }
+.ss-metric { display: flex; align-items: baseline; gap: 1px; white-space: nowrap; line-height: 1.15; }
+.ss-num  { font-size: 14px; font-weight: 700; color: var(--text-hi); }
+.ss-unit, .ss-pre { font-size: 10px; font-weight: 500; color: var(--text-muted); }
+.ss-sub  { font-size: 9px; color: var(--text-quiet); }
+.sched-track {
+  display: flex; gap: 12px; overflow-x: auto;
+  scroll-snap-type: x mandatory; scrollbar-width: none;
+  cursor: grab; touch-action: pan-y;   /* 允许纵向滚页面,横向自己处理 */
+}
+.sched-track:active { cursor: grabbing; }
+.sched-track::-webkit-scrollbar { display: none; }
+.sched-card {
+  flex: 0 0 100%; scroll-snap-align: center; min-width: 0;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 12px; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--surface-inset);
+}
+/* 卡片头:序号 + 时间/时长 + 优先级 */
+.scd-hd { display: flex; align-items: center; gap: 8px; }
+.scd-num {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent); color: #fff; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.scd-time { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+.scd-range { font-size: 13px; font-weight: 700; color: var(--text-hi); }
+.scd-dur { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-quiet); }
+.scd-i { width: 11px; height: 11px; }
+/* 封面:该场景的 shot 图堆叠(书堆风);无图时占位 */
+.scd-thumb {
+  position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 9px;
+  background: var(--surface-raised); display: flex; align-items: center; justify-content: center;
+}
+/* 每张图片一层;后面的图往右下角错开一点,边缘露出来形成一摞 */
+.scd-layer {
+  position: absolute; top: 0; left: 0;
+  width: calc(100% - 12px); height: calc(100% - 12px);
+  border-radius: 8px; overflow: hidden; border: 1px solid var(--surface);
+  box-shadow: 0 1px 4px var(--shadow, rgba(0,0,0,0.12));
+}
+.scd-layer img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scd-count {
+  position: absolute; right: 6px; bottom: 6px; z-index: 10;
+  font-size: 10px; font-weight: 600; color: #fff;
+  background: rgba(0,0,0,0.55); border-radius: 5px; padding: 1px 7px;
+}
+.scd-ph { color: var(--text-ghost); }
+.scd-ph :deep(svg) { width: 26px; height: 26px; }
+/* 信息行 */
+.scd-info { display: flex; flex-direction: column; gap: 7px; }
+.scd-row { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-muted); }
+.scd-ri { width: 14px; height: 14px; flex-shrink: 0; color: var(--accent); stroke-width: 2; }
+.scd-scene { font-size: 13px; font-weight: 600; color: var(--text-hi); }
+.scd-k { color: var(--text-quiet); flex-shrink: 0; }
+.scd-v { min-width: 0; }
+/* 圆点指示 */
+.sched-dots { display: flex; justify-content: center; align-items: center; gap: 6px; }
+.sd-count { font-size: 11px; font-weight: 600; color: var(--text-quiet); margin-right: 4px; }
+.sd-dot {
+  width: 6px; height: 6px; border-radius: 50%; padding: 0; border: none; cursor: pointer;
+  background: var(--border-focus); transition: background 0.15s, width 0.15s;
+}
+.sd-dot.on { width: 16px; border-radius: 3px; background: var(--accent); }
+/* 左右滑动提示条 */
+.sched-hint {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 10px; border-radius: 8px;
+  background: var(--surface-inset); font-size: 11px; color: var(--text-quiet);
+}
+.sh-ico { width: 13px; height: 13px; flex-shrink: 0; color: var(--accent); }
 
 .tags        { display: flex; flex-wrap: wrap; gap: 4px; }
 .tag {
