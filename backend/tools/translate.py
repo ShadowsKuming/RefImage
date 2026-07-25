@@ -6,22 +6,16 @@ A single LLM call translates all non-null fields to zh + ja simultaneously.
 """
 import json
 from tools.llm import call
-from agents.character_extractor import FIELDS
-
-_NULL_STRINGS = {
-    "null", "none", "unknown", "n/a", "not visible",
-    "cannot determine", "undetermined", "no distinctive features",
-}
+# Share the completeness/null definition with analyze_service so a value that
+# counts as "present" (and therefore lights the figure dot) is also translated —
+# otherwise it falls back to the untranslated English in the tooltip.
+from agents.character_extractor import FIELDS, is_null_value as _is_null
 
 SYSTEM = (
     "你是一个动漫角色外貌描述翻译专家。"
     "将英文的角色外貌描述翻译成自然流畅的中文和日文，"
     "保留颜色、款式等专业术语的准确性，不要逐词直译。"
 )
-
-
-def _is_null(v) -> bool:
-    return v is None or (isinstance(v, str) and v.strip().lower() in _NULL_STRINGS)
 
 
 def translate_visual_spec(fields_en: dict) -> dict:

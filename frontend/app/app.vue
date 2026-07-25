@@ -1,5 +1,6 @@
 <template>
   <NuxtPage />
+  <LocaleSwitcher />
   <div class="theme-palette" ref="paletteEl">
     <transition name="palette-fade">
       <div v-if="paletteOpen" class="tp-panel">
@@ -30,6 +31,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 const { theme, THEMES, init, apply } = useTheme()
+const { init: initLocale } = useLocale()
 
 const paletteOpen = ref(false)
 const paletteEl   = ref<HTMLElement | null>(null)
@@ -42,6 +44,7 @@ function onDocClick(e: MouseEvent) {
 
 onMounted(() => {
   init()
+  initLocale()
   document.addEventListener('click', onDocClick)
 })
 onBeforeUnmount(() => document.removeEventListener('click', onDocClick))

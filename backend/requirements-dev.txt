@@ -1,0 +1,3 @@
+# Dev/test-only dependencies (kept out of requirements.txt so prod images stay lean).
+# Install into the project env:  conda run -n refimg pip install -r requirements-dev.txt
+pytest>=8.0

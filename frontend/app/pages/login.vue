@@ -2,19 +2,19 @@
   <div class="login-wrap">
     <div class="login-card">
       <h1 class="logo">RefImage</h1>
-      <p class="sub">输入邀请 Token 登录</p>
+      <p class="sub">{{ t('login.subtitle') }}</p>
 
       <input
         v-model="tokenInput"
         type="text"
         class="token-input"
-        placeholder="粘贴 Token"
+        :placeholder="t('login.tokenPlaceholder')"
         autocomplete="off"
         @keydown.enter="login"
       />
 
       <button class="login-btn" :disabled="loading || !tokenInput" @click="login">
-        {{ loading ? '验证中…' : '进入' }}
+        {{ loading ? t('login.verifying') : t('login.enter') }}
       </button>
 
       <p v-if="error" class="error-msg">{{ error }}</p>
@@ -32,9 +32,16 @@ const error = ref('')
 
 const { setToken } = useAuth()
 const { init } = useTheme()
+const { init: initLocale, t } = useLocale()
 const config = useRuntimeConfig()
+const route = useRoute()
 
-onMounted(() => init())
+onMounted(() => {
+  init()
+  initLocale()
+  // Redirected here by a mid-session 401 (see useApi) — explain why.
+  if (route.query.expired) error.value = t('login.sessionExpired')
+})
 
 async function login() {
   if (!tokenInput.value) return
@@ -45,13 +52,13 @@ async function login() {
       headers: { Authorization: `Bearer ${tokenInput.value}` },
     })
     if (!r.ok) {
-      error.value = 'Token 无效，请重新输入'
+      error.value = t('login.invalidToken')
       return
     }
     setToken(tokenInput.value)
     await navigateTo('/')
   } catch {
-    error.value = '无法连接服务器'
+    error.value = t('login.cannotConnect')
   } finally {
     loading.value = false
   }

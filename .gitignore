@@ -9,6 +9,7 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+.pytest_cache/
 
 # Backend user data
 backend/storage/projects/
@@ -40,8 +41,9 @@ prototypes/
 *.webp
 *.gif
 
-# Root-level test scripts
-test_*.py
+# Root-level test scripts (scratch only — anchored so it doesn't swallow
+# backend/tests/, which is the real committed test suite)
+/test_*.py
 
 # Test outputs
 outputs_modtest/

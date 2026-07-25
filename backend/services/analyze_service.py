@@ -15,7 +15,9 @@ Step 2 — profile chat:
   is passed in per request from the frontend.
 """
 import uuid
-from agents.character_extractor import FIELDS, extract_features, verify_same_character
+from agents.character_extractor import (
+    FIELDS, extract_features, verify_same_character, is_null_value,
+)
 from agents.character_chat import chat as _character_chat
 from tools.translate import translate_visual_spec
 
@@ -23,12 +25,6 @@ from tools.translate import translate_visual_spec
 _sessions: dict[str, dict] = {}
 
 _EMPTY_EXTRACTED = {f: None for f in FIELDS}  # English only during accumulation
-
-_NULL_STRINGS = {"null", "none", "unknown", "n/a", "not visible", "cannot determine", "undetermined"}
-
-# shoes/proportions are conditional: shoes only if feet visible, proportions only for full standing shots.
-# Null values for these fields should NOT block done=True.
-_OPTIONAL_FIELDS = {"shoes", "proportions"}
 
 # Human-readable labels per language, used when compiling the display text
 _LABELS: dict[str, dict[str, str]] = {
@@ -51,28 +47,45 @@ _LABELS: dict[str, dict[str, str]] = {
 
 
 def _is_null(v) -> bool:
-    if v is None:
-        return True
-    if isinstance(v, str) and v.strip().lower() in _NULL_STRINGS:
-        return True
-    return False
+    return is_null_value(v)
 
 
 def _missing(extracted: dict) -> list[str]:
-    """Return REQUIRED field names that still have no English value.
-    Optional fields (shoes, proportions) are excluded — they're only visible
-    in specific shots and should not block done=True."""
-    return [f for f, v in extracted.items() if _is_null(v) and f not in _OPTIONAL_FIELDS]
+    """Return field names that still have no English value. All 8 fields are
+    required — the user must supply images that show every field before the
+    session is marked done."""
+    return [f for f, v in extracted.items() if _is_null(v)]
 
 
-def _build_visual_spec(extracted_en: dict) -> dict:
-    """Translate extracted English fields and compile visual spec.
-    Falls back to English-only if the translation LLM call fails."""
+def _progress_message(extracted: dict, missing: list[str]) -> str:
+    """Build a deterministic Chinese status message from the actual extraction
+    state — never trust the vision LLM's own free-form completeness claim,
+    since it can say '已提取完整' while required fields are still null."""
+    labels = _LABELS["zh"]
+    if not missing:
+        return "角色外貌信息已提取完整。"
+    done_labels = [labels[f] for f, v in extracted.items() if not _is_null(v)]
+    missing_labels = [labels[f] for f in missing]
+    parts = []
+    if done_labels:
+        parts.append(f"已提取到：{'、'.join(done_labels)}。")
+    parts.append(f"还缺少：{'、'.join(missing_labels)}，请上传能看清这些部位的参考图。")
+    return "".join(parts)
+
+
+def _build_visual_spec(extracted_en: dict) -> tuple[dict, dict]:
+    """Translate extracted English fields (one LLM call, separate from
+    extraction) and compile visual spec. Falls back to English-only if the
+    translation LLM call fails.
+    Returns (visual_spec_by_lang, multilang_fields) — multilang_fields is the
+    full { zh: {field: val}, en: {...}, ja: {...} } structure, persisted as-is
+    to context/extracted.json so every saved project has all system languages
+    per field, and used live for CharacterFigure tooltips during the wizard."""
     try:
         multilang = translate_visual_spec(extracted_en)
     except Exception:
         multilang = {"zh": dict(extracted_en), "en": dict(extracted_en), "ja": dict(extracted_en)}
-    return _compile_visual_spec(multilang)
+    return _compile_visual_spec(multilang), multilang
 
 
 def _compile_visual_spec(multilang_fields: dict) -> dict:
@@ -105,6 +118,7 @@ def profile_chat(
     visual_spec: str | None = None,
     current_profile: dict | None = None,
     session_id: str | None = None,
+    reply_lang: str = "zh",
 ) -> dict:
     """
     Multi-turn agent chat for Step 2 profile building.
@@ -112,12 +126,12 @@ def profile_chat(
       - reply is always present (the agent's conversational response)
       - profile is non-null only when the agent updated the profile this turn
     """
-    return _character_chat(message, history, visual_spec, current_profile, session_id)
+    return _character_chat(message, history, visual_spec, current_profile, session_id, reply_lang)
 
 
 # ── Step 1: image analysis ────────────────────────────────────────────────────
 
-def verify_character(image_bytes: bytes, session_id: str) -> dict:
+def verify_character(image_bytes: bytes, session_id: str, reply_lang: str = "zh") -> dict:
     """
     Check whether a new image shows the same character as an existing session.
     Returns: { same: bool, reason: str }
@@ -125,7 +139,7 @@ def verify_character(image_bytes: bytes, session_id: str) -> dict:
     session = _sessions.get(session_id)
     if not session or not any(v for v in session["extracted"].values() if v):
         return {"same": True, "reason": ""}
-    result = verify_same_character(image_bytes, session["extracted"])
+    result = verify_same_character(image_bytes, session["extracted"], reply_lang)
     return {
         "same":   result.get("same", True),
         "reason": result.get("reason", ""),
@@ -144,8 +158,10 @@ def start_or_continue(image_bytes: bytes, session_id: str | None) -> dict:
     null, so earlier images take precedence over later ones for each field.
 
     Returns:
-      { session_id, done, gender, message, visual_spec, extracted, missing_fields }
+      { session_id, done, gender, message, visual_spec, extracted, extracted_i18n, missing_fields }
       done=True means all fields are filled and visual_spec is ready.
+      extracted_i18n ({zh, en, ja} per field) is null until done — translation
+      runs once, as its own LLM call, right after extraction completes.
     """
     if session_id is None or session_id not in _sessions:
         session_id = str(uuid.uuid4())
@@ -155,6 +171,7 @@ def start_or_continue(image_bytes: bytes, session_id: str | None) -> dict:
             "gender":      "female",
             "done":        False,
             "visual_spec": None,
+            "extracted_i18n": None,  # { zh, en, ja } per-field, filled once done
             "first_image": None,   # bytes of the first uploaded image
             "char_hint":   None,   # cached vision identification result
         }
@@ -168,7 +185,7 @@ def start_or_continue(image_bytes: bytes, session_id: str | None) -> dict:
     if session["done"]:
         # Retry translation if it failed on a previous call
         if session["visual_spec"] is None:
-            session["visual_spec"] = _build_visual_spec(session["extracted"])
+            session["visual_spec"], session["extracted_i18n"] = _build_visual_spec(session["extracted"])
         return {
             "session_id":    session_id,
             "done":          True,
@@ -176,6 +193,7 @@ def start_or_continue(image_bytes: bytes, session_id: str | None) -> dict:
             "message":       "角色信息已完整。",
             "visual_spec":   session["visual_spec"],
             "extracted":     session["extracted"],
+            "extracted_i18n": session["extracted_i18n"],
             "missing_fields": [],
         }
 
@@ -195,7 +213,7 @@ def start_or_continue(image_bytes: bytes, session_id: str | None) -> dict:
 
     if done:
         session["done"] = True
-        session["visual_spec"] = _build_visual_spec(session["extracted"])
+        session["visual_spec"], session["extracted_i18n"] = _build_visual_spec(session["extracted"])
 
     print(f"[analyze] session={session_id} done={done} missing={missing_after}")
 
@@ -203,8 +221,9 @@ def start_or_continue(image_bytes: bytes, session_id: str | None) -> dict:
         "session_id":    session_id,
         "done":          done,
         "gender":        session["gender"],
-        "message":       result["message"],
+        "message":       _progress_message(session["extracted"], missing_after),
         "visual_spec":   session["visual_spec"],
         "extracted":     session["extracted"],
+        "extracted_i18n": session["extracted_i18n"],
         "missing_fields": missing_after,
     }

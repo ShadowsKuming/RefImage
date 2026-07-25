@@ -24,6 +24,7 @@ class ChatRequest(BaseModel):
     visual_spec:     str | None = None
     current_profile: dict | None = None
     session_id:      str | None = None
+    reply_lang:      str = "zh"
 
 
 @router.post("/chat")
@@ -33,10 +34,11 @@ async def chat(req: ChatRequest, _: str = Depends(get_current_user)):
     The frontend sends the full chat history and current profile state on every
     request so the agent always has the live context (including manual edits).
     session_id links back to the Step 1 analysis session so the agent can
-    visually inspect the reference image.
+    visually inspect the reference image. reply_lang is the user's current UI
+    locale — the agent's conversational reply follows it.
     """
     return analyze_service.profile_chat(
-        req.message, req.history, req.visual_spec, req.current_profile, req.session_id
+        req.message, req.history, req.visual_spec, req.current_profile, req.session_id, req.reply_lang
     )
 
 
@@ -46,15 +48,17 @@ async def chat(req: ChatRequest, _: str = Depends(get_current_user)):
 async def verify_character(
     file:       UploadFile = File(...),
     session_id: str        = Form(...),
+    reply_lang: str        = Form(default="zh"),
     _:          str        = Depends(get_current_user),
 ):
     """
     Check if an image shows the same character as the current session.
     Called before queuing a new image for extraction; fails open (returns
     same=True) if verification itself errors, to avoid blocking the user.
+    reply_lang is the user's current UI locale — the returned `reason` follows it.
     """
     image_bytes = await file.read()
-    return analyze_service.verify_character(image_bytes, session_id)
+    return analyze_service.verify_character(image_bytes, session_id, reply_lang)
 
 
 @router.post("/analyze-image")

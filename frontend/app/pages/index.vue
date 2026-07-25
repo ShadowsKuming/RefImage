@@ -3,12 +3,12 @@
     <div class="home-content">
       <div class="logo-mark">⬡</div>
       <h1 class="home-title">RefImage</h1>
-      <p class="home-subtitle">动漫角色真实摄影参考系统</p>
+      <p class="home-subtitle">{{ t('home.subtitle') }}</p>
       <div class="action-row">
-        <button class="new-project-btn" @click="onNewProject">+ 新建项目</button>
+        <button class="new-project-btn" @click="onNewProject">{{ t('home.newProject') }}</button>
         <label class="import-btn" :class="{ loading: importing }">
           <input type="file" accept=".refimg" hidden @change="onImport" />
-          {{ importing ? '导入中…' : '导入项目' }}
+          {{ importing ? t('home.importing') : t('home.importProject') }}
         </label>
       </div>
       <div v-if="importError" class="import-error">{{ importError }}</div>
@@ -16,7 +16,7 @@
       <!-- Existing projects -->
       <div v-if="projects.length > 0" class="projects-list">
         <div class="projects-label">
-          已有项目
+          {{ t('home.existingProjects') }}
           <span class="proj-count">{{ projects.length }} / {{ PROJECT_LIMIT }}</span>
         </div>
         <div
@@ -31,10 +31,10 @@
           </div>
           <div class="pr-info">
             <span class="pr-name">{{ p.character }}</span>
-            <span class="pr-meta">{{ p.series }}{{ p.shot_count ? ' · ' + p.shot_count + ' 个拍摄' : '' }}</span>
+            <span class="pr-meta">{{ p.series }}{{ p.shot_count ? ' · ' + p.shot_count + ' ' + t('home.shotCountSuffix') : '' }}</span>
           </div>
           <!-- Delete button top-right -->
-          <button class="pr-delete-btn" title="删除项目" @click.stop="confirmDelete(p)">×</button>
+          <button class="pr-delete-btn" :title="t('home.deleteProjectTitle')" @click.stop="confirmDelete(p)">×</button>
         </div>
       </div>
     </div>
@@ -43,13 +43,13 @@
     <div v-if="showLimitDialog" class="dialog-backdrop" @click.self="showLimitDialog = false">
       <div class="dialog">
         <div class="dialog-icon">⚠️</div>
-        <div class="dialog-title">已达项目上限</div>
+        <div class="dialog-title">{{ t('home.limitDialogTitle') }}</div>
         <div class="dialog-body">
-          每位用户最多保存 {{ PROJECT_LIMIT }} 个项目。<br>
-          请进入旧项目导出备份后再删除，腾出空间新建。
+          {{ t('home.limitDialogBody1', { limit: PROJECT_LIMIT }) }}<br>
+          {{ t('home.limitDialogBody2') }}
         </div>
         <div class="dialog-footer">
-          <button class="dialog-btn primary" @click="showLimitDialog = false">知道了</button>
+          <button class="dialog-btn primary" @click="showLimitDialog = false">{{ t('home.limitDialogOk') }}</button>
         </div>
       </div>
     </div>
@@ -57,15 +57,15 @@
     <!-- Delete confirmation dialog -->
     <div v-if="deleteTarget" class="dialog-backdrop" @click.self="deleteTarget = null">
       <div class="dialog">
-        <div class="dialog-title">删除「{{ deleteTarget.character }}」？</div>
+        <div class="dialog-title">{{ t('home.deleteDialogTitle', { name: deleteTarget.character }) }}</div>
         <div class="dialog-body">
-          项目数据将被永久删除，无法恢复。<br>
-          如需保留，请先进入项目页面导出备份。
+          {{ t('home.deleteDialogBody1') }}<br>
+          {{ t('home.deleteDialogBody2') }}
         </div>
         <div class="dialog-footer">
-          <button class="dialog-btn cancel" @click="deleteTarget = null">取消</button>
+          <button class="dialog-btn cancel" @click="deleteTarget = null">{{ t('home.deleteCancel') }}</button>
           <button class="dialog-btn danger" :disabled="deleting" @click="doDelete">
-            {{ deleting ? '删除中…' : '确认删除' }}
+            {{ deleting ? t('home.deleting') : t('home.deleteConfirm') }}
           </button>
         </div>
       </div>
@@ -82,6 +82,7 @@ definePageMeta({ ssr: false })
 const PROJECT_LIMIT = 5
 
 const api = useApi()
+const { t } = useLocale()
 const projects       = ref<any[]>([])
 const importing      = ref(false)
 const importError    = ref('')
@@ -126,7 +127,7 @@ async function onImport(e: Event) {
     projects.value = await api.listProjects()
     navigateTo(`/projects/${result.project_id}`)
   } catch (err: any) {
-    importError.value = err.message ?? '导入失败'
+    importError.value = err.message ?? t('home.importFailed')
   }
   importing.value = false
   ;(e.target as HTMLInputElement).value = ''
@@ -156,17 +157,18 @@ async function doDelete() {
 }
 .home-content {
   display: flex; flex-direction: column; align-items: center;
-  gap: 16px; width: 100%; max-width: 400px; padding: 40px 24px;
+  gap: 16px; width: 100%; max-width: 520px; padding: 40px 24px;
 }
 .logo-mark  { font-size: 48px; color: var(--accent); line-height: 1; }
 .home-title { font-size: 36px; font-weight: 700; color: var(--text-hi, var(--text)); letter-spacing: -0.5px; }
 .home-subtitle { font-size: 14px; color: var(--text-quiet, var(--text-sub)); margin-bottom: 8px; }
 
-.action-row { display: flex; gap: 10px; align-items: center; }
+.action-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; }
 .new-project-btn {
   padding: 12px 28px; background: var(--accent); border: none;
   border-radius: 8px; color: white; font-size: 15px; font-weight: 600;
   cursor: pointer; transition: background .2s, transform .1s;
+  white-space: nowrap;
 }
 .new-project-btn:hover  { background: var(--accent-hover); }
 .new-project-btn:active { transform: scale(.98); }
@@ -175,6 +177,7 @@ async function doDelete() {
   padding: 12px 20px; background: var(--surface); border: 1px solid var(--border-md);
   border-radius: 8px; color: var(--text-muted); font-size: 14px; font-weight: 500;
   cursor: pointer; transition: border-color .15s, color .15s;
+  white-space: nowrap;
 }
 .import-btn:hover  { border-color: var(--accent); color: var(--accent); }
 .import-btn.loading { opacity: .6; cursor: not-allowed; }

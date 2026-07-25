@@ -25,6 +25,22 @@ FIELDS = [
     "color_palette",
 ]
 
+# Canonical set of values that mean "this field is absent / couldn't be
+# determined". Single source of truth so completeness checks (analyze_service)
+# and translation-skipping (tools/translate) never drift — a divergence here
+# once left "no distinctive features" untranslated. Note: a negative-but-real
+# answer like "no distinctive features" is NOT here — the character was analyzed
+# and genuinely has none, so it's a complete value that should be translated.
+NULL_STRINGS = {
+    "null", "none", "unknown", "n/a", "not visible",
+    "cannot determine", "undetermined",
+}
+
+
+def is_null_value(v) -> bool:
+    """True if a field value means 'absent/unknown' (None or a null sentinel)."""
+    return v is None or (isinstance(v, str) and v.strip().lower() in NULL_STRINGS)
+
 SYSTEM_PROMPT = """你是一个动漫角色外貌特征提取专家。从参考图中提取角色的8个关键特征。
 
 8个字段定义：
@@ -32,8 +48,8 @@ SYSTEM_PROMPT = """你是一个动漫角色外貌特征提取专家。从参考�
 2. face_makeup     - Face and makeup (state gender male/female first, then face shape, eye shape, skin tone, makeup style)
 3. upper_body      - Upper body clothing (style, material, color, details)
 4. lower_body      - Lower body clothing (pants/skirt style, material, color)
-5. shoes           - Shoes (style, color) — only fill if feet/shoes are clearly visible
-6. proportions     - Body proportions (head-to-body ratio, leg ratio) — only for full standing shots
+5. shoes           - Shoes (style, color) — ONLY fill if an actual shoe/boot (sole, toe, or heel) is visible in frame. Socks, stockings, tights, and bare legs/feet are NOT shoes. If the image is cropped before the feet, or feet are out of frame, hidden, or obscured, return null. Never guess a shoe style from the outfit or leg wear.
+6. proportions     - Body proportions (head-to-body ratio, leg ratio) — ONLY fill if the character is in a clear full-body standing pose with head-to-toe visible in frame. Sitting, kneeling, crouching, cropped, or partial-body shots must return null.
 7. distinctive     - Distinctive features (props, animal ears/tail, tattoos, special accessories) — fill "no distinctive features" if none
 8. color_palette   - Color palette (primary and accent colors, include hex values where possible)
 
@@ -41,6 +57,7 @@ Rules:
 - All field values must be in English
 - Return null for any field not clearly visible in the image
 - proportions requires a complete full-body standing pose, otherwise null
+- Never hallucinate or infer a value you cannot actually see — when in doubt, return null instead of guessing
 
 严格返回 JSON，不包含任何其他内容：
 {
@@ -72,9 +89,12 @@ VERIFY_SYSTEM = """你是一个动漫角色一致性判断专家。
 严格返回 JSON，不包含其他内容：
 {"same": true或false, "reason": "一句话说明判断依据"}"""
 
+_LANG_NAMES = {"zh": "中文", "en": "English", "ja": "日本語"}
 
-def verify_same_character(image_bytes: bytes, existing_extracted: dict) -> dict:
-    """Quick check: does the new image show the same character as the existing session?"""
+
+def verify_same_character(image_bytes: bytes, existing_extracted: dict, reply_lang: str = "zh") -> dict:
+    """Quick check: does the new image show the same character as the existing session?
+    reply_lang ('zh'/'en'/'ja') controls the language of the returned `reason` text."""
     b64, media_type = vision.encode_image(image_bytes)
 
     desc_parts = []
@@ -93,7 +113,8 @@ def verify_same_character(image_bytes: bytes, existing_extracted: dict) -> dict:
         ],
     }]
 
-    raw = vision.call(messages, VERIFY_SYSTEM)
+    system = VERIFY_SYSTEM + f"\n\nreason 字段请用{_LANG_NAMES.get(reply_lang, '中文')}书写。"
+    raw = vision.call(messages, system)
     return _parse(raw)
 
 

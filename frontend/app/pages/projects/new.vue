@@ -3,8 +3,10 @@
 
     <!-- Top bar -->
     <div class="top-bar">
-      <button class="back-btn" @click="step === 1 ? navigateTo('/') : (step = 1)">← 返回</button>
-      <span class="top-bar-title">新建项目</span>
+      <button class="back-btn" @click="step === 1 ? navigateTo('/') : (step = 1)">
+        <span class="back-chevron">‹</span>{{ t('common.back') }}
+      </button>
+      <span class="top-bar-title">{{ t('newProject.pageTitle') }}</span>
       <div class="step-indicator">
         <div class="step-dot" :class="{ active: step >= 1, done: step > 1 }">
           <span>{{ step > 1 ? '✓' : '1' }}</span>
@@ -16,13 +18,13 @@
       </div>
     </div>
 
-    <!-- ══ STEP 1 ══ -->
+    <!-- ══ STEP 1 — build: upload + extract + confirm-with-AI ══ -->
     <template v-if="step === 1">
       <div class="step1-body">
 
         <div class="step-header">
-          <h2 class="step-title">上传角色参考图</h2>
-          <p class="step-desc">上传这个角色的截图或同人图，AI 会提取外貌特征用于生成例图</p>
+          <h2 class="step-title">{{ t('newProject.step1Title') }}</h2>
+          <p class="step-desc">{{ t('newProject.step1Desc') }}</p>
         </div>
 
         <!-- Two-column: left = image, right = figure (empty until analysis) -->
@@ -44,8 +46,8 @@
                 @click="triggerFileInput()"
               >
                 <span class="add-icon-big">↑</span>
-                <span class="add-label-big">点击上传 或 拖拽图片到此</span>
-                <span class="add-sub">支持 JPG、PNG、WEBP</span>
+                <span class="add-label-big">{{ t('newProject.uploadCtaLine1') }}<br>{{ t('newProject.uploadCtaLine2') }}</span>
+                <span class="add-sub">{{ t('newProject.uploadFormats') }}</span>
               </div>
             </div>
 
@@ -58,16 +60,22 @@
                   class="stack-card"
                   :style="cardStyle(i)"
                 >
-                  <img :src="img.url" class="card-img" :alt="'参考图' + (i + 1)" />
+                  <img :src="img.url" class="card-img" :alt="t('newProject.refImageAlt') + (i + 1)" />
+                  <button
+                    v-if="!loading && !verifying"
+                    class="stack-del-btn"
+                    :title="t('newProject.deleteImageTitle')"
+                    @click.stop="removeImage(i)"
+                  >×</button>
                 </div>
                 <div v-if="visualSpec && !loading && !verifying" class="card-done" :style="cardStyle(images.length - 1)" />
                 <div v-if="verifying" class="stack-scan stack-scan--verify" :style="cardStyle(images.length - 1)">
                   <div class="scan-inner"><div class="scan-line scan-line--verify" /></div>
-                  <span class="scan-label scan-label--verify">检查中</span>
+                  <span class="scan-label scan-label--verify">{{ t('newProject.verifyingScan') }}</span>
                 </div>
                 <div v-else-if="loading" class="stack-scan" :style="cardStyle(images.length - 1)">
                   <div class="scan-inner"><div class="scan-line" /></div>
-                  <span class="scan-label">分析中</span>
+                  <span class="scan-label">{{ t('newProject.analyzingScan') }}</span>
                 </div>
               </div>
               <!-- Add more overlay button (bottom of top card, only when not done/busy) -->
@@ -75,111 +83,155 @@
                 v-if="!analysisComplete && !loading && !verifying"
                 class="stack-add-btn"
                 @click="triggerFileInput()"
-              >+ 补充图片</button>
+              >{{ addMoreLabel }}</button>
             </div>
 
-            <!-- Scanning hint -->
-            <p v-if="verifying" class="scanning-hint scanning-hint--verify">AI 正在验证角色一致性…</p>
-            <p v-else-if="loading" class="scanning-hint">AI 正在分析角色外貌特征…</p>
+            <!-- Verification / analysis errors — urgent, standalone -->
+            <p v-if="verifyError" class="verify-error-inline"><span>⚠</span> {{ verifyError }}</p>
+            <p v-if="agentMessage && !verifyError" class="verify-error-inline"><span>⚠</span> {{ agentMessage }}</p>
+
+            <!-- Upload tips — anchored to the bottom-right of this column, stays
+                 visible even after the figure result appears on the right -->
+            <div class="upload-tips">
+              <p class="upload-tips-title">{{ t('newProject.tipsTitle') }}</p>
+              <ul>
+                <li>{{ t('newProject.tip1') }}</li>
+                <li>{{ t('newProject.tip2') }}</li>
+                <li>{{ t('newProject.tip3') }}</li>
+              </ul>
+            </div>
           </div>
 
           <!-- Right: character figure — appears only after first analysis result -->
           <div v-if="Object.keys(extracted).length > 0" class="fig-col">
-            <CharacterFigure :extracted="extracted" :gender="gender" :loading="loading" />
+            <CharacterFigure :extracted="extracted" :extracted-i18n="extractedI18n" :gender="gender" :loading="loading" />
           </div>
 
         </div>
 
-        <!-- AI summary + optional verify error -->
-        <div v-if="agentMessage || verifyError" class="agent-bubble">
-          <p v-if="verifyError" class="verify-error-inline"><span>⚠</span> {{ verifyError }}</p>
-          <p v-if="agentMessage && !verifyError">{{ agentMessage }}</p>
+      </div>
+
+      <!-- Floating assistant — always present, same as the theme/locale widgets.
+           Just a speech bubble by default, no chat-box chrome — the only real
+           input this flow ever needs is confirming (or correcting) the AI's
+           character guess, so that's the only moment a small input appears.
+           Placeholder circular avatar for now; swap for the illustrated mascot
+           once that asset exists. -->
+      <div class="assistant-widget">
+        <div v-if="widgetExpanded" class="assistant-log-panel">
+          <div class="assistant-log" ref="chatContainer">
+            <div
+              v-for="(msg, i) in messages"
+              :key="i"
+              class="chat-msg"
+              :class="msg.role"
+            >
+              <div v-if="msg.role === 'agent'" class="agent-avatar-sm">AI</div>
+              <div class="msg-bubble">
+                {{ msg.text }}
+                <button
+                  v-if="msg.retryText"
+                  class="retry-btn"
+                  :disabled="chatLoading"
+                  @click="msg.isKickoffRetry ? kickoffChat() : sendMessage(msg.retryText)"
+                >{{ t('newProject.retry') }}</button>
+              </div>
+            </div>
+            <div v-if="chatLoading" class="chat-msg agent">
+              <div class="agent-avatar-sm">AI</div>
+              <div class="msg-bubble busy">
+                {{ chatStatusText }}<span class="inline-dots"><span /><span /><span /></span>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <!-- Bottom center button -->
-        <div class="step1-footer">
+        <template v-else>
+          <div v-if="verifying" class="assistant-bubble busy">
+            {{ t('newProject.verifyingHint') }}<span class="inline-dots"><span /><span /><span /></span>
+          </div>
+          <div v-else-if="loading" class="assistant-bubble busy">
+            {{ t('newProject.analyzingHint') }}<span class="inline-dots"><span /><span /><span /></span>
+          </div>
+          <div v-else-if="!analysisComplete && Object.keys(extracted).length > 0" class="assistant-bubble">
+            <p class="feedback-title">{{ t('newProject.profileIncomplete') }}</p>
+            <p v-if="doneLabelsText" class="feedback-line">{{ t('newProject.gathered', { list: doneLabelsText }) }}</p>
+            <p class="feedback-line feedback-missing">{{ t('newProject.missing', { list: missingLabelsText }) }}</p>
+            <p class="feedback-line feedback-suggestion">{{ suggestionText }}</p>
+          </div>
+          <div v-else-if="!analysisComplete" class="assistant-bubble">{{ t('newProject.assistantIdle') }}</div>
+          <div v-else-if="chatLoading" class="assistant-bubble busy">
+            {{ chatStatusText }}<span class="inline-dots"><span /><span /><span /></span>
+          </div>
+          <div v-else-if="latestAgentMessage" class="assistant-bubble">
+            {{ latestAgentMessage.text }}
+            <button
+              v-if="latestAgentMessage.retryText"
+              class="retry-btn"
+              :disabled="chatLoading"
+              @click="latestAgentMessage.isKickoffRetry ? kickoffChat() : sendMessage(latestAgentMessage.retryText)"
+            >{{ t('newProject.retry') }}</button>
+          </div>
+        </template>
+
+        <!-- Quick-reply row — only while the agent is waiting on the one
+             thing this flow ever needs from the user: confirm or correct
+             the character guess. Disappears once the profile is built. -->
+        <div v-if="needsUserReply" class="assistant-quick-row">
           <button
-            class="finish-btn"
-            :disabled="!analysisComplete"
-            @click="step = 2"
-          >
-            下一步 →
-          </button>
+            v-if="awaitingConfirm"
+            class="quick-confirm-btn"
+            :disabled="chatLoading"
+            @click="sendMessage(t('newProject.confirmYes'))"
+          >{{ t('newProject.confirmYes') }}</button>
+          <div class="quick-input-wrap">
+            <input
+              ref="chatInputEl"
+              v-model="chatInput"
+              class="quick-input"
+              :placeholder="t('newProject.quickInputPlaceholder')"
+              :disabled="chatLoading"
+              @keydown.enter.exact="onChatInputEnter"
+            />
+            <button class="quick-send" :disabled="!chatInput.trim() || chatLoading" @click="sendMessage()">›</button>
+          </div>
         </div>
 
+        <!-- Profile's built — the next step lives right under the message
+             that announced it, not as a separate page-wide footer button.
+             Same chip layout as the confirm row above, not a new style. -->
+        <div v-if="showNextStepCta" class="assistant-quick-row">
+          <button class="quick-confirm-btn" @click="step = 2">{{ t('newProject.nextStep') }}</button>
+        </div>
+
+        <button class="assistant-avatar" @click="widgetExpanded = !widgetExpanded">
+          <span>AI</span>
+        </button>
       </div>
     </template>
 
-    <!-- ══ STEP 2 ══ -->
+    <!-- ══ STEP 2 — review: full-width character profile ══ -->
     <template v-if="step === 2">
       <div class="step2-body">
 
         <div class="step-header">
-          <h2 class="step-title">人物档案</h2>
-          <p class="step-desc">与 Agent 对话确认角色，右侧档案可直接编辑</p>
+          <h2 class="step-title">{{ t('newProject.step2Title') }}</h2>
+          <p class="step-desc">{{ t('newProject.step2Desc') }}</p>
         </div>
 
-        <div class="step2-cols">
-
-          <!-- Left: Chat -->
-          <div class="chat-col">
-            <div class="chat-messages" ref="chatContainer">
-              <div
-                v-for="(msg, i) in messages"
-                :key="i"
-                class="chat-msg"
-                :class="msg.role"
-              >
-                <div v-if="msg.role === 'agent'" class="agent-avatar">AI</div>
-                <div class="msg-bubble">{{ msg.text }}</div>
-              </div>
-              <div v-if="chatLoading" class="chat-msg agent">
-                <div class="agent-avatar">AI</div>
-                <div class="msg-bubble typing">
-                  <span /><span /><span />
-                </div>
-              </div>
-            </div>
-            <div class="chat-input-row">
-              <input
-                ref="chatInputEl"
-                v-model="chatInput"
-                class="chat-input"
-                placeholder="输入角色名和作品名…"
-                :disabled="chatLoading"
-                @keydown.enter.exact.prevent="sendMessage"
-              />
-              <button class="chat-send" :disabled="!chatInput.trim() || chatLoading" @click="sendMessage">发送</button>
-            </div>
-          </div>
-
-          <!-- Right: Editable profile -->
-          <div class="profile-col">
-            <!-- Empty state -->
-            <div v-if="!personality" class="profile-empty">
-              <div class="empty-icon">📋</div>
-              <p>在左侧告诉 Agent 你要找的角色</p>
-              <p class="empty-sub">Agent 会自动填入档案，你也可以直接编辑</p>
-            </div>
-
-            <!-- Filled profile -->
-            <transition name="slide-up">
-              <ProfileViewer
-                v-if="personality"
-                v-model="personality"
-                class="profile-filled"
-              />
-            </transition>
-          </div>
-
-        </div>
+        <ProfileViewer
+          v-if="personality"
+          v-model="personality"
+          :ref-image-url="images[0]?.url"
+          class="profile-full"
+        />
 
         <!-- Bottom center button -->
         <div class="step2-footer">
           <p v-if="projectStatus" class="project-status">{{ projectStatus }}</p>
           <button class="finish-btn" :disabled="!personality || projectCreating" @click="createProject">
             <span v-if="projectCreating" class="btn-spinner" />
-            {{ projectCreating ? '规划中…' : '开始规划 →' }}
+            {{ projectCreating ? t('newProject.planning') : t('newProject.startPlanning') }}
           </button>
         </div>
 
@@ -190,12 +242,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useApi } from '~/composables/useApi'
 
 definePageMeta({ ssr: false })
 
 const api = useApi()
+const { t } = useLocale()
+const { fieldLabel } = useFieldLabels()
 
 const step      = ref(1)
 const images    = ref<{ file: File; url: string }[]>([])
@@ -211,55 +265,185 @@ const sessionId        = ref<string | null>(null)
 const agentMessage     = ref('')
 const verifyError      = ref('')
 const extracted        = ref<Record<string, string | null>>({})
+const extractedI18n    = ref<{ zh: Record<string, string | null>; en: Record<string, string | null>; ja: Record<string, string | null> } | null>(null)
 const gender           = ref<'male' | 'female'>('female')
 const missingFields    = ref<string[]>([])
 const analysisComplete = ref(false)
 const imageQueue       = ref<File[]>([])
 const analyzing        = ref(false)
+// Bumped whenever the reference image is removed/replaced. A processQueue()
+// loop captures the generation at start; if it changes mid-flight, the in-flight
+// analyze response is stale and must be discarded rather than written back.
+// (Currently the template hides add/remove controls while loading, so this can't
+// be triggered via the UI — it's a guard so a future "queue more images while
+// analyzing" change can't silently reintroduce a stale-write race.)
+const analysisGeneration = ref(0)
+
+const FULL_BODY_FIELDS = ['shoes', 'proportions']
+
+const doneLabelsText = computed(() =>
+  Object.entries(extracted.value)
+    .filter(([, v]) => v != null)
+    .map(([f]) => fieldLabel(f))
+    .join(t('common.listSeparator'))
+)
+const missingLabelsText = computed(() => missingFields.value.map(f => fieldLabel(f)).join(t('common.listSeparator')))
+const needsFullBodyPhoto = computed(() => missingFields.value.some(f => FULL_BODY_FIELDS.includes(f)))
+const suggestionText = computed(() => {
+  if (!missingFields.value.length) return ''
+  return needsFullBodyPhoto.value
+    ? t('newProject.suggestFullBody')
+    : t('newProject.suggestGeneric', { list: missingLabelsText.value })
+})
+const addMoreLabel = computed(() => needsFullBodyPhoto.value ? t('newProject.addMoreFullBody') : t('newProject.addMoreGeneric'))
 
 
-// Step 2 chat state
-const messages      = ref<{ role: 'agent' | 'user'; text: string }[]>([])
+// Floating assistant (Step 1) chat state
+const messages      = ref<{ role: 'agent' | 'user'; text: string; retryText?: string; isKickoffRetry?: boolean }[]>([])
 const chatHistory   = ref<{ role: 'user' | 'assistant'; content: string }[]>([])
 const chatInput     = ref('')
 const chatLoading   = ref(false)
 const chatInputEl   = ref<HTMLInputElement | null>(null)
 const chatContainer = ref<HTMLElement | null>(null)
+const widgetExpanded = ref(false)
+// Whether the agent's latest reply is a plain yes/no identity-confirm
+// question (single vision candidate) — only then does a quick "yes" chip
+// make sense; open-ended asks (candidates, "tell me the name") get only
+// the free-text input. Driven by the backend (agents/character_chat.py),
+// not guessed from the reply text.
+const awaitingConfirm = ref(false)
+// Bubble only ever shows the agent's side of the conversation — the user's
+// own sent text lives in the expanded log, not the collapsed bubble.
+const latestAgentMessage = computed(() => {
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    if (messages.value[i].role === 'agent') return messages.value[i]
+  }
+  return null
+})
+// The only user input this flow ever needs is confirming/correcting the
+// character guess — show the quick-reply row while that's still open, hide
+// it once the agent has actually built the profile. A failed request shows
+// only its own retry button instead (no point offering a confirm/edit row
+// for a message that never actually asked anything).
+const needsUserReply = computed(() => {
+  const last = messages.value[messages.value.length - 1]
+  return analysisComplete.value && !chatLoading.value && !personality.value &&
+    !!last && last.role === 'agent' && !last.retryText
+})
+// What the agent's busy with right now — the very first request is always
+// the vision identification (no reply yet); anything after that is the
+// research-and-build pass following confirmation, which genuinely runs
+// several web searches and can take a while.
+const chatStatusText = computed(() =>
+  messages.value.length === 0 ? t('newProject.identifyingHint') : t('newProject.buildingHint')
+)
+// Once the profile is actually built, the "next step" CTA sits right under
+// the message that announced it instead of a separate page-wide footer.
+const showNextStepCta = computed(() => analysisComplete.value && !!personality.value && !chatLoading.value)
 
 // project creation progress
 const projectCreating = ref(false)
 const projectStatus   = ref('')
 
-watch(step, async (val) => {
-  if (val === 2) {
-    messages.value    = []
-    chatHistory.value = []
-    personality.value = null
-    await nextTick()
-    messages.value.push({ role: 'agent', text: '你想找哪位角色？告诉我角色名和所属作品名称。' })
-    chatInputEl.value?.focus()
-  }
+// Appearance extraction and character-identification chat both live on Step 1
+// now — as soon as appearance extraction completes, silently kick off the
+// identification chat in the floating assistant widget.
+watch(analysisComplete, async (done) => {
+  if (!done) return
+  messages.value       = []
+  chatHistory.value    = []
+  personality.value    = null
+  awaitingConfirm.value = false
+  await nextTick()
+  await kickoffChat()
 })
 
-async function sendMessage() {
-  const text = chatInput.value.trim()
+// Map a failed request to user-facing copy: a network/timeout failure reads as
+// "try again", a real backend/AI failure (4xx/5xx) reads as "contact us" — so
+// the user isn't told to check their own connection when the service is down.
+function errorMessage(e: unknown): string {
+  return (e as { kind?: string } | null)?.kind === 'server'
+    ? t('newProject.chatServerError')
+    : t('newProject.chatNetworkError')
+}
+
+// Silently trigger the agent's turn-1 vision identification (see
+// agents/character_chat.py) so the assistant opens with a guess-and-confirm
+// message instead of a blind "which character?" prompt. The kickoff line
+// itself is never shown — only the agent's reply is.
+const KICKOFF_MESSAGE = '（用户刚上传了角色参考图，请开始建档流程。）'
+
+// The turn that actually finishes the profile gets a fixed, friendly line
+// instead of whatever the LLM happened to phrase — the model's own "all
+// done!" replies read stiff/inconsistent turn to turn, and this is the one
+// moment worth keeping predictable.
+function profileReadyText(profile: any): string {
+  return t('newProject.profileReadyMessage', { name: profile?.character || '' })
+}
+
+async function kickoffChat() {
+  // A retry replaces the previous failed attempt rather than stacking on top of it.
+  if (messages.value[messages.value.length - 1]?.isKickoffRetry) messages.value.pop()
+  chatLoading.value = true
+  try {
+    const res = await withRetry(() => api.chat(KICKOFF_MESSAGE, chatHistory.value, visualSpec.value?.zh ?? null, personality.value, sessionId.value))
+    chatHistory.value.push({ role: 'user', content: KICKOFF_MESSAGE })
+    chatHistory.value.push({ role: 'assistant', content: res.reply })
+    if (res.profile) {
+      personality.value = deepMerge(personality.value ?? {}, res.profile)
+      awaitingConfirm.value = false
+      messages.value.push({ role: 'agent', text: profileReadyText(res.profile) })
+    } else {
+      awaitingConfirm.value = res.awaiting_confirm
+      messages.value.push({ role: 'agent', text: res.reply || t('newProject.chatWelcome') })
+    }
+  } catch (e) {
+    awaitingConfirm.value = false
+    messages.value.push({ role: 'agent', text: errorMessage(e), retryText: KICKOFF_MESSAGE, isKickoffRetry: true })
+  } finally {
+    // Guaranteed to run even if something above throws unexpectedly —
+    // the input/send button must never stay stuck disabled.
+    chatLoading.value = false
+  }
+  await scrollBottom()
+}
+
+function onChatInputEnter(e: KeyboardEvent) {
+  // Ignore Enter presses used to confirm an IME composition (e.g. pinyin/
+  // Japanese input candidate selection) — only send on a "real" Enter.
+  if (e.isComposing) return
+  e.preventDefault()
+  sendMessage()
+}
+
+async function sendMessage(retryText?: string) {
+  const text = retryText ?? chatInput.value.trim()
   if (!text || chatLoading.value) return
-  chatInput.value = ''
+  if (retryText === undefined) chatInput.value = ''
   messages.value.push({ role: 'user', text })
   chatLoading.value = true
   await scrollBottom()
 
   try {
-    const res = await api.chat(text, chatHistory.value, visualSpec.value?.zh ?? null, personality.value, sessionId.value)
+    const res = await withRetry(() => api.chat(text, chatHistory.value, visualSpec.value?.zh ?? null, personality.value, sessionId.value))
     chatHistory.value.push({ role: 'user', content: text })
     chatHistory.value.push({ role: 'assistant', content: res.reply })
-    if (res.profile) personality.value = deepMerge(personality.value ?? {}, res.profile)
-    messages.value.push({ role: 'agent', text: res.reply })
-  } catch {
-    messages.value.push({ role: 'agent', text: '网络错误，请重试。' })
+    if (res.profile) {
+      personality.value = deepMerge(personality.value ?? {}, res.profile)
+      awaitingConfirm.value = false
+      messages.value.push({ role: 'agent', text: profileReadyText(res.profile) })
+    } else {
+      awaitingConfirm.value = res.awaiting_confirm
+      messages.value.push({ role: 'agent', text: res.reply })
+    }
+  } catch (e) {
+    awaitingConfirm.value = false
+    messages.value.push({ role: 'agent', text: errorMessage(e), retryText: text })
+  } finally {
+    // Guaranteed to run even if something above throws unexpectedly —
+    // the input/send button must never stay stuck disabled.
+    chatLoading.value = false
   }
-
-  chatLoading.value = false
   await scrollBottom()
 }
 
@@ -321,7 +505,7 @@ async function addImage(file: File) {
       if (!check.same) {
         const idx = images.value.findIndex(img => img.url === url)
         if (idx !== -1) { URL.revokeObjectURL(url); images.value.splice(idx, 1) }
-        verifyError.value = `图片中的角色与已上传的角色不一致，请使用同一角色的图片。（${check.reason}）`
+        verifyError.value = t('newProject.verifyMismatch', { reason: check.reason })
         verifying.value = false
         return
       }
@@ -340,13 +524,22 @@ async function addImage(file: File) {
 function removeImage(i: number) {
   URL.revokeObjectURL(images.value[i].url)
   images.value.splice(i, 1)
+  analysisGeneration.value++   // supersede any in-flight analysis for the old image
   sessionId.value     = null
   agentMessage.value  = ''
   extracted.value     = {}
+  extractedI18n.value = null
   missingFields.value = []
   analysisComplete.value = false
   visualSpec.value    = null
   imageQueue.value    = []
+  // Removing the reference image invalidates any identification/profile
+  // chat already in progress for the old session.
+  messages.value      = []
+  chatHistory.value   = []
+  personality.value   = null
+  awaitingConfirm.value = false
+  widgetExpanded.value = false
   if (images.value.length > 0) {
     images.value.forEach(img => imageQueue.value.push(img.file))
     processQueue()
@@ -355,45 +548,58 @@ function removeImage(i: number) {
 
 async function processQueue() {
   if (analyzing.value) return
-  while (imageQueue.value.length > 0) {
-    const file = imageQueue.value.shift()!
-    analyzing.value = true
-    loading.value   = true
-    try {
-      const result = await api.analyzeImage(file, sessionId.value)
-      sessionId.value        = result.session_id
-      agentMessage.value     = result.message
-      extracted.value        = result.extracted
-      // Override with hard visual signals to guard against LLM misidentification
-      const lb = (result.extracted.lower_body ?? '').toLowerCase()
-      gender.value = lb.includes('skirt') || lb.includes('dress')
-        ? 'female'
-        : result.gender
-      missingFields.value    = result.missing_fields
-      analysisComplete.value = result.done
-      if (result.done) visualSpec.value = result.visual_spec
-    } catch (e) {
-      agentMessage.value = `分析出错：${(e as Error).message}`
-    } finally {
-      analyzing.value = false
+  analyzing.value = true
+  loading.value   = true
+  const gen = analysisGeneration.value
+  try {
+    while (imageQueue.value.length > 0 && gen === analysisGeneration.value) {
+      const file = imageQueue.value.shift()!
+      try {
+        const result = await api.analyzeImage(file, sessionId.value)
+        // Image removed/replaced while this was in flight → stale session; drop
+        // it rather than clobbering the reset state or kicking off a stale chat.
+        if (gen !== analysisGeneration.value) break
+        agentMessage.value     = ''
+        sessionId.value        = result.session_id
+        extracted.value        = result.extracted
+        extractedI18n.value    = result.extracted_i18n
+        // Override with hard visual signals to guard against LLM misidentification
+        const lb = (result.extracted.lower_body ?? '').toLowerCase()
+        gender.value = lb.includes('skirt') || lb.includes('dress')
+          ? 'female'
+          : result.gender
+        missingFields.value    = result.missing_fields
+        analysisComplete.value = result.done
+        if (result.done) visualSpec.value = result.visual_spec
+      } catch (e) {
+        if (gen !== analysisGeneration.value) break
+        // Don't leak raw backend text — show the same friendly network/server
+        // split the chat uses.
+        agentMessage.value = errorMessage(e)
+      }
     }
+  } finally {
+    analyzing.value = false
+    loading.value   = false
   }
-  loading.value = false
+  // A supersede queued fresh work but our re-entrancy guard blocked its
+  // processQueue() call while we were still running — run it now.
+  if (gen !== analysisGeneration.value && imageQueue.value.length > 0) processQueue()
 }
 
 async function createProject() {
   if (projectCreating.value || !personality.value) return
   projectCreating.value = true
-  projectStatus.value   = '保存项目…'
+  projectStatus.value   = t('newProject.savingProject')
   try {
     const p = personality.value
     const world     = { series: p.series, worldSetting: p.worldSetting }
     const character = { character: p.character, series: p.series, characterBackground: p.characterBackground }
 
     const proj = await api.createProject({
-      images:     images.value,
-      extracted:  extracted.value,
-      visualSpec: visualSpec.value ?? { zh: '', en: '', ja: '' },
+      images:        images.value,
+      extractedI18n: extractedI18n.value ?? { zh: extracted.value, en: extracted.value, ja: extracted.value },
+      visualSpec:    visualSpec.value ?? { zh: '', en: '', ja: '' },
       world,
       character,
     })
@@ -401,12 +607,17 @@ async function createProject() {
     navigateTo(`/projects/${proj.project_id}`)
   } catch (e) {
     console.error(e)
-    projectStatus.value   = `出错了：${(e as Error).message}`
+    // Same network/server split as the chat flow — don't leak raw backend text.
+    projectStatus.value   = errorMessage(e)
     projectCreating.value = false
   }
 }
 
-onUnmounted(() => {})
+onUnmounted(() => {
+  // Release blob URLs created by createObjectURL so they don't leak when the
+  // page unmounts — covers both the create-success navigation and the back button.
+  images.value.forEach(img => URL.revokeObjectURL(img.url))
+})
 </script>
 
 <style scoped>
@@ -424,8 +635,14 @@ onUnmounted(() => {})
   border-bottom: 1px solid var(--border-md);
   display: flex; align-items: center; padding: 0 20px; gap: 12px; flex-shrink: 0;
 }
-.back-btn { background: none; border: none; color: var(--text-muted); font-size: 13px; cursor: pointer; }
-.back-btn:hover { color: var(--text); }
+.back-btn {
+  display: flex; align-items: center; gap: 1px;
+  background: none; border: none; padding: 4px 6px 4px 2px; border-radius: 6px;
+  color: var(--accent); font-size: 15px; font-weight: 500; cursor: pointer;
+  transition: opacity 0.15s;
+}
+.back-btn:hover { opacity: 0.65; }
+.back-chevron { font-size: 21px; line-height: 1; margin-top: -1px; }
 .top-bar-title { font-size: 13px; font-weight: 600; color: var(--text); flex: 1; }
 .step-indicator { display: flex; align-items: center; }
 .step-dot {
@@ -451,7 +668,9 @@ onUnmounted(() => {})
   gap: 24px;
   overflow-y: auto;
   min-height: 0;
+  scrollbar-width: none;
 }
+.step1-body::-webkit-scrollbar { display: none; }
 
 .step-header { flex-shrink: 0; }
 .step-title  { font-size: 22px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
@@ -471,13 +690,9 @@ onUnmounted(() => {})
 .add-card.big:hover,
 .add-card.big.drag-over { border-color: var(--accent); background: var(--bg); }
 .add-icon-big  { font-size: 32px; color: var(--border-focus); }
-.add-label-big { font-size: 14px; color: var(--text-sub); font-weight: 500; }
+.add-label-big { font-size: 14px; color: var(--text-sub); font-weight: 500; text-align: center; line-height: 1.5; }
 .add-sub       { font-size: 11px; color: var(--text-ghost); }
 
-/* Hints */
-.scanning-hint { font-size: 11px; color: var(--accent); margin-top: 8px; text-align: center; animation: pulse 1.5s ease-in-out infinite; }
-.wait-hint     { font-size: 11px; color: var(--text-sub); margin: 0; }
-@keyframes pulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
 
 /* Two-column — always, right side is empty until analysis returns */
 .step1-cols {
@@ -524,6 +739,16 @@ onUnmounted(() => {})
 
 .card-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
+/* × delete button — inside card, top-right, always visible, no border */
+.stack-del-btn {
+  position: absolute; top: 8px; right: 10px;
+  background: transparent; border: none;
+  color: var(--text-ghost); font-size: 14px; line-height: 1;
+  padding: 0; cursor: pointer;
+  transition: color .15s;
+}
+.stack-del-btn:hover { color: #e55; }
+
 .card-done {
   position: absolute;
   width: 260px; height: 347px;
@@ -562,7 +787,6 @@ onUnmounted(() => {})
 .scan-label { font-size: 11px; color: var(--accent); letter-spacing: 1px; position: relative; }
 .scan-line--verify { background: linear-gradient(90deg, transparent, var(--orange), transparent); }
 .scan-label--verify { color: var(--orange); }
-.scanning-hint--verify { color: var(--orange); }
 
 /* Add more — overlaid at bottom of image stack */
 .stack-add-btn {
@@ -576,13 +800,14 @@ onUnmounted(() => {})
   border: none;
   border-top: 1px solid rgba(124, 106, 247, 0.25);
   border-radius: 0 0 10px 10px;
-  color: var(--accent-dim);
+  color: var(--accent);
   font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
   z-index: 10;
 }
-.stack-add-btn:hover { background: rgba(124,106,247,0.2); color: var(--text-accent); }
+.stack-add-btn:hover { background: rgba(124,106,247,0.2); color: var(--accent); }
 
 /* Right: figure + message */
 .fig-col {
@@ -592,22 +817,26 @@ onUnmounted(() => {})
   gap: 16px;
 }
 
-.agent-bubble {
-  background: var(--surface); border: 1px solid var(--border-md);
-  border-radius: 10px; padding: 12px 14px;
-  display: flex; flex-direction: column; gap: 6px;
+.verify-error-inline {
+  font-size: 12px; line-height: 1.6; margin: 0;
+  color: var(--error) !important;
 }
-.agent-bubble p { font-size: 12px; color: var(--text-muted); line-height: 1.7; margin: 0; }
-.verify-error-inline { color: var(--error) !important; }
 .verify-error-inline span { margin-right: 4px; }
 
-/* Bottom footer */
-.step1-footer {
-  display: flex;
-  justify-content: center;
-  padding: 32px 0 48px;
-  flex-shrink: 0;
+/* Assistant feedback bubble — dynamic status + concrete next-step suggestion */
+.feedback-title { font-size: 13px; font-weight: 700; color: var(--text); margin: 0 0 2px; }
+.feedback-line { font-size: 12px; color: var(--text-muted); line-height: 1.6; margin: 0; }
+.feedback-missing { color: var(--text-dim); }
+.feedback-suggestion { color: var(--accent); font-weight: 500; }
+
+.upload-tips {
+  padding: 4px 2px 0;
 }
+.upload-tips-title { font-size: 12px; font-weight: 600; color: var(--text-dim); margin: 0 0 8px; }
+.upload-tips ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.upload-tips li { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+
+/* Bottom footer */
 .finish-btn {
   padding: 13px 48px;
   background: var(--accent); border: none; border-radius: 8px;
@@ -618,202 +847,133 @@ onUnmounted(() => {})
 .finish-btn:active:not(:disabled) { transform: scale(0.98); }
 .finish-btn:disabled { background: var(--border-md); color: var(--text-quiet); cursor: not-allowed; }
 
-/* ══ STEP 2 ══ */
-.page-body {
-  max-width: 680px; margin: 0 auto;
-  padding: 40px 24px 80px; width: 100%;
-  display: flex; flex-direction: column; gap: 20px;
+/* ══ Floating assistant widget (Step 1) ══ */
+.assistant-widget {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
 }
-
-/* ══ STEP 2 ══ */
-.step2-body {
-  flex: 1; display: flex; flex-direction: column;
-  max-width: 960px; width: 100%; margin: 0 auto;
-  padding: 36px 32px 0; gap: 24px;
-  min-height: 0; overflow: hidden;
+.assistant-avatar {
+  width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0;
+  background: var(--accent); border: none; color: white;
+  font-size: 12px; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 6px 20px var(--shadow);
+  transition: transform 0.15s;
 }
+.assistant-avatar:hover { transform: scale(1.06); }
 
-.step2-cols {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* ── Chat column ── */
-.chat-col {
-  display: flex; flex-direction: column;
+/* Bare speech bubble — the default, no chat-box chrome around it */
+.assistant-bubble {
+  width: 260px; max-width: calc(100vw - 56px);
   background: var(--surface); border: 1px solid var(--border-md);
-  border-radius: 12px; overflow: hidden;
+  border-radius: 14px; padding: 10px 14px;
+  box-shadow: 0 8px 24px var(--shadow);
+  font-size: 12.5px; line-height: 1.6; color: var(--text-hi);
 }
+@keyframes blink { 0%,80%,100% { opacity: 0.2; } 40% { opacity: 1; } }
 
-.chat-messages {
-  flex: 1; overflow-y: auto; padding: 16px;
-  display: flex; flex-direction: column; gap: 12px;
-  min-height: 0;
-  scrollbar-width: none;
+/* Inline animated dots appended after any "something's happening" bubble's
+   status text — every busy state (extracting, identifying, researching)
+   reads as the same visual language. */
+.inline-dots { display: inline-flex; gap: 4px; margin-left: 4px; }
+.inline-dots span {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+  animation: blink 1.2s ease-in-out infinite;
 }
-.chat-messages::-webkit-scrollbar { display: none; }
+.inline-dots span:nth-child(2) { animation-delay: 0.2s; }
+.inline-dots span:nth-child(3) { animation-delay: 0.4s; }
 
-.chat-msg {
-  display: flex; gap: 8px; align-items: flex-start;
+/* Quick-reply row — appears only when the agent needs a confirm/correct */
+.assistant-quick-row { display: flex; gap: 6px; align-items: center; }
+.quick-confirm-btn {
+  padding: 7px 12px; background: var(--accent); border: none;
+  border-radius: 20px; color: white; font-size: 12px; font-weight: 600;
+  cursor: pointer; white-space: nowrap; transition: background 0.2s;
 }
+.quick-confirm-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.quick-confirm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.quick-input-wrap {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px;
+  background: var(--surface); border: 1px solid var(--border-md); border-radius: 20px;
+  padding: 3px 4px 3px 12px;
+}
+.quick-input {
+  flex: 1; min-width: 0; background: none; border: none; outline: none;
+  color: var(--text); font-size: 12px;
+}
+.quick-input::placeholder { color: var(--text-quiet); }
+.quick-send {
+  flex-shrink: 0; background: none; border: none;
+  color: var(--accent); font-size: 19px; font-weight: 700; line-height: 1;
+  padding: 0 8px; cursor: pointer; transition: transform 0.15s, color 0.2s;
+}
+.quick-send:hover:not(:disabled) { transform: translateX(2px); }
+.quick-send:disabled { color: var(--text-quiet); cursor: not-allowed; }
+
+/* Expanded history — a real panel, but only while explicitly open */
+.assistant-log-panel {
+  width: 300px; max-width: calc(100vw - 56px);
+  background: var(--surface); border: 1px solid var(--border-md); border-radius: 14px;
+  box-shadow: 0 12px 32px var(--shadow);
+  padding: 10px;
+}
+.assistant-log {
+  max-height: 280px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 2px; scrollbar-width: none;
+}
+.assistant-log::-webkit-scrollbar { display: none; }
+
+.chat-msg { display: flex; gap: 8px; align-items: flex-start; }
 .chat-msg.user { flex-direction: row-reverse; }
 
-.agent-avatar {
-  width: 26px; height: 26px; border-radius: 50%;
+.agent-avatar-sm {
+  width: 22px; height: 22px; border-radius: 50%;
   background: var(--surface-raised); border: 1px solid var(--border-focus);
   display: flex; align-items: center; justify-content: center;
-  font-size: 9px; font-weight: 700; color: var(--accent); flex-shrink: 0;
+  font-size: 8px; font-weight: 700; color: var(--accent); flex-shrink: 0;
 }
 
 .msg-bubble {
-  max-width: 80%; padding: 10px 13px; border-radius: 10px;
-  font-size: 13px; line-height: 1.6;
+  max-width: 82%; padding: 8px 11px; border-radius: 10px;
+  font-size: 12.5px; line-height: 1.6;
   background: var(--surface-2); color: var(--text-hi); border: 1px solid var(--border-md);
 }
 .chat-msg.user .msg-bubble {
   background: var(--bubble-user-bg); border-color: var(--bubble-user-bdr); color: var(--text);
 }
 
-/* Typing indicator */
-.msg-bubble.typing {
-  display: flex; align-items: center; gap: 4px; padding: 12px 14px;
+.retry-btn {
+  display: block; margin-top: 6px;
+  background: none; border: 1px solid var(--border-focus); border-radius: 6px;
+  padding: 3px 10px; font-size: 11px; font-weight: 600; color: var(--accent);
+  cursor: pointer; transition: background 0.15s;
 }
-.msg-bubble.typing span {
-  width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
-  animation: blink 1.2s ease-in-out infinite;
-}
-.msg-bubble.typing span:nth-child(2) { animation-delay: 0.2s; }
-.msg-bubble.typing span:nth-child(3) { animation-delay: 0.4s; }
-@keyframes blink { 0%,80%,100% { opacity: 0.2; } 40% { opacity: 1; } }
+.retry-btn:hover:not(:disabled) { background: var(--surface-raised); }
+.retry-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.chat-input-row {
-  display: flex; gap: 8px; padding: 12px;
-  border-top: 1px solid var(--border);
+/* ══ STEP 2 — full-width profile review ══ */
+.step2-body {
+  flex: 1; display: flex; flex-direction: column;
+  max-width: 720px; width: 100%; margin: 0 auto;
+  padding: 36px 32px 0; gap: 20px;
+  min-height: 0; overflow-y: auto; scrollbar-width: none;
 }
-.chat-input {
-  flex: 1; background: var(--bg); border: 1px solid var(--border-md);
-  border-radius: 8px; padding: 9px 12px;
-  color: var(--text); font-size: 13px; outline: none; transition: border-color 0.2s;
-}
-.chat-input:focus { border-color: var(--accent); }
-.chat-input::placeholder { color: var(--text-ghost); }
-.chat-send {
-  padding: 9px 16px; background: var(--accent); border: none;
-  border-radius: 8px; color: white; font-size: 13px; font-weight: 600;
-  cursor: pointer; transition: background 0.2s; white-space: nowrap;
-}
-.chat-send:hover:not(:disabled) { background: var(--accent-hover); }
-.chat-send:disabled { background: var(--border-md); color: var(--text-quiet); cursor: not-allowed; }
+.step2-body::-webkit-scrollbar { display: none; }
 
-/* ── Profile column ── */
-.profile-col {
-  background: var(--surface); border: 1px solid var(--border-md);
-  border-radius: 12px; overflow-y: auto; padding: 20px;
-}
+.profile-full { flex: 1; min-height: 0; }
 
-.profile-empty {
-  height: 100%; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 10px; color: var(--text-quiet);
-}
-.empty-icon { font-size: 32px; }
-.profile-empty p { font-size: 13px; color: var(--text-sub); text-align: center; margin: 0; }
-.empty-sub { font-size: 11px !important; color: var(--border-focus) !important; }
-
-.profile-filled { display: flex; flex-direction: column; gap: 18px; }
-
-/* Editable identity */
-.profile-identity { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.edit-name {
-  background: none; border: none; border-bottom: 1px solid transparent;
-  font-size: 22px; font-weight: 700; color: var(--text); outline: none;
-  transition: border-color 0.2s; padding: 2px 0; flex: 1; min-width: 120px;
-}
-.edit-name:hover, .edit-name:focus { border-bottom-color: var(--border-focus); }
-.edit-series {
-  background: var(--surface-raised); border: 1px solid var(--border-focus); border-radius: 20px;
-  padding: 3px 12px; font-size: 11px; color: var(--accent); font-weight: 600;
-  outline: none; text-align: center; width: auto;
-}
-
-/* Editable fields */
-.meta-row { display: flex; flex-wrap: wrap; gap: 6px; }
-.edit-chip {
-  padding: 3px 10px; background: var(--surface-2); border: 1px solid var(--border-md);
-  border-radius: 4px; font-size: 11px; color: var(--text-muted); outline: none;
-  transition: border-color 0.2s; min-width: 60px;
-}
-.edit-chip:hover, .edit-chip:focus { border-color: var(--accent); color: var(--text-hi); }
-.edit-chip.accent { border-color: var(--border-focus); color: var(--text-neutral); }
-
-.edit-trait {
-  background: none; border: none; border-bottom: 1px solid var(--border);
-  font-size: 13px; font-weight: 600; color: var(--accent); font-style: italic;
-  outline: none; width: 100%; padding: 4px 0; transition: border-color 0.2s;
-}
-.edit-trait:hover, .edit-trait:focus { border-bottom-color: var(--accent); }
-
-.edit-area {
-  width: 100%; background: var(--bg); border: 1px solid transparent;
-  border-radius: 6px; padding: 10px; color: var(--text-muted); font-size: 13px;
-  line-height: 1.7; resize: vertical; outline: none; font-family: inherit;
-  transition: border-color 0.2s;
-}
-.edit-area:hover, .edit-area:focus { border-color: var(--border-md); color: var(--text-hi); }
-
-/* Step 2 footer */
 .step2-footer {
   display: flex; flex-direction: column; align-items: center; gap: 10px;
-  padding: 16px 0 24px; flex-shrink: 0;
+  padding: 24px 0 40px; flex-shrink: 0;
 }
 .project-status { font-size: 12px; color: var(--accent); margin: 0; }
-
-/* ── Reference bar ── */
-.ref-bar {
-  display: flex; align-items: flex-start; gap: 14px;
-  background: var(--surface); border: 1px solid var(--border-md); border-radius: 12px; padding: 14px;
-}
-.ref-thumb { width: 52px; height: 70px; border-radius: 7px; overflow: hidden; flex-shrink: 0; background: var(--surface-2); }
-.ref-img   { width: 100%; height: 100%; object-fit: cover; display: block; }
-.ref-info  { flex: 1; display: flex; flex-direction: column; gap: 7px; min-width: 0; }
-.ref-specs { display: flex; flex-wrap: wrap; gap: 5px; }
-.ref-chip  {
-  padding: 2px 8px; background: var(--surface-raised); border: 1px solid var(--border-focus); border-radius: 4px;
-  font-size: 10px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px;
-}
-.ref-features { display: flex; flex-wrap: wrap; gap: 4px; }
-.feat-mini { font-size: 10px; color: var(--text-sub); background: var(--bg); padding: 2px 6px; border-radius: 3px; border: 1px solid var(--border); }
-.reextract-btn { background: none; border: none; color: var(--text-quiet); font-size: 11px; cursor: pointer; flex-shrink: 0; white-space: nowrap; align-self: flex-start; }
-.reextract-btn:hover { color: var(--accent); }
-
-/* ── Name section ── */
-.name-section { display: flex; flex-direction: column; gap: 10px; }
-.name-label   { font-size: 11px; font-weight: 600; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.6px; }
-.name-input {
-  background: var(--surface); border: 1px solid var(--border-md); border-radius: 8px;
-  padding: 14px 16px; color: var(--text); font-size: 22px; font-weight: 600; outline: none; transition: border-color 0.2s;
-}
-.name-input:focus { border-color: var(--accent); }
-.name-input::placeholder { color: var(--border-md); font-weight: 400; font-size: 18px; }
-.series-input {
-  background: var(--surface); border: 1px solid var(--surface-2); border-radius: 8px;
-  padding: 9px 14px; color: var(--text-dim); font-size: 13px; outline: none; transition: border-color 0.2s;
-}
-.series-input:focus { border-color: var(--border-focus); color: var(--text-hi); }
-.series-input::placeholder { color: var(--border-md); }
-
-/* ── Primary button ── */
-.primary-btn {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  width: 100%; padding: 12px; background: var(--accent); border: none; border-radius: 8px;
-  color: white; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s;
-}
-.primary-btn:hover:not(:disabled) { background: var(--accent-hover); }
-.primary-btn:disabled { background: var(--border-md); color: var(--text-sub); cursor: not-allowed; }
-.mt-20 { margin-top: 20px; }
 
 .btn-spinner {
   width: 14px; height: 14px;
@@ -821,53 +981,4 @@ onUnmounted(() => {})
   border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* ── Profile result ── */
-.profile-result {
-  background: var(--surface); border: 1px solid var(--border-md); border-radius: 12px;
-  padding: 24px; display: flex; flex-direction: column; gap: 20px;
-}
-
-.profile-identity { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-.profile-name { font-size: 28px; font-weight: 700; color: var(--text); }
-.profile-series-pill {
-  padding: 3px 12px; background: var(--surface-raised); border: 1px solid var(--border-focus);
-  border-radius: 20px; font-size: 11px; color: var(--accent); font-weight: 600;
-}
-
-.profile-section { display: flex; flex-direction: column; gap: 10px; }
-.section-label {
-  font-size: 10px; font-weight: 700; color: var(--text-sub);
-  text-transform: uppercase; letter-spacing: 1px;
-}
-.section-divider { height: 1px; background: var(--border); }
-.section-desc { font-size: 13px; color: var(--text-muted); line-height: 1.8; margin: 0; }
-
-.world-meta, .char-meta { display: flex; flex-wrap: wrap; gap: 6px; }
-.meta-chip {
-  padding: 3px 10px; background: var(--surface-2); border: 1px solid var(--border-md);
-  border-radius: 4px; font-size: 11px; color: var(--text-muted);
-}
-.meta-chip.accent { border-color: var(--border-focus); color: var(--text-neutral); }
-
-.theme-tags { display: flex; flex-wrap: wrap; gap: 5px; }
-.theme-tag {
-  padding: 3px 9px; background: var(--bg); border: 1px solid var(--border);
-  border-radius: 20px; font-size: 11px; color: var(--text-dim);
-}
-
-.core-trait {
-  font-size: 13px; font-weight: 600; color: var(--accent);
-  font-style: italic; padding: 2px 0;
-}
-
-.relations { display: flex; flex-wrap: wrap; gap: 5px; }
-.relation-tag {
-  padding: 3px 9px; background: var(--surface-raised); border: 1px solid var(--border-focus);
-  border-radius: 4px; font-size: 11px; color: var(--text-muted);
-}
-
-
-.slide-up-enter-active { transition: all 0.35s ease; }
-.slide-up-enter-from   { opacity: 0; transform: translateY(16px); }
 </style>

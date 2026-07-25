@@ -1,6 +1,29 @@
+// Typed error so callers can tell a dropped connection / timeout (retry-worthy,
+// "check your network") apart from a real backend/AI failure (a 4xx/5xx —
+// "the service is having trouble, contact us"). `retryable` is honored by
+// withRetry(): only a fast network blip is auto-retried; a 90s timeout or a
+// deterministic server error is not (the user still gets a manual retry button).
+export class ApiError extends Error {
+  kind: 'network' | 'timeout' | 'server'
+  status?: number
+  constructor(kind: 'network' | 'timeout' | 'server', message: string, status?: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.kind = kind
+    this.status = status
+  }
+  get retryable(): boolean { return this.kind === 'network' }
+}
+
+// Hard ceiling on any single request. The identification/build calls legitimately
+// run tens of seconds (multiple web searches), so this is generous — it only
+// exists to rescue a truly hung request that would otherwise freeze the UI's
+// loading state forever.
+const REQUEST_TIMEOUT_MS = 90_000
+
 export const useApi = () => {
   const { public: { apiBase: BASE } } = useRuntimeConfig()
-  const { token } = useAuth()
+  const { token, clearToken } = useAuth()
 
   function _authHeader(): Record<string, string> {
     return token.value ? { Authorization: `Bearer ${token.value}` } : {}
@@ -8,10 +31,25 @@ export const useApi = () => {
 
   async function _fetchAuth(input: string, init: RequestInit = {}): Promise<Response> {
     const headers = { ..._authHeader(), ...(init.headers as Record<string, string> ?? {}) }
-    const r = await fetch(input, { ...init, headers })
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    let r: Response
+    try {
+      r = await fetch(input, { ...init, headers, signal: controller.signal })
+    } catch (e) {
+      // AbortController fired → timeout; any other rejection → network-level failure.
+      if (controller.signal.aborted) throw new ApiError('timeout', 'Request timed out')
+      throw new ApiError('network', (e as Error).message)
+    } finally {
+      clearTimeout(timer)
+    }
     if (r.status === 401) {
-      await navigateTo('/login')
-      throw new Error('Unauthorized')
+      // Token was rejected mid-session (expired/revoked). Clear it and send the
+      // user to login with a flag so the page can explain why they're back here,
+      // instead of a silent bounce that looks like the app lost their work.
+      clearToken()
+      await navigateTo('/login?expired=1')
+      throw new ApiError('server', 'Unauthorized', 401)
     }
     return r
   }
@@ -20,24 +58,24 @@ export const useApi = () => {
     const r = await _fetchAuth(BASE + path, opts)
     if (!r.ok) {
       const msg = await r.text().catch(() => r.statusText)
-      throw new Error(msg)
+      throw new ApiError('server', msg, r.status)
     }
     return r.json()
   }
 
   function createProject(params: {
     images: { file: File; url: string }[]
-    extracted: Record<string, any>
+    extractedI18n: { zh: Record<string, string | null>; en: Record<string, string | null>; ja: Record<string, string | null> }
     visualSpec: { zh: string; en: string; ja: string }
     world: Record<string, any>
     character: Record<string, any>
   }) {
     const fd = new FormData()
     params.images.forEach(img => fd.append('images', img.file, img.file.name))
-    fd.append('extracted',   JSON.stringify(params.extracted))
-    fd.append('visual_spec', JSON.stringify(params.visualSpec))  // multilang dict as JSON string
-    fd.append('world',       JSON.stringify(params.world))
-    fd.append('character',   JSON.stringify(params.character))
+    fd.append('extracted_i18n', JSON.stringify(params.extractedI18n))
+    fd.append('visual_spec',    JSON.stringify(params.visualSpec))  // multilang dict as JSON string
+    fd.append('world',          JSON.stringify(params.world))
+    fd.append('character',      JSON.stringify(params.character))
     return api<{ project_id: string; character: string; series: string; created_at: string }>(
       '/projects/create', { method: 'POST', body: fd },
     )
@@ -240,6 +278,7 @@ export const useApi = () => {
         worldSetting: { genre: string; era: string; themes: string[]; description: string }
         characterBackground: { role: string; age: string; coreTrait: string; description: string; relations: string[] }
       } | null
+      awaiting_confirm: boolean
     }>('/new-project/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -249,6 +288,7 @@ export const useApi = () => {
         visual_spec: visualSpec ?? null,
         current_profile: currentProfile ?? null,
         session_id: sessionId ?? null,
+        reply_lang: useLocale().locale.value,
       }),
     })
   }
@@ -257,6 +297,7 @@ export const useApi = () => {
     const fd = new FormData()
     fd.append('file', file)
     fd.append('session_id', sessionId)
+    fd.append('reply_lang', useLocale().locale.value)
     return api<{ same: boolean; reason: string }>('/new-project/verify-character', { method: 'POST', body: fd })
   }
 
@@ -270,7 +311,8 @@ export const useApi = () => {
       gender: 'male' | 'female'
       message: string
       visual_spec: { zh: string; en: string; ja: string } | null
-      extracted: { zh: Record<string, string | null>; en: Record<string, string | null>; ja: Record<string, string | null> }
+      extracted: Record<string, string | null>
+      extracted_i18n: { zh: Record<string, string | null>; en: Record<string, string | null>; ja: Record<string, string | null> } | null
       missing_fields: string[]
     }>('/new-project/analyze-image', { method: 'POST', body: fd })
   }

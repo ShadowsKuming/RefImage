@@ -21,9 +21,12 @@ Hallucination guardrails baked into the system prompt:
   - key_events must come from search results, not inference
 """
 import json
+import re
 from tools.llm import call_agent, call
 from tools.search import web_search as _web_search
 import tools.vision as vision
+
+_LANG_NAMES = {"zh": "中文", "en": "English", "ja": "日本語"}
 
 
 SYSTEM_PROMPT = """你是一个动漫/游戏/影视角色档案助手。
@@ -52,6 +55,11 @@ SYSTEM_PROMPT = """你是一个动漫/游戏/影视角色档案助手。
 提问方式：简洁说明找到了哪几个候选，请用户告知作品名或其他区分信息。
 
 【用户纠正时】直接调用 update_profile 更新，不需要重新搜索。
+
+【语气——非常重要】
+你是在和用户轻松聊天，不是在写报告。禁止"识别结果显示""根据分析""系统判断"这类机械措辞；
+多用第一人称口语，比如"我看了看""我觉得""应该是"。可以自然地用语气词（呀/啦/呢/哦）和偶尔一个颜文字
+（比如 (｡•ᴗ•｡) 、(≧∇≦)ﾉ、(´･ω･`)）让对话有温度，但不要每句话都加，保持自然不做作。
 
 【回复风格——非常重要】
 每次调用 update_profile，你必须在工具调用的同时写一句口语化的中文回复。
@@ -181,9 +189,12 @@ UPDATE_PROFILE_TOOL = {
 
 # ── Vision pre-identification ─────────────────────────────────────────────────
 
-def _identify_from_image(image_bytes: bytes) -> str:
+def _identify_from_image(image_bytes: bytes) -> dict:
     """Ask the vision LLM to guess which character is in the image.
-    Returns a short Chinese description of the identification result."""
+    Returns {"confidence": "single"|"multiple"|"none", "text": <short Chinese description>}.
+    confidence lets the caller tell "here's a specific guess to confirm" apart
+    from "no guess, just ask the user" — the two need different frontend UI
+    (a yes/no confirm chip only makes sense for the former)."""
     b64, media_type = vision.encode_image(image_bytes)
     messages = [{
         "role": "user",
@@ -196,15 +207,30 @@ def _identify_from_image(image_bytes: bytes) -> str:
                 "type": "text",
                 "text": (
                     "这是一张角色参考图。根据图片中角色的外貌特征（发型、发色、服装、配饰等），"
-                    "你能判断这是哪个动漫/游戏/影视作品中的角色吗？"
-                    "如果能确认，请说明角色名和所属作品；如果有多个可能，列出前2个候选；"
-                    "如果实在无法判断，描述能看到的最显著特征。"
-                    "用中文回答，100字以内。"
+                    "判断这是哪个动漫/游戏/影视作品中的角色。"
+                    "严格按下面的 JSON 格式回答，不要输出任何其他内容、不要用 markdown 代码块包裹：\n"
+                    '{"confidence": "single", "text": "..."}\n'
+                    "confidence 三选一：\n"
+                    "  single   —— 能确认唯一角色，text 里说明角色名和所属作品\n"
+                    "  multiple —— 有2个左右可能候选，text 里列出候选\n"
+                    "  none     —— 无法判断，text 里描述能看到的最显著特征\n"
+                    "text 用中文，100字以内。"
                 ),
             },
         ],
     }]
-    return vision.call(messages, "你是一个熟悉动漫、游戏、影视作品的角色识别专家。")
+    raw = vision.call(messages, "你是一个熟悉动漫、游戏、影视作品的角色识别专家。只输出 JSON。")
+    confidence, text = "none", raw
+    match = re.search(r"\{.*\}", raw, re.S)
+    if match:
+        try:
+            data = json.loads(match.group(0))
+            if data.get("confidence") in ("single", "multiple", "none"):
+                confidence = data["confidence"]
+            text = data.get("text") or raw
+        except Exception:
+            pass
+    return {"confidence": confidence, "text": text}
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
@@ -215,6 +241,7 @@ def chat(
     visual_spec: str | None = None,
     current_profile: dict | None = None,
     session_id: str | None = None,
+    reply_lang: str = "zh",
 ) -> dict:
     """
     Process one user message and return an agent reply + optional profile update.
@@ -229,12 +256,25 @@ def chat(
                          including any manual edits the user made.  Sent on every
                          request so the LLM always works from the live state, not
                          just from chat history.
+        reply_lang:      UI locale ('zh'/'en'/'ja') — the agent's conversational
+                         reply follows this regardless of what language the user
+                         types in; profile data itself stays as extracted (English
+                         internally, translated separately for storage/display).
 
     Returns:
-        { reply: str, profile: dict | None }
+        { reply: str, profile: dict | None, awaiting_confirm: bool }
         profile is non-null only when the agent called update_profile this turn.
+        awaiting_confirm is true only when this reply is a plain yes/no
+        identity-confirm question (single vision candidate, first turn) — the
+        frontend uses it to decide whether a quick "yes" chip makes sense, vs
+        an open-ended ask where only free text applies.
     """
-    system = SYSTEM_PROMPT
+    system = SYSTEM_PROMPT + (
+        f"\n\n【回复语言】始终使用{_LANG_NAMES.get(reply_lang, '中文')}回复用户，"
+        "无论用户用什么语言提问，也不要在回复里混用其他语言。"
+    )
+
+    awaiting_confirm = False
 
     # Vision identification: run once per session on first chat turn, cache in session
     if session_id:
@@ -245,15 +285,29 @@ def chat(
                 try:
                     session["char_hint"] = _identify_from_image(session["first_image"])
                 except Exception:
-                    session["char_hint"] = ""
-            char_hint = session.get("char_hint") or ""
+                    session["char_hint"] = {"confidence": "none", "text": ""}
+            char_hint_data = session.get("char_hint") or {"confidence": "none", "text": ""}
+            char_hint = char_hint_data.get("text") or ""
+            # Only the very first turn ever produces the identify-and-confirm
+            # message the char_hint instructions below describe — later turns
+            # are free-form (corrections, candidate picks, plain chat).
+            awaiting_confirm = bool(char_hint) and char_hint_data.get("confidence") == "single" and not history
             if char_hint:
+                lang_name = _LANG_NAMES.get(reply_lang, '中文')
                 system += (
-                    f"\n\n【图像视觉识别】系统已对用户上传的参考图进行了初步识别：\n{char_hint}\n"
-                    "【重要】在第一轮回复时，先把识别结果告诉用户并请求确认，例如：\n"
-                    "  「图片里看起来是XXX（《作品名》），对吗？」\n"
-                    "  或「从图片特征看，这可能是XXX或YYY，请问是哪个？」\n"
-                    "  或「图片特征不太好确认，能告诉我是哪个角色吗？」\n"
+                    f"\n\n【图像视觉识别】你已经看过用户上传的参考图，心里对角色有个初步判断（以下描述本身是中文，"
+                    f"仅供你参考图片内容，不代表你的回复语言）：\n{char_hint}\n"
+                    f"【重要】第一轮回复必须全程使用{lang_name}，用你自己的话自然地说出来，"
+                    "像是刚仔细看完图一样——比如「我仔细看了看，这个角色好像是……」，"
+                    "禁止说「识别结果显示」「系统已识别」这类报告式开场白。"
+                    "根据判断选择下面其中一种情况：\n"
+                    "  - 能确认唯一角色：说出角色名和作品名，反问用户是否正确\n"
+                    "  - 有多个可能候选：列出前2个候选，请用户选择\n"
+                    "  - 无法判断：说明特征不足以确认，请用户直接告知角色名和作品名\n"
+                    "整段回复只问一个问题——确认角色身份是否正确。不要额外插入"
+                    "「你是想了解她吗」这类无关的开放式提问，用户在这个系统里的目的已经很明确"
+                    "（建立角色拍摄档案），不需要征询。"
+                    f"无论你判断依据本身是什么语言，说给用户的这句话都必须是{lang_name}，不要输出中文原文或混用其他语言。"
                     "用户确认或纠正后，再调用 web_search 搜索建档。"
                     "禁止在用户确认前就调用 web_search 或 update_profile。"
                 )
@@ -302,9 +356,15 @@ def chat(
         reply = call(
             [{"role": "user", "content": message}],
             f"你是一个动漫角色档案助手。你刚刚把「{char}」的档案整理/更新完了。"
-            f"用一句口语化中文回复用户刚才的这条消息，自然地说你做了什么（比如报角色全名、说你改了什么字段）。"
+            f"用一句口语化的{_LANG_NAMES.get(reply_lang, '中文')}回复用户刚才的这条消息，"
+            f"自然地说你做了什么（比如报角色全名、说你改了什么字段）。"
             f"之前档案：{prev_json}。30字以内，禁止说套话。",
             max_tokens=120,
         )
 
-    return {"reply": reply or "", "profile": profile}
+    # A tool call this turn means the agent already resolved identity — there's
+    # nothing left to confirm even if the char_hint block said turn 1.
+    if profile is not None:
+        awaiting_confirm = False
+
+    return {"reply": reply or "", "profile": profile, "awaiting_confirm": awaiting_confirm}

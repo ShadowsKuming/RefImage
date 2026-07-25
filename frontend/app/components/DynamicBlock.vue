@@ -64,22 +64,7 @@ const isLongString = computed(() =>
   typeof props.value === 'string' && props.value.length > 40,
 )
 
-const LABELS: Record<string, string> = {
-  genre: '类型', era: '时代', timeline: '时间线', synopsis: '作品简介',
-  themes: '主题', iconic_settings: '标志场景', tone: '风格基调',
-  visual: '视觉', narrative: '叙事', emotion: '情感',
-  role: '定位', age: '年龄', backstory: '身世',
-  personality: '性格', surface: '外在', inner: '内心',
-  strength: '优点', weakness: '弱点', core_desire: '渴望', fear: '恐惧',
-  emotional_range: '情绪范围', baseline: '日常', stress: '压力',
-  breaking_point: '崩溃点', recovery: '复原',
-  behavior: '行为模式', speech_style: '说话风格',
-  tone_speech: '语气', volume: '音量', humor: '幽默', vocabulary: '用词',
-  habits: '习惯', values: '价值观', likes: '喜好', dislikes: '厌恶',
-  key_events: '关键事件', iconic_moments: '代表场景', relations: '关系',
-  name: '姓名', relationship: '关系', importance: '重要性',
-}
-function labelOf(key: string) { return LABELS[key] || key }
+const { fieldLabel: labelOf } = useFieldLabels()
 
 function emitNested(key: string, newVal: any) {
   const copy = JSON.parse(JSON.stringify(props.value as object))

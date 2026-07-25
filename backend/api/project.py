@@ -42,12 +42,12 @@ class ChatRequest(BaseModel):
 
 @router.post("/create")
 async def create(
-    images:      list[UploadFile] = File(...),
-    extracted:   str = Form(...),
-    visual_spec: str = Form(...),
-    world:       str = Form(...),
-    character:   str = Form(...),
-    user_id:     str = Depends(get_current_user),
+    images:         list[UploadFile] = File(...),
+    extracted_i18n: str = Form(...),
+    visual_spec:    str = Form(...),
+    world:          str = Form(...),
+    character:      str = Form(...),
+    user_id:        str = Depends(get_current_user),
 ):
     """
     Persist a completed new-project session to disk.
@@ -69,7 +69,7 @@ async def create(
     meta = project_service.create_project(
         images=image_data,
         image_names=image_names,
-        extracted=json.loads(extracted),
+        extracted_i18n=json.loads(extracted_i18n),
         visual_spec=json.loads(visual_spec),
         world=json.loads(world),
         character=json.loads(character),

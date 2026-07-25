@@ -4,7 +4,9 @@
     <!-- Top bar -->
     <div class="top-bar">
       <div class="breadcrumb">
-        <button class="back-btn" @click="goBack">← 返回</button>
+        <button class="back-btn" @click="goBack">
+          <span class="back-chevron">‹</span>返回
+        </button>
         <span class="bc-sep">/</span>
         <span class="bc-item">{{ characterName }}</span>
         <span class="bc-sep">/</span>
@@ -17,7 +19,7 @@
           v-model="titleDraft"
           class="bc-title-input"
           @blur="commitRename"
-          @keydown.enter.prevent="commitRename"
+          @keydown.enter="onTitleInputEnter"
           @keydown.escape.prevent="cancelRename"
         />
         <span class="shot-mood-badge">{{ shot.mood }}</span>
@@ -46,7 +48,15 @@
         <div class="ai-messages" ref="aiMsgContainer">
           <div v-for="(msg, i) in aiMessages" :key="i" class="ai-msg" :class="msg.role">
             <div v-if="msg.role === 'agent'" class="ai-avatar">AI</div>
-            <div class="ai-bubble">{{ msg.text }}</div>
+            <div class="ai-bubble">
+              {{ msg.text }}
+              <button
+                v-if="msg.retryText"
+                class="retry-btn"
+                :disabled="chatLoading"
+                @click="sendChat(msg.retryText)"
+              >重试</button>
+            </div>
           </div>
           <div v-if="chatLoading" class="ai-msg agent">
             <div class="ai-avatar">AI</div>
@@ -66,7 +76,7 @@
           <input v-model="chatInput" class="ai-input"
                  :placeholder="isRefined ? '已完善，解锁后可继续编辑' : '调整例图或提问…'"
                  :disabled="generating || chatLoading || isRefined"
-                 @keydown.enter.exact.prevent="sendChat" />
+                 @keydown.enter.exact="onChatInputEnter" />
           <button class="ai-send" :disabled="generating || chatLoading || isRefined" @click="sendChat">↑</button>
         </div>
       </div>
@@ -405,6 +415,11 @@ function startRenameTitle() {
   titleDraft.value = shotData.value?.title ?? ''
   editingTitle.value = true
   nextTick(() => titleInputRef.value?.select())
+}
+function onTitleInputEnter(e: KeyboardEvent) {
+  if (e.isComposing) return
+  e.preventDefault()
+  commitRename()
 }
 async function commitRename() {
   const t = titleDraft.value.trim()
@@ -1249,7 +1264,7 @@ async function pollUntilDone() {
 const aiMsgContainer = ref<HTMLElement | null>(null)
 const chatInput      = ref('')
 const chatLoading    = ref(false)
-const aiMessages     = ref<{ role: string; text: string }[]>([])
+const aiMessages     = ref<{ role: string; text: string; retryText?: string }[]>([])
 
 async function refreshHistory() {
   const s = await api.getShot(projectId.value, shotId.value)
@@ -1267,24 +1282,35 @@ async function unlockShot() {
   if (shotData.value) shotData.value.status = 'done'
 }
 
-async function sendChat() {
-  const text = chatInput.value.trim()
+function onChatInputEnter(e: KeyboardEvent) {
+  if (e.isComposing) return
+  e.preventDefault()
+  sendChat()
+}
+
+async function sendChat(retryText?: string) {
+  const text = retryText ?? chatInput.value.trim()
   if (!text || chatLoading.value) return
-  chatInput.value = ''
-  aiMessages.value.push({ role: 'user', text })
+  if (retryText === undefined) {
+    chatInput.value = ''
+    aiMessages.value.push({ role: 'user', text })
+  }
   chatLoading.value = true
   await nextTick()
   if (aiMsgContainer.value) aiMsgContainer.value.scrollTop = aiMsgContainer.value.scrollHeight
   try {
-    const { reply, generating: gen } = await api.shotChat(
+    const { reply, generating: gen } = await withRetry(() => api.shotChat(
       projectId.value, shotId.value, text, selectedVersionIds.value, selectedRefIds.value,
-    )
+    ))
     if (reply) aiMessages.value.push({ role: 'agent', text: reply })
     if (gen) { generating.value = true; pollUntilDone() }
   } catch {
-    aiMessages.value.push({ role: 'agent', text: '出了点问题，请稍后重试。' })
+    aiMessages.value.push({ role: 'agent', text: '出了点问题，请稍后重试。', retryText: text })
+  } finally {
+    // Guaranteed to run even if something above throws unexpectedly —
+    // the input/send button must never stay stuck disabled.
+    chatLoading.value = false
   }
-  chatLoading.value = false
   await nextTick()
   if (aiMsgContainer.value) aiMsgContainer.value.scrollTop = aiMsgContainer.value.scrollHeight
 }
@@ -1325,8 +1351,14 @@ onUnmounted(() => {
 /* ── Top bar ── */
 .top-bar { height: 48px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; flex-shrink: 0; }
 .breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.back-btn { background: none; border: none; color: var(--text-sub); font-size: 12px; cursor: pointer; padding: 0; transition: color 0.15s; }
-.back-btn:hover { color: var(--text); }
+.back-btn {
+  display: flex; align-items: center; gap: 1px;
+  background: none; border: none; padding: 0; border-radius: 6px;
+  color: var(--accent); font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: opacity 0.15s;
+}
+.back-btn:hover { opacity: 0.65; }
+.back-chevron { font-size: 18px; line-height: 1; margin-top: -1px; }
 .bc-sep { color: var(--border-md); }
 .bc-item { color: var(--text-dim); }
 .bc-current { color: var(--text-accent); font-weight: 600; cursor: text; border-radius: 4px; padding: 1px 4px; }
@@ -1518,6 +1550,14 @@ onUnmounted(() => {
 .ai-avatar { width: 24px; height: 24px; border-radius: 6px; background: var(--avatar-bg); color: var(--avatar-text); font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .ai-bubble { max-width: 84%; padding: 7px 10px; border-radius: 8px; font-size: 11px; line-height: 1.55; background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); }
 .ai-msg.user .ai-bubble { background: var(--bubble-user-bg); border-color: var(--bubble-user-bdr); color: var(--bubble-user-text); }
+.retry-btn {
+  display: block; margin-top: 6px;
+  background: none; border: 1px solid var(--border-focus); border-radius: 6px;
+  padding: 3px 10px; font-size: 11px; font-weight: 600; color: var(--accent);
+  cursor: pointer; transition: background 0.15s;
+}
+.retry-btn:hover:not(:disabled) { background: var(--surface-raised); }
+.retry-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .typing { display: flex; gap: 4px; align-items: center; padding: 10px 12px; }
 .typing span { width: 5px; height: 5px; border-radius: 50%; background: var(--text-sub); animation: dot 1.2s ease-in-out infinite; }
 .typing span:nth-child(2) { animation-delay: .2s; }

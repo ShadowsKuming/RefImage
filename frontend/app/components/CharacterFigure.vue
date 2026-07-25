@@ -19,7 +19,7 @@
         class="dot-pin"
         :style="{ top: dot.y + '%', left: dot.x + '%' }"
         :class="[dotClass(dot.field), { 'dot-hoverable': true }]"
-        @mouseenter="showTooltip($event, dot.field, dot.label)"
+        @mouseenter="showTooltip($event, dot.field)"
         @mousemove="moveTooltip"
         @mouseleave="hideTooltip"
       >
@@ -31,7 +31,7 @@
         class="label-pin"
         :style="{ top: dot.y + '%' }"
         :class="extracted[dot.field] != null ? 'label-done' : ''"
-      >{{ dot.label }}</div>
+      >{{ fieldLabel(dot.field) }}</div>
 
     </div>
 
@@ -40,12 +40,12 @@
       <div v-for="f in EXTRA_FIELDS" :key="f.field"
         class="extra-row"
         :class="extracted[f.field] != null ? 'extra-done' : ''"
-        @mouseenter="showTooltip($event, f.field, f.label)"
+        @mouseenter="showTooltip($event, f.field)"
         @mousemove="moveTooltip"
         @mouseleave="hideTooltip"
       >
         <span class="extra-dot" :class="dotClass(f.field)" />
-        <span>{{ f.label }}</span>
+        <span>{{ fieldLabel(f.field) }}</span>
       </div>
     </div>
 
@@ -57,7 +57,7 @@
         :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }"
       >
         <div class="tt-label">{{ tooltip.label }}</div>
-        <div class="tt-value">{{ tooltip.value || '尚未识别' }}</div>
+        <div class="tt-value">{{ tooltip.value || t('characterFigure.notIdentified') }}</div>
       </div>
     </Teleport>
 
@@ -68,32 +68,36 @@
 import { ref, computed, watch, onMounted, reactive } from 'vue'
 
 const props = defineProps<{
-  extracted: Record<string, string | null>
-  gender:    'male' | 'female'
-  loading:   boolean
+  extracted:     Record<string, string | null>
+  extractedI18n?: { zh: Record<string, string | null>; en: Record<string, string | null>; ja: Record<string, string | null> } | null
+  gender:        'male' | 'female'
+  loading:       boolean
 }>()
 
 const BODY_DOTS = [
-  { field: 'hairstyle',   label: '发型',    x: 58, y: 10 },
-  { field: 'face_makeup', label: '脸型妆容', x: 58, y: 19 },
-  { field: 'upper_body',  label: '上身衣服', x: 62, y: 38 },
-  { field: 'lower_body',  label: '下身衣服', x: 62, y: 62 },
-  { field: 'shoes',       label: '鞋子',    x: 58, y: 91 },
+  { field: 'hairstyle',   x: 58, y: 10 },
+  { field: 'face_makeup', x: 58, y: 19 },
+  { field: 'upper_body',  x: 62, y: 38 },
+  { field: 'lower_body',  x: 62, y: 62 },
+  { field: 'shoes',       x: 58, y: 91 },
 ]
 
 const EXTRA_FIELDS = [
-  { field: 'proportions',   label: '身材比例'  },
-  { field: 'distinctive',   label: '标志性特征' },
-  { field: 'color_palette', label: '配色'      },
+  { field: 'proportions' },
+  { field: 'distinctive' },
+  { field: 'color_palette' },
 ]
+
+const { fieldLabel } = useFieldLabels()
+const { t, locale } = useLocale()
 
 // Tooltip state
 const tooltip = reactive({ visible: false, x: 0, y: 0, label: '', value: '' })
 
-function showTooltip(e: MouseEvent, field: string, label: string) {
+function showTooltip(e: MouseEvent, field: string) {
   tooltip.visible = true
-  tooltip.label   = label
-  tooltip.value   = props.extracted[field] ?? ''
+  tooltip.label   = fieldLabel(field)
+  tooltip.value   = props.extractedI18n?.[locale.value]?.[field] ?? props.extracted[field] ?? ''
   tooltip.x       = e.clientX + 14
   tooltip.y       = e.clientY - 10
 }

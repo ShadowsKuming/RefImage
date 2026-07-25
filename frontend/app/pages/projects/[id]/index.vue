@@ -4,7 +4,9 @@
     <!-- Top bar -->
     <div class="top-bar">
       <div class="breadcrumb">
-        <button class="back-btn" @click="navigateTo('/')">← 主页</button>
+        <button class="back-btn" @click="navigateTo('/')">
+          <span class="back-chevron">‹</span>主页
+        </button>
         <span class="bc-sep">/</span>
         <span class="bc-item">{{ project.work }}</span>
         <span class="bc-sep">·</span>
@@ -251,7 +253,15 @@
                 :class="msg.role"
               >
                 <div v-if="msg.role === 'agent'" class="ai-avatar">AI</div>
-                <div class="ai-bubble">{{ msg.text }}</div>
+                <div class="ai-bubble">
+                  {{ msg.text }}
+                  <button
+                    v-if="msg.retryText"
+                    class="retry-btn"
+                    :disabled="aiLoading"
+                    @click="sendAiMessage(msg.retryText)"
+                  >重试</button>
+                </div>
               </div>
               <div v-if="aiLoading" class="ai-msg agent">
                 <div class="ai-avatar">AI</div>
@@ -263,7 +273,7 @@
                 v-model="aiInput"
                 class="ai-input"
                 placeholder="问问 AI…"
-                @keydown.enter.exact.prevent="sendAiMessage"
+                @keydown.enter.exact="onAiInputEnter"
               />
               <button class="ai-send" @click="sendAiMessage">↑</button>
             </div>
@@ -443,30 +453,41 @@ const GREETING = '你好！可以帮你规划拍摄场景、整理设备需求�
 const aiContainer = ref<HTMLElement | null>(null)
 const aiInput     = ref('')
 const aiLoading   = ref(false)
-const aiMessages  = ref<{ role: string; text: string }[]>([
+const aiMessages  = ref<{ role: string; text: string; retryText?: string }[]>([
   { role: 'agent', text: GREETING },
 ])
 
-async function sendAiMessage() {
-  const text = aiInput.value.trim()
+function onAiInputEnter(e: KeyboardEvent) {
+  if (e.isComposing) return
+  e.preventDefault()
+  sendAiMessage()
+}
+
+async function sendAiMessage(retryText?: string) {
+  const text = retryText ?? aiInput.value.trim()
   if (!text || aiLoading.value) return
-  aiInput.value = ''
   // history = all messages before this new one
   const history = [...aiMessages.value]
-  aiMessages.value.push({ role: 'user', text })
+  if (retryText === undefined) {
+    aiInput.value = ''
+    aiMessages.value.push({ role: 'user', text })
+  }
   aiLoading.value = true
   await nextTick()
   if (aiContainer.value) aiContainer.value.scrollTop = aiContainer.value.scrollHeight
   try {
-    const { reply, brief } = await api.projectChat(projectId.value, text, history)
+    const { reply, brief } = await withRetry(() => api.projectChat(projectId.value, text, history))
     aiMessages.value.push({ role: 'agent', text: reply })
     if (brief && projectData.value) {
       projectData.value.plan = { ...projectData.value.plan, brief }
     }
   } catch {
-    aiMessages.value.push({ role: 'agent', text: '出了点问题，请稍后重试。' })
+    aiMessages.value.push({ role: 'agent', text: '出了点问题，请稍后重试。', retryText: text })
+  } finally {
+    // Guaranteed to run even if something above throws unexpectedly —
+    // the input/send button must never stay stuck disabled.
+    aiLoading.value = false
   }
-  aiLoading.value = false
   await nextTick()
   if (aiContainer.value) aiContainer.value.scrollTop = aiContainer.value.scrollHeight
 }
@@ -613,8 +634,14 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
   flex-shrink: 0;
 }
 .breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.back-btn   { background: none; border: none; color: var(--text-sub); font-size: 12px; cursor: pointer; padding: 0; }
-.back-btn:hover { color: var(--text); }
+.back-btn {
+  display: flex; align-items: center; gap: 1px;
+  background: none; border: none; padding: 0; border-radius: 6px;
+  color: var(--accent); font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: opacity 0.15s;
+}
+.back-btn:hover { opacity: 0.65; }
+.back-chevron { font-size: 18px; line-height: 1; margin-top: -1px; }
 .bc-sep     { color: var(--border-md); }
 .bc-item    { color: var(--text-dim); }
 .bc-current { color: var(--text-accent); font-weight: 600; }
@@ -866,6 +893,14 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
   border-color: var(--bubble-user-bdr);
   color: var(--bubble-user-text);
 }
+.retry-btn {
+  display: block; margin-top: 6px;
+  background: none; border: 1px solid var(--border-focus); border-radius: 6px;
+  padding: 3px 10px; font-size: 11px; font-weight: 600; color: var(--accent);
+  cursor: pointer; transition: background 0.15s;
+}
+.retry-btn:hover:not(:disabled) { background: var(--surface-raised); }
+.retry-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .typing { display: flex; gap: 4px; align-items: center; padding: 10px 12px; }
 .typing span {
   width: 5px; height: 5px; border-radius: 50%; background: var(--text-sub);

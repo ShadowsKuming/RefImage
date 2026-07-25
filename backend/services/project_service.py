@@ -7,7 +7,7 @@ On-disk layout per project:
     context/               — character/world context (read-only after creation)
       refs/                — original reference images used for visual spec extraction
       extra_refs/          — supplementary reference images added later
-      extracted.json       — raw per-field extraction output from Step 1
+      extracted.json       — per-field extraction, translated: { zh: {field: val}, en: {...}, ja: {...} }
       visual_spec.json     — multilingual appearance spec { zh, en, ja, prompt }
       world.json           — { series, worldSetting }
       character.json       — { character, series, characterBackground }
@@ -129,7 +129,7 @@ def set_project_owner(project_id: str, owner_id: str) -> None:
 def create_project(
     images: list[bytes],
     image_names: list[str],
-    extracted: dict,
+    extracted_i18n: dict,  # { zh: {field: val}, en: {...}, ja: {...} }
     visual_spec: dict,  # { zh: str, en: str, ja: str }
     world: dict,        # { series, worldSetting }
     character: dict,    # { character, series, characterBackground }
@@ -153,7 +153,7 @@ def create_project(
         (refs_dir / f"{i+1:03d}{ext}").write_bytes(img_bytes)
 
     ctx = base / "context"
-    (ctx / "extracted.json").write_text(json.dumps(extracted,    ensure_ascii=False, indent=2))
+    (ctx / "extracted.json").write_text(json.dumps(extracted_i18n, ensure_ascii=False, indent=2))
     visual_spec["prompt"] = _build_image_prompt(character["character"], visual_spec["en"])
     (ctx / "visual_spec.json").write_text(json.dumps(visual_spec, ensure_ascii=False, indent=2))
     (ctx / "world.json").write_text(json.dumps(world,            ensure_ascii=False, indent=2))
