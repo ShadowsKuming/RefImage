@@ -189,6 +189,10 @@ export const useApi = () => {
     })
   }
 
+  function generateWardrobe(projectId: string) {
+    return api<{ costume: any[]; props: any[] }>(`/projects/${projectId}/wardrobe/generate`, { method: 'POST' })
+  }
+
   function uploadWardrobeImage(projectId: string, itemId: string, file: File) {
     const fd = new FormData()
     fd.append('image', file, file.name)
@@ -433,6 +437,7 @@ export const useApi = () => {
     cropAvatar,
     autoAvatarCrop,
     uploadWardrobeImage,
+    generateWardrobe,
     generateMoments,
     saveMoments,
     saveWorld,

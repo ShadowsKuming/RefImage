@@ -127,6 +127,18 @@ def save_wardrobe(
     return {"ok": True}
 
 
+@router.post("/{project_id}/wardrobe/generate")
+def generate_wardrobe(project_id: str, user_id: str = Depends(get_current_user)):
+    """LLM-generate an initial costume/props list from the character's appearance."""
+    _check_owner(project_id, user_id)
+    try:
+        return wardrobe_service.generate_wardrobe(project_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
 @router.post("/{project_id}/wardrobe/items/{item_id}/image")
 async def upload_wardrobe_image(
     project_id: str,

@@ -1657,6 +1657,23 @@ function loadWardrobe() {
   propsList.value   = (w.props ?? []).map((p: any) => ({ ...p }))
 }
 
+// Generated once, silently in the background on first project open when empty
+// (same UX as 名场面/cover). LLM derives it from the character's appearance.
+const wardrobeLoading = ref(false)
+async function autoGenerateWardrobeIfMissing() {
+  if (costumeList.value.length || propsList.value.length || wardrobeLoading.value) return
+  wardrobeLoading.value = true
+  try {
+    const w = await api.generateWardrobe(projectId.value)
+    if (projectData.value) projectData.value.wardrobe = w
+    loadWardrobe()
+  } catch (e) {
+    console.error('Failed to generate wardrobe', e)
+  } finally {
+    wardrobeLoading.value = false
+  }
+}
+
 function buildWardrobe() {
   // `image` is derived on the backend (not persisted here); essential is stored.
   return {
@@ -1806,6 +1823,7 @@ onMounted(async () => {
     seedMockShots()               // TEMP MOCK — remove with SHOTS_MOCK
     autoGrabCoverIfMissing()      // one-time: grab a cover if the project has none
     autoGenerateMomentsIfMissing()  // one-time: silently generate 名场面 in the background
+    autoGenerateWardrobeIfMissing() // one-time: silently generate 服装道具 from appearance
   } catch (e) {
     console.error('Failed to load project', e)
   }

@@ -92,11 +92,11 @@ function cancel() { editIndex.value = -1 }
   padding: 1px 6px; outline: none; width: 9em; max-width: 100%;
 }
 .el-add {
-  margin-left: 6px; width: 18px; height: 18px; padding: 0; cursor: pointer;
-  border: 1px dashed var(--border-focus); border-radius: 50%; background: none;
-  color: var(--text-quiet); font-size: 12px; line-height: 1;
-  vertical-align: middle; transition: color 0.12s, border-color 0.12s;
+  margin-left: 6px; width: 16px; height: 16px; padding: 0; cursor: pointer;
+  border: none; background: none;
+  color: var(--text-quiet); font-size: 14px; line-height: 1;
+  vertical-align: middle; transition: color 0.12s;
 }
-.el-add:hover { color: var(--accent); border-color: var(--accent-dim); }
+.el-add:hover { color: var(--accent); }
 .el-add-input { width: 7em; }
 </style>

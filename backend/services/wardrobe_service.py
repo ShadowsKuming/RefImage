@@ -178,3 +178,88 @@ def remove_item(project_id: str, id: str) -> dict | None:
                 _write(project_id, data)
                 return removed
     return None
+
+
+def generate_wardrobe(project_id: str) -> dict:
+    """LLM-generate an initial 服装/道具 list from the character's appearance
+    (visual_spec already describes top/bottom/shoes/accessory/colors) + profile,
+    then save. Replaces the stored list. Returns the fresh wardrobe.
+
+    Structured output via a passthrough submit_wardrobe tool (same reliable
+    pattern as moments). Cosplay-oriented: costume = what the coser wears, props =
+    signature handheld items the character is known for. No web_search — the
+    appearance spec is the source, so no fabrication risk."""
+    from services import project_service
+    from tools.llm import call_agent
+
+    proj = project_service.get_project(project_id)  # raises FileNotFoundError
+    name = proj.get("character") or ""
+    series = proj.get("series") or ""
+    vs = proj.get("visual_spec") or {}
+    appearance = vs.get("zh") if isinstance(vs, dict) else str(vs)
+    cb = (proj.get("character_data") or {}).get("characterBackground") or {}
+    role = cb.get("role", "")
+
+    tools = [{
+        "name": "submit_wardrobe",
+        "description": "提交整理好的服装 + 道具清单。",
+        "input_schema": {"type": "object", "properties": {
+            "costume": {
+                "type": "array",
+                "items": {"type": "object", "properties": {
+                    "name":      {"type": "string", "description": "服装单品名,如 黑长直假发 / 樱丘高中校服上衣"},
+                    "category":  {"type": "string", "enum": list(COSTUME_CATEGORIES),
+                                  "description": "分类:假发wig/上衣top/下装bottom/鞋袜shoes/配饰accessory/其他misc"},
+                    "note":      {"type": "string", "description": "cos 要点(材质/颜色/细节),简短"},
+                    "essential": {"type": "boolean", "description": "必备(核心造型 true)还是备用(false)"},
+                }, "required": ["name", "category"]},
+            },
+            "props": {
+                "type": "array",
+                "items": {"type": "object", "properties": {
+                    "name":      {"type": "string", "description": "道具名,如 左手贝斯"},
+                    "note":      {"type": "string", "description": "要点,简短"},
+                    "essential": {"type": "boolean"},
+                }, "required": ["name"]},
+            },
+        }, "required": ["costume", "props"]},
+    }]
+
+    system = (
+        f"你是资深 cosplay 造型师。根据角色的外貌描述和资料,整理一份还原这个角色所需的"
+        f"『服装』(穿戴类:假发/上衣/下装/鞋袜/配饰)和『道具』(角色标志性手持物/乐器等)清单。"
+        f"目标角色:《{series}》的 {name}{('(' + role + ')') if role else ''}。"
+        f"\n外貌描述:\n{appearance}\n"
+        f"依据外貌把每个部位拆成具体单品(有假发/上衣/下装/鞋袜/配饰就分别列),"
+        f"道具只列这个角色公认的标志性物件(没有就留空数组)。整理完调用 submit_wardrobe 提交。"
+    )
+
+    result = None
+    for _ in range(2):
+        res = call_agent(
+            messages=[{"role": "user", "content": f"请为 {name} 整理服装道具清单,然后调用 submit_wardrobe 提交。"}],
+            system=system, tools=tools, tool_executor={}, max_turns=3, max_tokens=1500,
+        )
+        call = next((c for c in res.get("tool_calls", []) if c.get("name") == "submit_wardrobe"), None)
+        if call and isinstance(call.get("input"), dict):
+            result = call["input"]
+            break
+    if not result:
+        raise RuntimeError("服装道具生成失败(未能获取结果),请重试")
+
+    data = _default_wardrobe()
+    for c in (result.get("costume") or []):
+        n = (c.get("name") or "").strip()
+        if not n:
+            continue
+        cat = c.get("category") if c.get("category") in COSTUME_CATEGORIES else "misc"
+        data["costume"].append({"id": _new_id("cs"), "name": n, "category": cat,
+                                "note": (c.get("note") or "").strip(), "essential": bool(c.get("essential", True))})
+    for p in (result.get("props") or []):
+        n = (p.get("name") or "").strip()
+        if not n:
+            continue
+        data["props"].append({"id": _new_id("pr"), "name": n,
+                              "note": (p.get("note") or "").strip(), "essential": bool(p.get("essential", True))})
+    _write(project_id, data)
+    return load_wardrobe(project_id)
