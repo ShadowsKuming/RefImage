@@ -45,6 +45,7 @@ class CreateShotRequest(BaseModel):
     title: str
     mood: str = ""
     scene_description: str = ""
+    character_id: str | None = None
 
 
 class UpdateStatusRequest(BaseModel):
@@ -55,6 +56,10 @@ class RenameShotRequest(BaseModel):
     title: str
 
 
+class ShotCharacterRequest(BaseModel):
+    character_id: str
+
+
 @router.post("/{project_id}/shots")
 def create_shot(
     project_id: str,
@@ -63,10 +68,29 @@ def create_shot(
 ):
     _check_owner(project_id, user_id)
     try:
-        shot = project_service.create_shot(project_id, req.title, req.mood, req.scene_description)
+        shot = project_service.create_shot(
+            project_id, req.title, req.mood, req.scene_description, req.character_id,
+        )
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Project not found")
     return shot
+
+
+@router.patch("/{project_id}/shots/{shot_id}/character")
+def set_shot_character(
+    project_id: str,
+    shot_id: str,
+    req: ShotCharacterRequest,
+    user_id: str = Depends(get_current_user),
+):
+    _check_owner(project_id, user_id)
+    try:
+        project_service.set_shot_character(project_id, shot_id, req.character_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Shot not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True}
 
 
 @router.delete("/{project_id}/shots/{shot_id}")

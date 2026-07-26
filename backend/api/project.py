@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from api.auth import get_current_user
-from services import project_service, guide_service, export_service
+from services import project_service, guide_service, export_service, wardrobe_service, cover_service
 
 router = APIRouter()
 
@@ -38,6 +38,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     history: list[ChatMessage] = []
+    reply_lang: str = "zh"
 
 
 @router.post("/create")
@@ -96,6 +97,70 @@ def get_project(project_id: str, user_id: str = Depends(get_current_user)):
         return project_service.get_project(project_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Project not found")
+
+
+class PlanDataRequest(BaseModel):
+    data: dict
+
+
+@router.put("/{project_id}/plan")
+def save_plan(
+    project_id: str,
+    req: PlanDataRequest,
+    user_id: str = Depends(get_current_user),
+):
+    """Coarse save of the plan-panel data (equipment/notes/schedule/etc.)."""
+    _check_owner(project_id, user_id)
+    project_service.save_plan_data(project_id, req.data)
+    return {"ok": True}
+
+
+@router.put("/{project_id}/wardrobe")
+def save_wardrobe(
+    project_id: str,
+    req: PlanDataRequest,
+    user_id: str = Depends(get_current_user),
+):
+    """Coarse save of the costume/props data (left 设定 panel)."""
+    _check_owner(project_id, user_id)
+    wardrobe_service.save_wardrobe(project_id, req.data)
+    return {"ok": True}
+
+
+@router.post("/{project_id}/cover/grab")
+def grab_cover(project_id: str, user_id: str = Depends(get_current_user)):
+    """Auto-grab a work cover: image search → vision-pick → save locally.
+    Returns { url, source, title }."""
+    _check_owner(project_id, user_id)
+    try:
+        return cover_service.grab_cover(project_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.post("/{project_id}/cover")
+async def upload_cover(
+    project_id: str,
+    image: UploadFile = File(...),
+    user_id: str = Depends(get_current_user),
+):
+    """Replace the work cover with a user-uploaded image."""
+    _check_owner(project_id, user_id)
+    data = await image.read()
+    url = cover_service.save_uploaded_cover(project_id, data, image.filename or "cover.jpg")
+    return {"url": url}
+
+
+@router.get("/{project_id}/cover")
+def get_cover(project_id: str):
+    """Serve the stored work cover — no auth (used via <img> tags)."""
+    path = cover_service.cover_path(project_id)
+    if not path:
+        raise HTTPException(status_code=404, detail="No cover")
+    media_type = mimetypes.guess_type(str(path))[0] or "image/jpeg"
+    return FileResponse(path, media_type=media_type)
 
 
 @router.get("/{project_id}/refs/{filename}")
@@ -158,7 +223,8 @@ def project_chat(
             project_id,
             req.message,
             [m.model_dump() for m in req.history],
+            req.reply_lang,
         )
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Project not found")
-    return {"reply": result["reply"], "brief": result["brief"]}
+    return {"reply": result["reply"], "brief": result["brief"], "plan": result.get("plan")}

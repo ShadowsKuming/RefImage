@@ -181,6 +181,30 @@ def create_project(
     return meta
 
 
+def _characters_index_path(project_id: str):
+    return STORAGE_ROOT / project_id / "context" / "characters.json"
+
+
+def ensure_character_index(project_id: str, default_name: str = "") -> list[dict]:
+    """Return the character index [{ id, name }], creating it (single default
+    character 'c1') on first access. This is the id-based character list; the
+    profile/appearance data still lives in the per-project context files for the
+    primary character (per-character storage split is deferred to when a second
+    character can actually be added)."""
+    path = _characters_index_path(project_id)
+    if path.exists():
+        try:
+            idx = json.loads(path.read_text())
+            if isinstance(idx, list) and idx:
+                return idx
+        except (json.JSONDecodeError, OSError):
+            pass
+    idx = [{"id": "c1", "name": default_name}]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(idx, ensure_ascii=False, indent=2))
+    return idx
+
+
 def get_project(project_id: str) -> dict:
     """
     Load a project from disk and return a merged payload for the frontend.
@@ -230,6 +254,19 @@ def get_project(project_id: str) -> dict:
     plan_dir = base / "plan"
     brief         = json.loads((plan_dir / "brief.json").read_text())        if (plan_dir / "brief.json").exists()        else {}
     chat_history  = json.loads((plan_dir / "chat_history.json").read_text()) if (plan_dir / "chat_history.json").exists() else []
+    plan_data     = load_plan_data(project_id)
+    wardrobe      = wardrobe_service.load_wardrobe(project_id)
+
+    # ── characters (id-based list; single primary for now) ──────────────────────
+    char_index = ensure_character_index(project_id, character_data.get("character", ""))
+    primary_id = char_index[0]["id"]
+    characters = [{
+        "id":             char_index[0]["id"],
+        "name":           character_data.get("character", "") or char_index[0].get("name", ""),
+        "series":         character_data.get("series") or meta.get("series", ""),
+        "character_data": character_data,
+        "visual_spec":    visual_spec,
+    }]
 
     # ── shots/ ────────────────────────────────────────────────────────────────
     shots_dir = base / "shots"
@@ -238,19 +275,25 @@ def get_project(project_id: str) -> dict:
         for shot_dir in sorted(shots_dir.iterdir()):
             shot_file = shot_dir / "shot.json"
             if shot_dir.is_dir() and shot_file.exists():
-                shots.append(json.loads(shot_file.read_text()))
+                shot = json.loads(shot_file.read_text())
+                shot.setdefault("character_id", primary_id)   # legacy shots → primary
+                shots.append(shot)
 
     return {
         **meta,
         "world":          world,
         "character_data": character_data,
         "visual_spec":    visual_spec,
+        "characters":     characters,
         "refs":           refs,
         "extra_refs":     extra_refs,
         "plan": {
             "brief":        brief,
             "chat_history": chat_history,
+            "data":         plan_data,
         },
+        "wardrobe":       wardrobe,
+        "cover":          cover_service.cover_url(project_id),
         "shots": shots,
     }
 
@@ -271,13 +314,18 @@ def append_shot_messages(project_id: str, shot_id: str, messages: list[dict]) ->
     path.write_text(json.dumps(history, ensure_ascii=False, indent=2))
 
 
-def create_shot(project_id: str, title: str, mood: str, description: str = "") -> dict:
+def create_shot(project_id: str, title: str, mood: str, description: str = "",
+                character_id: str | None = None) -> dict:
     """
     Create a new shot under shots/{shot_id}/ and return its data.
+    character_id defaults to the project's primary character.
     """
     base = STORAGE_ROOT / project_id
     if not base.exists():
         raise FileNotFoundError(f"Project {project_id!r} not found")
+
+    if not character_id:
+        character_id = ensure_character_index(project_id)[0]["id"]
 
     shot_id  = str(uuid.uuid4())
     shot_dir = base / "shots" / shot_id
@@ -285,13 +333,14 @@ def create_shot(project_id: str, title: str, mood: str, description: str = "") -
     (shot_dir / "guides").mkdir(exist_ok=True)
 
     shot = {
-        "shot_id":     shot_id,
-        "project_id":  project_id,
-        "title":       title,
-        "mood":        mood,
-        "description": description,
-        "status":      "pending",
-        "created_at":  datetime.utcnow().isoformat() + "Z",
+        "shot_id":      shot_id,
+        "project_id":   project_id,
+        "title":        title,
+        "mood":         mood,
+        "description":  description,
+        "character_id": character_id,
+        "status":       "pending",
+        "created_at":   datetime.utcnow().isoformat() + "Z",
     }
     (shot_dir / "shot.json").write_text(json.dumps(shot, ensure_ascii=False, indent=2))
 
@@ -341,6 +390,19 @@ def update_shot_status(
         shot["error_type"] = error_type
     elif status != "error":
         shot.pop("error_type", None)
+    shot_file.write_text(json.dumps(shot, ensure_ascii=False, indent=2))
+
+
+def set_shot_character(project_id: str, shot_id: str, character_id: str) -> None:
+    """Assign which character a shot features."""
+    shot_file = STORAGE_ROOT / project_id / "shots" / shot_id / "shot.json"
+    if not shot_file.exists():
+        raise FileNotFoundError(f"Shot {shot_id!r} not found")
+    valid = {c["id"] for c in ensure_character_index(project_id)}
+    if character_id not in valid:
+        raise ValueError(f"Unknown character_id {character_id!r}")
+    shot = json.loads(shot_file.read_text())
+    shot["character_id"] = character_id
     shot_file.write_text(json.dumps(shot, ensure_ascii=False, indent=2))
 
 
@@ -468,6 +530,14 @@ def activate_version(project_id: str, shot_id: str, version_id: str) -> None:
 
 
 # ── Plan ───────────────────────────────────────────────────────────────────────
+
+# The plan panel's structured data lives in plan/plan.json and is owned by
+# services/plan_service.py (data layer + granular AI-tool mutations). Re-exported
+# here so existing callers (get_project, the PUT /plan endpoint) keep working.
+from services.plan_service import load_plan_data, save_plan_data  # noqa: E402
+from services import wardrobe_service  # noqa: E402
+from services import cover_service  # noqa: E402
+
 
 def save_chat_history(project_id: str, history: list[dict]) -> None:
     """Persist the full AI planning chat history to plan/chat_history.json."""

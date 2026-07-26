@@ -8,7 +8,7 @@ from agents.planning_chat import chat as _planning_chat
 from services import project_service
 
 
-def planning_chat(project_id: str, message: str, history: list[dict]) -> dict:
+def planning_chat(project_id: str, message: str, history: list[dict], reply_lang: str = "zh") -> dict:
     """
     Run one turn of the AI planning assistant for a project.
 
@@ -36,7 +36,7 @@ def planning_chat(project_id: str, message: str, history: list[dict]) -> dict:
         if turn.get("role") in ("user", "agent")
     ]
 
-    result = _planning_chat(message, llm_history, project, project_id)
+    result = _planning_chat(message, llm_history, project, project_id, reply_lang)
     reply = result["reply"]
     brief = result["brief"]
 
@@ -51,4 +51,6 @@ def planning_chat(project_id: str, message: str, history: list[dict]) -> dict:
     if brief:
         project_service.save_brief(project_id, brief)
 
-    return {"reply": reply, "brief": brief}
+    # result["plan"] is the fresh plan.data when the AI mutated it this turn
+    # (already persisted by plan_service), else None.
+    return {"reply": reply, "brief": brief, "plan": result.get("plan")}

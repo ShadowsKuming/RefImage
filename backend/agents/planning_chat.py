@@ -12,8 +12,13 @@ import json
 from pathlib import Path
 from tools.llm import call_agent
 from tools.search import web_search as _web_search
+from services import plan_service
 
 STORAGE_ROOT = Path(__file__).parent.parent / "storage" / "projects"
+
+_LANG_NAMES = {"zh": "中文", "en": "English", "ja": "日本語"}
+_PHASE_LABELS = {"pre": "拍摄前", "onsite": "拍摄当天", "other": "其他"}
+_PRIO_LABELS = {"high": "高", "mid": "中", "low": "低"}
 
 _GUIDE_LABELS = {
     "action":     "动作",
@@ -94,6 +99,154 @@ TOOLS = [
 ]
 
 
+# ── Plan mutation tools (add / remove only — never a whole-list rewrite) ───────
+# Each item's id (shown in the 拍摄计划总表 section of the system prompt) is the
+# handle for removal. To "edit" an item, remove it by id then add the new one.
+
+_PLAN_TOOLS = [
+    {
+        "name": "update_overview",
+        "description": "更新拍摄计划总览：主题 theme、拍摄日期 shoot_date、参与人数 crew。只传你要改动的字段，未传的保持不变。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "theme":      {"type": "string", "description": "拍摄主题"},
+                "shoot_date": {"type": "string", "description": "拍摄日期，如 2026/08/15"},
+                "crew": {
+                    "type": "object", "description": "参与人数（各角色人数）",
+                    "properties": {
+                        "photographers": {"type": "integer", "description": "摄影人数"},
+                        "cosers":        {"type": "integer", "description": "coser 人数"},
+                        "logistics":     {"type": "integer", "description": "后勤人数"},
+                    },
+                },
+            },
+        },
+    },
+    {
+        "name": "add_equipment",
+        "description": "往设备清单添加一项设备。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name":     {"type": "string", "description": "设备名称，如 85mm 镜头"},
+                "required": {"type": "boolean", "description": "是否必要设备，默认 true；可选设备传 false"},
+                "desc":     {"type": "string", "description": "备注，如 适合特写"},
+                "category": {"type": "string",
+                             "enum": ["camera", "lens", "light", "reflector", "support",
+                                      "power", "charger", "audio", "backdrop", "misc"],
+                             "description": "设备分类"},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "remove_equipment",
+        "description": "按 id 从设备清单删除一项设备（id 形如 eq_xxxx，见拍摄计划总表）。修改某项设备＝先删后加。",
+        "input_schema": {
+            "type": "object",
+            "properties": {"id": {"type": "string", "description": "设备 id"}},
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "add_note",
+        "description": "往注意事项添加一条。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title":    {"type": "string", "description": "事项标题，如 场地需提前申请"},
+                "desc":     {"type": "string", "description": "细节说明"},
+                "phase":    {"type": "string", "enum": ["pre", "onsite", "other"],
+                             "description": "所属阶段：拍摄前 pre / 拍摄当天 onsite / 其他 other，默认 pre"},
+                "priority": {"type": "string", "enum": ["high", "mid", "low"],
+                             "description": "优先级，默认 mid"},
+            },
+            "required": ["title"],
+        },
+    },
+    {
+        "name": "remove_note",
+        "description": "按 id 删除一条注意事项（id 形如 nt_xxxx）。修改＝先删后加。",
+        "input_schema": {
+            "type": "object",
+            "properties": {"id": {"type": "string", "description": "注意事项 id"}},
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "add_schedule_segment",
+        "description": "往拍摄日程添加一个时段（一个场景对应一段）。场地/光线信息随日程走。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scene":    {"type": "string", "description": "场景/地点名，如 音乐教室窗边"},
+                "time":     {"type": "string", "description": "时间段，如 14:00–14:40"},
+                "content":  {"type": "string", "description": "这一段拍什么，如 日常练习与互动"},
+                "duration": {"type": "string", "description": "时长，如 40 分钟"},
+                "light":    {"type": "string", "description": "光线，如 自然光 / 灯光为主"},
+                "priority": {"type": "string", "enum": ["high", "mid", "low"],
+                             "description": "优先级（高＝必拍）"},
+            },
+            "required": ["scene"],
+        },
+    },
+    {
+        "name": "remove_schedule_segment",
+        "description": "按 id 删除一个拍摄时段（id 形如 sg_xxxx）。修改＝先删后加。",
+        "input_schema": {
+            "type": "object",
+            "properties": {"id": {"type": "string", "description": "日程时段 id"}},
+            "required": ["id"],
+        },
+    },
+]
+
+
+def _format_plan(plan: dict) -> list[str]:
+    """Render the current plan.json (with item ids) so the AI knows the live
+    state and can target removals by id."""
+    lines = ["", "═══ 拍摄计划总表（可用下方工具增删）═══"]
+
+    crew = plan.get("crew") or {}
+    crew_txt = " ".join(
+        f"{lbl}{crew[k]}" for k, lbl in
+        (("photographers", "摄影"), ("cosers", "coser"), ("logistics", "后勤"))
+        if crew.get(k)
+    )
+    lines.append(
+        f"主题：{plan.get('theme') or '（未填）'}　"
+        f"日期：{plan.get('shoot_date') or '（未填）'}　"
+        f"参与：{crew_txt or '（未填）'}"
+    )
+
+    equip = plan.get("equipment") or []
+    lines.append(f"设备（{len(equip)}）：" + ("" if equip else "（空）"))
+    for e in equip:
+        tag = "必要" if e.get("required", True) else "可选"
+        desc = f" — {e['desc']}" if e.get("desc") else ""
+        lines.append(f"  [{e.get('id')}] {e.get('name')}（{tag}，{e.get('category', 'misc')}）{desc}")
+
+    sched = plan.get("schedule") or []
+    lines.append(f"拍摄日程（{len(sched)} 段）：" + ("" if sched else "（空）"))
+    for s in sched:
+        prio = f" ·{_PRIO_LABELS.get(s.get('priority'), '')}优先" if s.get("priority") else ""
+        light = f" ·{s['light']}" if s.get("light") else ""
+        lines.append(
+            f"  [{s.get('id')}] {s.get('time') or '时段未定'} {s.get('scene')}"
+            f" · {s.get('content') or ''} · {s.get('duration') or ''}{light}{prio}"
+        )
+
+    notes = plan.get("notes") or []
+    lines.append(f"注意事项（{len(notes)}）：" + ("" if notes else "（空）"))
+    for n in notes:
+        ph = _PHASE_LABELS.get(n.get("phase"), "")
+        pr = _PRIO_LABELS.get(n.get("priority"), "")
+        lines.append(f"  [{n.get('id')}] {n.get('title')}（{ph}，{pr}优先）")
+
+    return lines
+
+
 # ── System prompt ─────────────────────────────────────────────────────────────
 
 def _build_system(project: dict, project_id: str) -> str:
@@ -123,6 +276,13 @@ def _build_system(project: dict, project_id: str) -> str:
         "- 需要查资料时（地点/设备/参考图）直接使用 web_search，不需要告知用户",
         "- 随时调用 update_brief 更新拍摄总结——只要你认为当前信息足够写某个字段就写，不需要等用户确认",
         "- 用户说'帮我总结'或'更新总结'时，立即根据现有 shot 数据生成并提交总结",
+        "- 你可以直接编辑右侧的拍摄计划：设备用 add_equipment/remove_equipment，"
+        "注意事项用 add_note/remove_note，拍摄日程用 add_schedule_segment/remove_schedule_segment，"
+        "总览用 update_overview。用户要你加/删/改这些内容时直接调用对应工具",
+        "- 这些工具只能增或删，不能整段重写。要修改一项就先按 id 删掉再重新添加"
+        "（id 见「拍摄计划总表」，形如 eq_/nt_/sg_）。一次只改需要动的那几项，别把用户已有的内容重建一遍",
+        "- 场地卡片和室内外标签是根据日程自动生成的，不用单独维护；改日程即可。"
+        "地点的实际地址只有用户知道，你不要编造",
         "- 如果话题跑偏，自然引导回拍摄规划",
         "",
         "═══ 角色资料 ═══",
@@ -200,12 +360,16 @@ def _build_system(project: dict, project_id: str) -> str:
     else:
         lines += ["", "═══ 当前拍摄计划 ═══", "（尚未添加任何拍摄）"]
 
+    plan_data = project.get("plan", {}).get("data") or plan_service.load_plan_data(project_id)
+    lines += _format_plan(plan_data)
+
     return "\n".join(lines)
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 
-def chat(message: str, history: list[dict], project: dict, project_id: str) -> dict:
+def chat(message: str, history: list[dict], project: dict, project_id: str,
+         reply_lang: str = "zh") -> dict:
     """
     Process one planning message and return a result dict.
 
@@ -220,7 +384,11 @@ def chat(message: str, history: list[dict], project: dict, project_id: str) -> d
           brief: dict | None,    — populated if update_brief was called, else None
         }
     """
-    system   = _build_system(project, project_id)
+    system   = _build_system(project, project_id) + (
+        f"\n\n【回复语言】始终使用{_LANG_NAMES.get(reply_lang, '中文')}回复用户，"
+        "无论用户用什么语言提问都不要在回复里混用其他语言。"
+        "（拍摄计划里的字段值按用户填写的原文保留，不用翻译。）"
+    )
     messages = history + [{"role": "user", "content": message}]
 
     # Closure captures brief data when AI calls update_brief.
@@ -229,6 +397,7 @@ def chat(message: str, history: list[dict], project: dict, project_id: str) -> d
     # this avoids the empty-bubble bug caused by passthrough tools that
     # return no text when using OpenAI's chat completion format.
     captured_brief: dict = {}
+    state = {"plan_dirty": False}
 
     def _execute_update_brief(inp: dict) -> str:
         captured_brief.update(inp)
@@ -238,21 +407,83 @@ def chat(message: str, history: list[dict], project: dict, project_id: str) -> d
             "可以开始点击「+」添加具体的拍摄计划卡片了。"
         )
 
+    # Plan mutation executors: mutate plan.json via plan_service, flag dirty so
+    # the caller reloads and returns the fresh plan to the frontend.
+    def _dirty(msg: str) -> str:
+        state["plan_dirty"] = True
+        return msg
+
+    def _ex_update_overview(inp: dict) -> str:
+        plan_service.update_overview(
+            project_id, theme=inp.get("theme"),
+            shoot_date=inp.get("shoot_date"), crew=inp.get("crew"),
+        )
+        return _dirty("总览已更新。")
+
+    def _ex_add_equipment(inp: dict) -> str:
+        item = plan_service.add_equipment(
+            project_id, name=inp["name"], required=inp.get("required", True),
+            desc=inp.get("desc"), category=inp.get("category"),
+        )
+        return _dirty(f"已添加设备「{item['name']}」（id {item['id']}）。")
+
+    def _ex_remove_equipment(inp: dict) -> str:
+        r = plan_service.remove_equipment(project_id, inp["id"])
+        if r is None:
+            return f"没找到 id 为 {inp['id']} 的设备，可能已被删除。"
+        return _dirty(f"已删除设备「{r['name']}」。")
+
+    def _ex_add_note(inp: dict) -> str:
+        item = plan_service.add_note(
+            project_id, title=inp["title"], desc=inp.get("desc"),
+            phase=inp.get("phase", "pre"), priority=inp.get("priority", "mid"),
+        )
+        return _dirty(f"已添加注意事项「{item['title']}」（id {item['id']}）。")
+
+    def _ex_remove_note(inp: dict) -> str:
+        r = plan_service.remove_note(project_id, inp["id"])
+        if r is None:
+            return f"没找到 id 为 {inp['id']} 的注意事项，可能已被删除。"
+        return _dirty(f"已删除注意事项「{r['title']}」。")
+
+    def _ex_add_schedule(inp: dict) -> str:
+        item = plan_service.add_schedule_segment(
+            project_id, scene=inp["scene"], time=inp.get("time"),
+            content=inp.get("content"), duration=inp.get("duration"),
+            light=inp.get("light"), priority=inp.get("priority"),
+            shot_ids=inp.get("shot_ids"),
+        )
+        return _dirty(f"已添加拍摄时段「{item['scene']}」（id {item['id']}）。")
+
+    def _ex_remove_schedule(inp: dict) -> str:
+        r = plan_service.remove_schedule_segment(project_id, inp["id"])
+        if r is None:
+            return f"没找到 id 为 {inp['id']} 的拍摄时段，可能已被删除。"
+        return _dirty(f"已删除拍摄时段「{r['scene']}」。")
+
     tool_executor = {
         "web_search":    lambda inp: _web_search(inp["query"], lang=inp.get("lang", "zh-cn")),
         "update_brief":  _execute_update_brief,
+        "update_overview":         _ex_update_overview,
+        "add_equipment":           _ex_add_equipment,
+        "remove_equipment":        _ex_remove_equipment,
+        "add_note":                _ex_add_note,
+        "remove_note":             _ex_remove_note,
+        "add_schedule_segment":    _ex_add_schedule,
+        "remove_schedule_segment": _ex_remove_schedule,
     }
 
     result = call_agent(
         messages=messages,
         system=system,
-        tools=TOOLS,
+        tools=TOOLS + _PLAN_TOOLS,
         tool_executor=tool_executor,
-        max_turns=6,
+        max_turns=8,
         max_tokens=1000,
     )
 
     return {
         "reply": result["text"],
         "brief": captured_brief if captured_brief else None,
+        "plan":  plan_service.load_plan_data(project_id) if state["plan_dirty"] else None,
     }

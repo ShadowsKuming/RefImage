@@ -107,6 +107,34 @@ export const useApi = () => {
     return api<any>(`/projects/${projectId}`)
   }
 
+  function savePlanData(projectId: string, data: Record<string, any>) {
+    return api<{ ok: boolean }>(`/projects/${projectId}/plan`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data }),
+    })
+  }
+
+  function saveWardrobe(projectId: string, data: Record<string, any>) {
+    return api<{ ok: boolean }>(`/projects/${projectId}/wardrobe`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data }),
+    })
+  }
+
+  function grabCover(projectId: string) {
+    return api<{ url: string; source: string; title: string }>(
+      `/projects/${projectId}/cover/grab`, { method: 'POST' },
+    )
+  }
+
+  function uploadCover(projectId: string, file: File) {
+    const fd = new FormData()
+    fd.append('image', file, file.name)
+    return api<{ url: string }>(`/projects/${projectId}/cover`, { method: 'POST', body: fd })
+  }
+
   function listProjects() {
     return api<any[]>('/home/')
   }
@@ -133,11 +161,11 @@ export const useApi = () => {
     projectId: string,
     message: string,
     history: { role: string; text: string }[],
-  ): Promise<{ reply: string; brief: Record<string, any> | null }> {
-    return api<{ reply: string; brief: Record<string, any> | null }>(`/projects/${projectId}/chat`, {
+  ): Promise<{ reply: string; brief: Record<string, any> | null; plan: Record<string, any> | null }> {
+    return api<{ reply: string; brief: Record<string, any> | null; plan: Record<string, any> | null }>(`/projects/${projectId}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, history }),
+      body: JSON.stringify({ message, history, reply_lang: useLocale().locale.value }),
     })
   }
 
@@ -329,6 +357,10 @@ export const useApi = () => {
     runScenes,
     getProject,
     listProjects,
+    savePlanData,
+    saveWardrobe,
+    grabCover,
+    uploadCover,
     exportProject,
     importProject,
     projectChat,

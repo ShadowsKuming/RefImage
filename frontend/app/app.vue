@@ -1,5 +1,9 @@
 <template>
   <NuxtPage />
+  <!--
+    左侧悬浮切换器（语言 🌐 + 主题）暂时隐藏 —— 悬浮设计会盖住设定面板内容，
+    以后重做入口时把下面这段取消注释即可恢复。init()/initLocale() 仍保留，
+    所存的主题/语言照常生效，只是暂时没有切换 UI。
   <LocaleSwitcher />
   <div class="theme-palette" ref="paletteEl">
     <transition name="palette-fade">
@@ -26,6 +30,7 @@
       </svg>
     </button>
   </div>
+  -->
 </template>
 
 <script setup lang="ts">

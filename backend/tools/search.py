@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '../../.env'))
 
 SERPER_URL = "https://google.serper.dev/search"
+SERPER_IMAGES_URL = "https://google.serper.dev/images"
 
 _LANG_PARAMS = {
     "zh-cn": {"hl": "zh-cn", "gl": "cn"},
@@ -48,3 +49,39 @@ def web_search(query: str, num: int = 5, lang: str = "zh-cn") -> str:
         results.append(f"- {title}: {snippet}")
 
     return "\n".join(results) if len(results) > 1 else f"[{lang}] 未找到相关结果"
+
+
+def image_search(query: str, num: int = 10, lang: str = "ja") -> list[dict]:
+    """
+    Image search via Serper. Returns structured results (unlike web_search's
+    formatted string) because callers need the raw imageUrl to download/pick:
+      [ { imageUrl, thumbnailUrl, title, source, width, height }, ... ]
+    Empty list if the key is missing or nothing is found.
+    """
+    api_key = os.getenv("SERPER_API_KEY")
+    if not api_key:
+        return []
+
+    lang_params = _LANG_PARAMS.get(lang, _LANG_PARAMS["zh-cn"])
+    resp = requests.post(
+        SERPER_IMAGES_URL,
+        headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
+        json={"q": query, "num": num, **lang_params},
+        timeout=15,
+    )
+    resp.raise_for_status()
+
+    out = []
+    for im in resp.json().get("images", [])[:num]:
+        url = im.get("imageUrl")
+        if not url:
+            continue
+        out.append({
+            "imageUrl":     url,
+            "thumbnailUrl": im.get("thumbnailUrl", ""),
+            "title":        im.get("title", ""),
+            "source":       im.get("source", ""),
+            "width":        im.get("imageWidth") or 0,
+            "height":       im.get("imageHeight") or 0,
+        })
+    return out

@@ -5,7 +5,7 @@
     <div class="top-bar">
       <div class="breadcrumb">
         <button class="back-btn" @click="navigateTo('/')">
-          <span class="back-chevron">‹</span>主页
+          <span class="back-chevron">‹</span>{{ t('projectCanvas.home') }}
         </button>
         <span class="bc-sep">/</span>
         <span class="bc-item">{{ project.work }}</span>
@@ -13,9 +13,9 @@
         <span class="bc-current">{{ project.character }}</span>
       </div>
       <div class="tb-actions">
-        <button class="tb-btn" @click="resetLayout">重置布局</button>
+        <button class="tb-btn" @click="resetLayout">{{ t('projectCanvas.resetLayout') }}</button>
         <button class="tb-btn" :disabled="exporting" @click="doExport">
-          {{ exporting ? '导出中…' : '导出项目' }}
+          {{ exporting ? t('projectCanvas.exporting') : t('projectCanvas.exportProject') }}
         </button>
       </div>
     </div>
@@ -40,9 +40,9 @@
           <div class="p-inner shots-panel">
             <!-- Panel toolbar -->
             <div class="shots-toolbar">
-              <span class="shots-count">{{ shots.length }} 张</span>
+              <span class="shots-count">{{ shots.length }} {{ t('projectCanvas.shotCountSuffix') }}</span>
               <div class="view-toggle">
-                <button class="vt-btn" :class="{ active: viewMode === 'grid' }" title="网格" @click="viewMode = 'grid'">
+                <button class="vt-btn" :class="{ active: viewMode === 'grid' }" :title="t('projectCanvas.gridView')" @click="viewMode = 'grid'">
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                     <rect x="0" y="0" width="6" height="6" rx="1" fill="currentColor"/>
                     <rect x="8" y="0" width="6" height="6" rx="1" fill="currentColor"/>
@@ -50,7 +50,7 @@
                     <rect x="8" y="8" width="6" height="6" rx="1" fill="currentColor"/>
                   </svg>
                 </button>
-                <button class="vt-btn" :class="{ active: viewMode === 'list' }" title="列表" @click="viewMode = 'list'">
+                <button class="vt-btn" :class="{ active: viewMode === 'list' }" :title="t('projectCanvas.listView')" @click="viewMode = 'list'">
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                     <rect x="0" y="1" width="14" height="2.5" rx="1" fill="currentColor"/>
                     <rect x="0" y="5.75" width="14" height="2.5" rx="1" fill="currentColor"/>
@@ -71,20 +71,20 @@
               >
                 <div v-if="shot.image_url" class="sc-thumb-wrap">
                   <img :src="BASE_URL + shot.image_url" class="sc-thumb" :alt="shot.title" />
-                  <div v-if="shot.status === 'refined'" class="sc-refined-overlay">✓ 已完善</div>
+                  <div v-if="shot.status === 'refined'" class="sc-refined-overlay">✓ {{ t('projectCanvas.refined') }}</div>
                 </div>
                 <div class="sc-mood">{{ shot.mood }}</div>
                 <div class="sc-title">{{ shot.title }}</div>
                 <div class="sc-desc" v-if="shot.description">{{ shot.description }}</div>
                 <div class="sc-footer">
-                  <span v-if="shot.status === 'error'" class="sc-error-dot" title="生成出错">!</span>
+                  <span v-if="shot.status === 'error'" class="sc-error-dot" :title="t('projectCanvas.genError')">!</span>
                   <span v-else class="sc-spacer" />
-                  <button class="sc-del" @click.stop="removeShot(shot.shot_id)" title="删除">✕</button>
+                  <button class="sc-del" @click.stop="removeShot(shot.shot_id)" :title="t('projectCanvas.delete')">✕</button>
                 </div>
               </div>
               <div class="shot-add" :class="{ adding: shotAdding }" @click="quickAddShot">
                 <span class="add-icon">{{ shotAdding ? '…' : '+' }}</span>
-                <span class="add-text">新增拍摄</span>
+                <span class="add-text">{{ t('projectCanvas.addShot') }}</span>
               </div>
             </div>
 
@@ -106,13 +106,13 @@
                   <span v-if="shot.mood" class="sl-mood">{{ shot.mood }}</span>
                 </div>
                 <div class="sl-right">
-                  <span v-if="shot.status === 'refined'" class="sl-badge-refined">已完善</span>
-                  <span v-else-if="shot.status === 'error'" class="sl-badge-error">错误</span>
-                  <button class="sc-del" @click.stop="removeShot(shot.shot_id)" title="删除">✕</button>
+                  <span v-if="shot.status === 'refined'" class="sl-badge-refined">{{ t('projectCanvas.refined') }}</span>
+                  <span v-else-if="shot.status === 'error'" class="sl-badge-error">{{ t('projectCanvas.errorBadge') }}</span>
+                  <button class="sc-del" @click.stop="removeShot(shot.shot_id)" :title="t('projectCanvas.delete')">✕</button>
                 </div>
               </div>
               <button class="sl-add" :disabled="shotAdding" @click="quickAddShot">
-                {{ shotAdding ? '…' : '+ 新增拍摄' }}
+                {{ shotAdding ? '…' : '+ ' + t('projectCanvas.addShot') }}
               </button>
             </div>
           </div>
@@ -123,20 +123,20 @@
           <div class="p-inner plan-panel">
             <!-- 项目概览:计划元信息(主题/日期/视觉方向),卡片式 -->
             <div class="plan-card">
-              <div class="pc-head"><span class="pc-title">项目概览</span></div>
+              <div class="pc-head"><span class="pc-title">{{ t('projectCanvas.overview') }}</span></div>
               <div class="pc-rows">
-                <!-- 常驻可编辑输入(会话内生效;存盘等数据层) -->
+                <!-- 常驻可编辑输入(改完即存到后端 plan) -->
                 <div class="po-row">
-                  <span class="po-label">拍摄主题</span>
-                  <input v-model="draft.theme" class="po-input" placeholder="填写拍摄主题" />
+                  <span class="po-label">{{ t('projectCanvas.theme') }}</span>
+                  <input v-model="draft.theme" class="po-input" :placeholder="t('projectCanvas.themePlaceholder')" @change="persistPlan" />
                 </div>
                 <div class="po-row">
-                  <span class="po-label">拍摄日期</span>
-                  <input v-model="draft.shootDate" class="po-input" placeholder="如 2026/08/15" />
+                  <span class="po-label">{{ t('projectCanvas.shootDate') }}</span>
+                  <input v-model="draft.shootDate" class="po-input" :placeholder="t('projectCanvas.shootDatePlaceholder')" @change="persistPlan" />
                 </div>
                 <div class="po-row">
-                  <span class="po-label">参与人数</span>
-                  <span class="po-val" :class="{ ph: !crewText }">{{ crewText || '待填写' }}</span>
+                  <span class="po-label">{{ t('projectCanvas.crew') }}</span>
+                  <span class="po-val" :class="{ ph: !crewText }">{{ crewText || t('projectCanvas.crewTodo') }}</span>
                 </div>
               </div>
             </div>
@@ -175,13 +175,13 @@
 
                     <!-- 准备进度条:勾选项 / 总数 -->
                     <div class="prep-bar">
-                      <span class="pb-head"><CircleCheck class="pb-ico" /> 已准备 {{ preparedCount }} / {{ equipmentList.length }}</span>
+                      <span class="pb-head"><CircleCheck class="pb-ico" /> {{ t('projectCanvas.preparedProgress', { done: preparedCount, total: equipmentList.length }) }}</span>
                       <div class="pb-track"><div class="pb-fill" :style="{ width: preparedPct + '%' }" /></div>
                       <span class="pb-pct">{{ preparedPct }}%</span>
                     </div>
 
                     <div v-for="grp in equipGroups" :key="grp.cls" class="equip-group">
-                        <div class="equip-group-head"><span class="egh-dot" :class="grp.cls" />{{ grp.label }} <span class="egh-count">{{ grp.items.length }} 项</span></div>
+                        <div class="equip-group-head"><span class="egh-dot" :class="grp.cls" />{{ grp.label }} <span class="egh-count">{{ grp.items.length }} {{ t('projectCanvas.countSuffix') }}</span></div>
                         <div
                           v-for="e in grp.items"
                           :key="e.name"
@@ -197,34 +197,34 @@
                             <span v-if="e.desc" class="ei-desc">{{ e.desc }}</span>
                           </div>
                           <span class="ei-status" :class="isPrepared(e) ? 'ready' : 'pending'">
-                            <component :is="isPrepared(e) ? CircleCheck : Clock" class="eis-ico" />{{ isPrepared(e) ? '已准备' : '待确认' }}
+                            <component :is="isPrepared(e) ? CircleCheck : Clock" class="eis-ico" />{{ isPrepared(e) ? t('projectCanvas.prepared') : t('projectCanvas.pending') }}
                           </span>
                           <button
                             class="ei-del"
                             :class="{ armed: pendingDelete === e }"
-                            :title="pendingDelete === e ? '再次点击确认删除' : '删除'"
+                            :title="pendingDelete === e ? t('projectCanvas.confirmDelete') : t('projectCanvas.delete')"
                             @click="armDelete(e, () => removeEquipment(e))"
                           >
-                            <template v-if="pendingDelete === e">删除</template>
+                            <template v-if="pendingDelete === e">{{ t('projectCanvas.delete') }}</template>
                             <X v-else />
                           </button>
                         </div>
                     </div>
                   </template>
-                  <p v-else class="detail-empty">还没有设备,点下面添加。</p>
+                  <p v-else class="detail-empty">{{ t('projectCanvas.emptyEquip') }}</p>
 
                   <!-- 添加设备:表单入口 -->
-                  <button v-if="!showAddEquip" class="equip-add-btn" @click="showAddEquip = true">+ 添加设备</button>
+                  <button v-if="!showAddEquip" class="equip-add-btn" @click="showAddEquip = true">{{ t('projectCanvas.addEquip') }}</button>
                   <div v-else class="equip-form">
                     <select v-model="newEquip.category" class="ef-select">
                       <option v-for="c in EQUIP_CATEGORIES" :key="c.key" :value="c.key">{{ c.label }}</option>
                     </select>
-                    <input v-model="newEquip.name" class="ef-input" placeholder="设备名称(如 85mm 镜头)" @keydown.enter="submitAddEquip" />
-                    <input v-model="newEquip.desc" class="ef-input" placeholder="备注(可选,如:适合特写)" @keydown.enter="submitAddEquip" />
-                    <label class="ef-req"><input type="checkbox" v-model="newEquip.required" /> 必要设备</label>
+                    <input v-model="newEquip.name" class="ef-input" :placeholder="t('projectCanvas.equipNamePlaceholder')" @keydown.enter="submitAddEquip" />
+                    <input v-model="newEquip.desc" class="ef-input" :placeholder="t('projectCanvas.equipDescPlaceholder')" @keydown.enter="submitAddEquip" />
+                    <label class="ef-req"><input type="checkbox" v-model="newEquip.required" /> {{ t('projectCanvas.requiredEquip') }}</label>
                     <div class="ef-actions">
-                      <button class="ef-cancel" @click="showAddEquip = false">取消</button>
-                      <button class="ef-submit" :disabled="!newEquip.name.trim()" @click="submitAddEquip">添加</button>
+                      <button class="ef-cancel" @click="showAddEquip = false">{{ t('projectCanvas.cancel') }}</button>
+                      <button class="ef-submit" :disabled="!newEquip.name.trim()" @click="submitAddEquip">{{ t('projectCanvas.add') }}</button>
                     </div>
                   </div>
                 </div>
@@ -240,17 +240,17 @@
                       </div>
                       <div class="loc-meta">
                         <span v-if="loc.times.length" class="loc-mrow"><Clock class="loc-mi" />{{ loc.times.join('、') }}</span>
-                        <span class="loc-mrow"><Clapperboard class="loc-mi" />{{ shotLabels(loc.shotIds) || '待关联镜头' }}</span>
+                        <span class="loc-mrow"><Clapperboard class="loc-mi" />{{ shotLabels(loc.shotIds) || t('projectCanvas.linkShotsTodo') }}</span>
                         <span v-if="loc.lights.length" class="loc-mrow"><Sun class="loc-mi" />{{ loc.lights.join('、') }}</span>
                       </div>
                       <div class="loc-field">
                         <MapPin class="loc-fi" />
-                        <input v-model="locAddr[loc.scene]" class="loc-input" placeholder="实际地址(如 樱丘高中 教学楼 3F)" @change="saveLocationMeta" />
+                        <input v-model="locAddr[loc.scene]" class="loc-input" :placeholder="t('projectCanvas.addressPlaceholder')" @change="persistPlan" />
                       </div>
                     </div>
                   </div>
                 </div>
-                <p v-else class="detail-empty">场地待 AI 规划</p>
+                <p v-else class="detail-empty">{{ t('projectCanvas.emptyLoc') }}</p>
               </template>
 
               <template v-else-if="summaryTab === 'schedule'">
@@ -292,14 +292,14 @@
                           >
                             <img :src="u" :alt="row.scene" draggable="false" />
                           </div>
-                          <span v-if="schedThumbs(row).length > 1" class="scd-count">共 {{ schedThumbs(row).length }} 张</span>
+                          <span v-if="schedThumbs(row).length > 1" class="scd-count">{{ t('projectCanvas.thumbCount', { n: schedThumbs(row).length }) }}</span>
                         </template>
                         <span v-else class="scd-ph"><ImageIcon /></span>
                       </div>
 
                       <div class="scd-info">
                         <div class="scd-row"><MapPin class="scd-ri" /><span class="scd-scene">{{ row.scene }}</span></div>
-                        <div class="scd-row"><Clapperboard class="scd-ri" /><span class="scd-k">镜头</span><span class="scd-v">{{ shotLabels(row.shotIds) || '待关联' }}</span></div>
+                        <div class="scd-row"><Clapperboard class="scd-ri" /><span class="scd-k">{{ t('projectCanvas.schedShotLabel') }}</span><span class="scd-v">{{ shotLabels(row.shotIds) || t('projectCanvas.linkTodo') }}</span></div>
                         <div class="scd-row"><FileText class="scd-ri" /><span class="scd-v">{{ row.content }}</span></div>
                         <div v-if="row.light" class="scd-row"><Sun class="scd-ri" /><span class="scd-v">{{ row.light }}</span></div>
                       </div>
@@ -313,16 +313,16 @@
                       :key="i"
                       class="sd-dot"
                       :class="{ on: schedActive === i }"
-                      :aria-label="`第 ${i + 1} 段`"
+                      :aria-label="t('projectCanvas.segmentAria', { i: i + 1 })"
                       @click="schedGo(i)"
                     />
                   </div>
 
                   <div v-if="plan.schedule.length > 1" class="sched-hint">
-                    <Lightbulb class="sh-ico" /><span>提示:可左右滑动查看全部拍摄阶段</span>
+                    <Lightbulb class="sh-ico" /><span>{{ t('projectCanvas.schedHint') }}</span>
                   </div>
                 </div>
-                <p v-else class="detail-empty">拍摄日程待 AI 生成</p>
+                <p v-else class="detail-empty">{{ t('projectCanvas.emptySched') }}</p>
               </template>
 
               <template v-else-if="summaryTab === 'notes'">
@@ -330,13 +330,13 @@
                   <template v-if="notesList.length">
                     <!-- 确认进度条 -->
                     <div class="prep-bar">
-                      <span class="pb-head"><CircleCheck class="pb-ico" /> 已确认 {{ noteDoneCount }} / {{ notesList.length }}</span>
+                      <span class="pb-head"><CircleCheck class="pb-ico" /> {{ t('projectCanvas.confirmedProgress', { done: noteDoneCount, total: notesList.length }) }}</span>
                       <div class="pb-track"><div class="pb-fill" :style="{ width: notePct + '%' }" /></div>
                       <span class="pb-pct">{{ notePct }}%</span>
                     </div>
 
                     <div v-for="grp in noteGroups" :key="grp.key" class="equip-group">
-                      <div class="equip-group-head"><span class="egh-dot req" />{{ grp.label }} <span class="egh-count">{{ grp.items.length }} 项</span></div>
+                      <div class="equip-group-head"><span class="egh-dot req" />{{ grp.label }} <span class="egh-count">{{ grp.items.length }} {{ t('projectCanvas.countSuffix') }}</span></div>
                       <div
                         v-for="n in grp.items"
                         :key="n.title"
@@ -352,17 +352,17 @@
                             <button
                               class="ei-del"
                               :class="{ armed: pendingDelete === n }"
-                              :title="pendingDelete === n ? '再次点击确认删除' : '删除'"
+                              :title="pendingDelete === n ? t('projectCanvas.confirmDelete') : t('projectCanvas.delete')"
                               @click="armDelete(n, () => removeNote(n))"
                             >
-                              <template v-if="pendingDelete === n">删除</template>
+                              <template v-if="pendingDelete === n">{{ t('projectCanvas.delete') }}</template>
                               <X v-else />
                             </button>
                           </div>
                           <span v-if="n.desc" class="ni-desc">{{ n.desc }}</span>
                           <div class="ni-meta">
                             <span class="ei-status" :class="isNoteDone(n) ? 'ready' : 'pending'">
-                              <component :is="isNoteDone(n) ? CircleCheck : Clock" class="eis-ico" />{{ isNoteDone(n) ? '已确认' : '待确认' }}
+                              <component :is="isNoteDone(n) ? CircleCheck : Clock" class="eis-ico" />{{ isNoteDone(n) ? t('projectCanvas.confirmed') : t('projectCanvas.pending') }}
                             </span>
                             <span class="ni-prio" :class="'p-' + n.priority">{{ notePriorityLabel(n.priority) }}</span>
                           </div>
@@ -370,13 +370,13 @@
                       </div>
                     </div>
                   </template>
-                  <p v-else class="detail-empty">还没有注意事项,点下面添加。</p>
+                  <p v-else class="detail-empty">{{ t('projectCanvas.emptyNotes') }}</p>
 
                   <!-- 添加注意事项 -->
-                  <button v-if="!showAddNote" class="equip-add-btn" @click="showAddNote = true">+ 添加事项</button>
+                  <button v-if="!showAddNote" class="equip-add-btn" @click="showAddNote = true">{{ t('projectCanvas.addNote') }}</button>
                   <div v-else class="equip-form">
-                    <input v-model="newNote.title" class="ef-input" placeholder="事项(如:场地需提前申请)" @keydown.enter="submitAddNote" />
-                    <input v-model="newNote.desc" class="ef-input" placeholder="细节(可选)" @keydown.enter="submitAddNote" />
+                    <input v-model="newNote.title" class="ef-input" :placeholder="t('projectCanvas.noteTitlePlaceholder')" @keydown.enter="submitAddNote" />
+                    <input v-model="newNote.desc" class="ef-input" :placeholder="t('projectCanvas.noteDescPlaceholder')" @keydown.enter="submitAddNote" />
                     <div class="ef-row2">
                       <select v-model="newNote.phase" class="ef-select">
                         <option v-for="p in NOTE_PHASES" :key="p.key" :value="p.key">{{ p.label }}</option>
@@ -386,8 +386,8 @@
                       </select>
                     </div>
                     <div class="ef-actions">
-                      <button class="ef-cancel" @click="showAddNote = false">取消</button>
-                      <button class="ef-submit" :disabled="!newNote.title.trim()" @click="submitAddNote">添加</button>
+                      <button class="ef-cancel" @click="showAddNote = false">{{ t('projectCanvas.cancel') }}</button>
+                      <button class="ef-submit" :disabled="!newNote.title.trim()" @click="submitAddNote">{{ t('projectCanvas.add') }}</button>
                     </div>
                   </div>
                 </div>
@@ -401,73 +401,194 @@
         <template #settings>
           <div class="p-inner">
 
-            <!-- 作品设定 -->
+            <!-- 背景设定(作品/游戏/影视等世界观,通用叫法)—— 默认折叠 -->
             <div class="setting-block">
-              <div class="s-section">作品设定</div>
-              <div class="s-row"><span class="s-key">类型</span><span class="s-val">{{ worldSetting?.genre ?? '—' }}</span></div>
-              <div class="s-row"><span class="s-key">时代</span><span class="s-val">{{ worldSetting?.era ?? '—' }}</span></div>
-              <div class="s-row"><span class="s-key">时间地点</span><span class="s-val">{{ worldSetting?.timeline ?? '—' }}</span></div>
-              <div class="s-row"><span class="s-key">视觉</span><span class="s-val">{{ worldSetting?.tone?.visual ?? '—' }}</span></div>
-              <div class="s-row"><span class="s-key">叙事</span><span class="s-val">{{ worldSetting?.tone?.narrative ?? '—' }}</span></div>
-              <div class="s-row"><span class="s-key">情感</span><span class="s-val">{{ worldSetting?.tone?.emotion ?? '—' }}</span></div>
-              <div v-if="worldSetting?.synopsis" class="s-row s-row-top">
-                <span class="s-key">梗概</span>
-                <span class="s-val">{{ worldSetting.synopsis }}</span>
+              <div class="s-section">{{ t('projectCanvas.sectionBackground') }}</div>
+
+              <!-- 封面 + 名称(展开按钮在作品名右边);展开再露简介与信息盒 -->
+              <div class="ws-hero">
+                <div class="ws-cover" :class="{ empty: !coverUrl }">
+                  <img v-if="coverUrl" :src="coverUrl" :alt="project.work" />
+                  <div v-else class="ws-cover-ph">
+                    <RefreshCw v-if="coverLoading" class="spin" />
+                    <ImageIcon v-else />
+                  </div>
+                  <!-- 首次自动抓;之后「换封面」= 用户自己上传 -->
+                  <label class="ws-cover-btn" :class="{ disabled: coverLoading }" :title="coverLoading ? t('projectCanvas.coverAutoGrabbing') : t('projectCanvas.coverUploadOwn')">
+                    <input type="file" accept="image/*" hidden :disabled="coverLoading" @change="onUploadCover" />
+                    <RefreshCw v-if="coverLoading" class="spin" /><Upload v-else />
+                    <span>{{ coverLoading ? t('projectCanvas.grabbingCover') : t('projectCanvas.changeCover') }}</span>
+                  </label>
+                </div>
+                <button class="ws-title-row" @click="bgOpen = !bgOpen">
+                  <span class="ws-hero-title">{{ project.work }}</span>
+                  <ChevronDown class="s-chev" :class="{ open: bgOpen }" />
+                </button>
+                <p v-if="bgOpen && worldSetting?.synopsis" class="ws-hero-sub">{{ worldSetting.synopsis }}</p>
               </div>
-              <div v-if="worldSetting?.themes?.length" class="s-row s-row-top">
-                <span class="s-key">主题</span>
-                <div class="tags"><span v-for="t in worldSetting.themes" :key="t" class="tag">{{ t }}</span></div>
-              </div>
-              <div v-if="worldSetting?.iconic_settings?.length" class="s-row s-row-top">
-                <span class="s-key">场景</span>
-                <div class="tags"><span v-for="s in worldSetting.iconic_settings" :key="s" class="tag">{{ s }}</span></div>
+
+              <!-- 展开才显示的信息盒:类型 / 时代·地点 / 氛围 / 核心主题 / 标志场景 -->
+              <div v-if="worldSetting" v-show="bgOpen" class="ws-info">
+                <div class="ws-irow"><Tag class="ws-ii" /><span class="ws-ik">{{ t('projectCanvas.fieldGenre') }}</span><span class="ws-iv">{{ worldSetting.genre ?? '—' }}</span></div>
+                <div class="ws-irow"><Clock class="ws-ii" /><span class="ws-ik">{{ t('projectCanvas.fieldEraPlace') }}</span><span class="ws-iv">{{ worldSetting.timeline || worldSetting.era || '—' }}</span></div>
+                <div class="ws-irow"><Sparkles class="ws-ii" /><span class="ws-ik">{{ t('projectCanvas.fieldAtmosphere') }}</span><span class="ws-iv">{{ [worldSetting.tone?.visual, worldSetting.tone?.emotion].filter(Boolean).join(' · ') || '—' }}</span></div>
+                <div v-if="worldSetting.themes?.length" class="ws-irow">
+                  <Star class="ws-ii" /><span class="ws-ik">{{ t('projectCanvas.fieldThemes') }}</span>
+                  <span class="ws-iv">{{ worldSetting.themes.join(' · ') }}</span>
+                </div>
+                <div v-if="worldSetting.iconic_settings?.length" class="ws-irow">
+                  <MapPin class="ws-ii" /><span class="ws-ik">{{ t('projectCanvas.fieldIconic') }}</span>
+                  <span class="ws-iv">{{ worldSetting.iconic_settings.join(' · ') }}</span>
+                </div>
               </div>
             </div>
 
-            <!-- 人物设定 -->
+            <!-- 人物设定:头像选择 + 每角色三段导航(设定 / 服装道具 / 名场面) -->
             <div class="setting-block">
-              <div class="s-section">人物设定</div>
-              <div class="s-row"><span class="s-key">角色</span><span class="s-val">{{ project.character }} · {{ project.work }}</span></div>
-              <div class="s-row"><span class="s-key">定位</span><span class="s-val">{{ charBg?.role ?? '—' }}</span></div>
-              <div class="s-row"><span class="s-key">年龄</span><span class="s-val">{{ charBg?.age ?? '—' }}</span></div>
-              <div v-if="charBg?.backstory" class="s-row s-row-top">
-                <span class="s-key">身世</span>
-                <span class="s-val">{{ charBg.backstory }}</span>
-              </div>
-              <div class="s-row"><span class="s-key">外在</span><span class="s-val">{{ charBg?.personality?.surface ?? '—' }}</span></div>
-              <div class="s-row"><span class="s-key">内心</span><span class="s-val">{{ charBg?.personality?.inner ?? '—' }}</span></div>
-              <div class="s-row"><span class="s-key">渴望</span><span class="s-val">{{ charBg?.personality?.core_desire ?? '—' }}</span></div>
-              <div v-if="charBg?.iconic_moments?.length" class="s-row s-row-top">
-                <span class="s-key">瞬间</span>
-                <div class="tags"><span v-for="m in charBg.iconic_moments" :key="m" class="tag">{{ m }}</span></div>
-              </div>
-            </div>
+              <div class="s-section">{{ t('projectCanvas.sectionCharacter') }}</div>
 
-            <!-- 外貌特征 -->
-            <div v-if="visualSpecFields.length" class="setting-block">
-              <div class="s-section">外貌特征</div>
-              <div v-for="f in visualSpecFields" :key="f.label" class="s-row s-row-top">
-                <span class="s-key">{{ f.label }}</span>
-                <span class="s-val">{{ f.value }}</span>
+              <!-- 角色头像选择器 -->
+              <div class="char-picker">
+                <button
+                  v-for="c in characters" :key="c.id"
+                  class="char-ava" :class="{ on: c.id === selectedCharId }"
+                  @click="selectedCharId = c.id"
+                >
+                  <span class="ca-img">
+                    <img v-if="charAvatar(c)" :src="charAvatar(c)" :alt="c.name" />
+                    <span v-else class="ca-ph">{{ (c.name || '?').slice(0, 1) }}</span>
+                  </span>
+                  <span class="ca-name">{{ c.name || t('projectCanvas.fieldCharacter') }}</span>
+                </button>
+                <button class="char-ava add" :title="t('projectCanvas.addCharacterTitle')" @click="addCharacter">
+                  <span class="ca-img add"><Plus /></span>
+                  <span class="ca-name">{{ t('projectCanvas.addCharacterShort') }}</span>
+                </button>
               </div>
-            </div>
 
-            <!-- 角色参考图 -->
-            <div class="setting-block">
-              <div class="s-section">角色参考图</div>
-              <div class="refs-mini-grid">
-                <img
-                  v-for="(url, i) in allRefUrls" :key="i"
-                  :src="url" class="ref-mini-img"
-                  :class="{ 'ref-extra': i >= refUrls.length }"
-                  :title="i >= refUrls.length ? '补充参考图' : '原始参考图'"
-                  :alt="`参考 ${i + 1}`"
-                  @click="openLightbox(i)"
-                />
-                <label class="ref-add-card">
-                  <input type="file" accept="image/*" multiple hidden @change="onAddRefs" />
-                  <span class="ref-add-plus">+</span>
-                </label>
+              <!-- 三段标签导航 -->
+              <div class="char-tabs">
+                <button
+                  v-for="tb in charTabs" :key="tb.id"
+                  class="char-tab" :class="{ on: charTab === tb.id }"
+                  @click="charTab = tb.id"
+                ><component :is="tb.icon" class="ct-ico" />{{ tb.label }}</button>
+              </div>
+
+              <!-- ① 设定:基本信息 + 外貌特征 + 参考图 -->
+              <div v-if="charTab === 'setting'" class="char-panel">
+                <div class="cp-sub">{{ t('projectCanvas.subBaseInfo') }}</div>
+                <div class="s-row"><span class="s-key">{{ t('projectCanvas.fieldCharacter') }}</span><span class="s-val">{{ selectedChar?.name || '—' }} · {{ project.work }}</span></div>
+                <div class="s-row"><span class="s-key">{{ t('projectCanvas.fieldRole') }}</span><span class="s-val">{{ charBg?.role ?? '—' }}</span></div>
+                <div class="s-row"><span class="s-key">{{ t('projectCanvas.fieldAge') }}</span><span class="s-val">{{ charBg?.age ?? '—' }}</span></div>
+                <div v-if="charBg?.backstory" class="s-row s-row-top">
+                  <span class="s-key">{{ t('projectCanvas.fieldBackstory') }}</span>
+                  <span class="s-val">{{ charBg.backstory }}</span>
+                </div>
+                <div class="s-row"><span class="s-key">{{ t('projectCanvas.fieldSurface') }}</span><span class="s-val">{{ charBg?.personality?.surface ?? '—' }}</span></div>
+                <div class="s-row"><span class="s-key">{{ t('projectCanvas.fieldInner') }}</span><span class="s-val">{{ charBg?.personality?.inner ?? '—' }}</span></div>
+                <div class="s-row"><span class="s-key">{{ t('projectCanvas.fieldDesire') }}</span><span class="s-val">{{ charBg?.personality?.core_desire ?? '—' }}</span></div>
+
+                <template v-if="visualSpecFields.length">
+                  <div class="cp-sub">{{ t('projectCanvas.sectionAppearance') }}</div>
+                  <div v-for="f in visualSpecFields" :key="f.label" class="s-row s-row-top">
+                    <span class="s-key">{{ f.label }}</span>
+                    <span class="s-val">{{ f.value }}</span>
+                  </div>
+                </template>
+
+                <div class="cp-sub">{{ t('projectCanvas.sectionRefs') }}</div>
+                <div class="refs-mini-grid">
+                  <img
+                    v-for="(url, i) in allRefUrls" :key="i"
+                    :src="url" class="ref-mini-img"
+                    :class="{ 'ref-extra': i >= refUrls.length }"
+                    :title="i >= refUrls.length ? t('projectCanvas.refExtra') : t('projectCanvas.refOriginal')"
+                    :alt="t('projectCanvas.refAlt', { i: i + 1 })"
+                    @click="openLightbox(i)"
+                  />
+                  <label class="ref-add-card">
+                    <input type="file" accept="image/*" multiple hidden @change="onAddRefs" />
+                    <span class="ref-add-plus">+</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- ② 服装 · 道具 -->
+              <div v-else-if="charTab === 'wardrobe'" class="char-panel">
+                <div class="equip">
+                  <div class="wd-sub"><Shirt class="wd-si" /><span>{{ t('projectCanvas.subCostume') }}</span></div>
+                  <div v-for="g in costumeGroups" :key="g.key" class="equip-group">
+                    <div class="equip-group-head"><span>{{ g.label }}</span><span class="egh-count">{{ g.items.length }}</span></div>
+                    <div v-for="c in g.items" :key="c.id" class="equip-item">
+                      <div class="ei-body">
+                        <span class="ei-name">{{ c.name }}</span>
+                        <span v-if="c.note" class="ei-desc">{{ c.note }}</span>
+                      </div>
+                      <button
+                        class="ei-del" :class="{ armed: pendingDelete === c }"
+                        :title="pendingDelete === c ? t('projectCanvas.confirmDelete') : t('projectCanvas.delete')"
+                        @click="armDelete(c, () => removeCostume(c))"
+                      >
+                        <template v-if="pendingDelete === c">{{ t('projectCanvas.delete') }}</template>
+                        <X v-else />
+                      </button>
+                    </div>
+                  </div>
+                  <p v-if="!costumeList.length" class="detail-empty">{{ t('projectCanvas.emptyCostume') }}</p>
+
+                  <div v-if="showAddCostume" class="equip-form">
+                    <select v-model="newCostume.category" class="ef-select">
+                      <option v-for="c in COSTUME_CATEGORIES" :key="c.key" :value="c.key">{{ c.label }}</option>
+                    </select>
+                    <input v-model="newCostume.name" class="ef-input" :placeholder="t('projectCanvas.costumeNamePlaceholder')" @keydown.enter="submitAddCostume" />
+                    <input v-model="newCostume.note" class="ef-input" :placeholder="t('projectCanvas.notePlaceholder')" @keydown.enter="submitAddCostume" />
+                    <div class="ef-actions">
+                      <button class="ef-cancel" @click="showAddCostume = false">{{ t('projectCanvas.cancel') }}</button>
+                      <button class="ef-submit" @click="submitAddCostume">{{ t('projectCanvas.add') }}</button>
+                    </div>
+                  </div>
+                  <button v-else class="equip-add-btn" @click="showAddCostume = true">{{ t('projectCanvas.addCostume') }}</button>
+
+                  <div class="wd-sub"><Package class="wd-si" /><span>{{ t('projectCanvas.subProps') }}</span></div>
+                  <div v-if="propsList.length" class="equip-group">
+                    <div v-for="pr in propsList" :key="pr.id" class="equip-item">
+                      <div class="ei-body">
+                        <span class="ei-name">{{ pr.name }}</span>
+                        <span v-if="pr.note" class="ei-desc">{{ pr.note }}</span>
+                      </div>
+                      <button
+                        class="ei-del" :class="{ armed: pendingDelete === pr }"
+                        :title="pendingDelete === pr ? t('projectCanvas.confirmDelete') : t('projectCanvas.delete')"
+                        @click="armDelete(pr, () => removeProp(pr))"
+                      >
+                        <template v-if="pendingDelete === pr">{{ t('projectCanvas.delete') }}</template>
+                        <X v-else />
+                      </button>
+                    </div>
+                  </div>
+                  <p v-else class="detail-empty">{{ t('projectCanvas.emptyProps') }}</p>
+
+                  <div v-if="showAddProp" class="equip-form">
+                    <input v-model="newProp.name" class="ef-input" :placeholder="t('projectCanvas.propNamePlaceholder')" @keydown.enter="submitAddProp" />
+                    <input v-model="newProp.note" class="ef-input" :placeholder="t('projectCanvas.notePlaceholder')" @keydown.enter="submitAddProp" />
+                    <div class="ef-actions">
+                      <button class="ef-cancel" @click="showAddProp = false">{{ t('projectCanvas.cancel') }}</button>
+                      <button class="ef-submit" @click="submitAddProp">{{ t('projectCanvas.add') }}</button>
+                    </div>
+                  </div>
+                  <button v-else class="equip-add-btn" @click="showAddProp = true">{{ t('projectCanvas.addProp') }}</button>
+                </div>
+              </div>
+
+              <!-- ③ 名场面 -->
+              <div v-else class="char-panel">
+                <div v-if="charBg?.iconic_moments?.length" class="moments">
+                  <div v-for="(m, i) in charBg.iconic_moments" :key="i" class="moment-item">
+                    <Star class="mi-ico" /><span class="mi-text">{{ m }}</span>
+                  </div>
+                </div>
+                <p v-else class="detail-empty">{{ t('projectCanvas.emptyMoments') }}</p>
               </div>
             </div>
 
@@ -498,7 +619,7 @@
                 class="retry-btn"
                 :disabled="aiLoading"
                 @click="sendAiMessage(msg.retryText)"
-              >重试</button>
+              >{{ t('projectCanvas.retry') }}</button>
             </div>
           </div>
           <div v-if="aiLoading" class="ai-msg agent">
@@ -510,7 +631,7 @@
           <input
             v-model="aiInput"
             class="ai-input"
-            placeholder="问问 AI…"
+            :placeholder="t('projectCanvas.aiPlaceholder')"
             :disabled="aiLoading"
             @keydown.enter.exact="onAiInputEnter"
           />
@@ -528,7 +649,7 @@
             class="retry-btn"
             :disabled="aiLoading"
             @click="sendAiMessage(latestAgentMessage.retryText)"
-          >重试</button>
+          >{{ t('projectCanvas.retry') }}</button>
         </div>
       </template>
 
@@ -546,24 +667,29 @@
         <button v-if="lightboxIndex > 0" class="lb-arrow lb-prev" @click="lightboxIndex--">‹</button>
         <button v-if="lightboxIndex < allRefUrls.length - 1" class="lb-arrow lb-next" @click="lightboxIndex++">›</button>
         <div class="lb-img-wrap">
-          <img :src="allRefUrls[lightboxIndex]" class="lb-img" :alt="`参考 ${lightboxIndex + 1}`" />
+          <img :src="allRefUrls[lightboxIndex]" class="lb-img" :alt="t('projectCanvas.refAlt', { i: lightboxIndex + 1 })" />
           <div class="lb-badge" :class="lightboxIndex >= refUrls.length ? 'lb-badge-extra' : 'lb-badge-orig'">
-            {{ lightboxIndex >= refUrls.length ? '补充参考' : '原始参考' }}
+            {{ lightboxIndex >= refUrls.length ? t('projectCanvas.refExtraShort') : t('projectCanvas.refOriginalShort') }}
           </div>
         </div>
         <div class="lb-counter">{{ lightboxIndex + 1 }} / {{ allRefUrls.length }}</div>
       </div>
     </Teleport>
 
+    <Transition name="toast-fade">
+      <div v-if="toast" class="toast">{{ toast }}</div>
+    </Transition>
+
   </div>
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, ref, reactive, computed } from 'vue'
+import { nextTick, onMounted, ref, reactive, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   MapPin, Clock, TriangleAlert, Package, Check, CircleCheck, X, Sun, Clapperboard, FileText,
-  Camera, Aperture, Lightbulb, Disc, BatteryFull, Plug, Mic, Image as ImageIcon, Wrench,
+  Camera, Aperture, Lightbulb, Disc, BatteryFull, Plug, Mic, Image as ImageIcon, Wrench, Shirt,
+  Tag, Sparkles, Star, RefreshCw, Upload, ChevronDown, User, Plus,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import TripodIcon from '~/components/equip-icons/TripodIcon.vue'
@@ -589,6 +715,7 @@ definePageMeta({ ssr: false })
 
 const route = useRoute()
 const api = useApi()
+const { t } = useLocale()
 
 // ── Project data ──────────────────────────────────────────
 const projectData = ref<any>(null)
@@ -640,10 +767,80 @@ async function onAddRefs(e: Event) {
 }
 
 const worldSetting = computed(() => projectData.value?.world?.worldSetting ?? null)
-const charBg       = computed(() => projectData.value?.character_data?.characterBackground ?? null)
+
+// ── Characters (id-based list; single primary for now) ──────────────────────
+// 人物设定 / 外貌特征 are scoped to the selected character. 背景设定 (world) stays
+// project-level (shared). Adding a 2nd character is 阶段 2 (coming soon).
+const characters = computed<any[]>(() => projectData.value?.characters ?? [])
+const selectedCharId = ref<string>('')
+const selectedChar = computed(() =>
+  characters.value.find(c => c.id === selectedCharId.value) || characters.value[0] || null)
+watch(characters, (list) => {
+  if (list.length && !list.some(c => c.id === selectedCharId.value)) selectedCharId.value = list[0].id
+}, { immediate: true })
+
+const toast = ref('')
+let toastTimer: ReturnType<typeof setTimeout> | null = null
+function showToast(msg: string) {
+  toast.value = msg
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { toast.value = '' }, 2600)
+}
+function addCharacter() { showToast(t('projectCanvas.addCharacterComingSoon')) }
+
+// Per-character 3-tab navigator: 设定 (base + appearance + refs) / 服装道具 / 名场面.
+type CharTab = 'setting' | 'wardrobe' | 'moments'
+const charTab = ref<CharTab>('setting')
+const charTabs = computed<{ id: CharTab; label: string; icon: any }[]>(() => [
+  { id: 'setting',  label: t('projectCanvas.charTabSetting'),  icon: User },
+  { id: 'wardrobe', label: t('projectCanvas.charTabWardrobe'), icon: Shirt },
+  { id: 'moments',  label: t('projectCanvas.charTabMoments'),  icon: Star },
+])
+// Avatar = the character's first reference image (project-level refs for now,
+// since only the primary character exists; future characters get their own).
+function charAvatar(_c: any): string {
+  return allRefUrls.value[0] || ''
+}
+
+const charBg = computed(() => selectedChar.value?.character_data?.characterBackground ?? null)
+
+// 背景设定 folds collapsed by default (常态) — it's tall; expand to see detail.
+const bgOpen = ref(false)
+
+// Work cover (背景设定 hero) — served from context/cover.<ext>.
+// Auto-grabbed once (on first open if missing); replaced only by user upload.
+const coverUrl = computed(() => projectData.value?.cover ? BASE_URL + projectData.value.cover : '')
+const coverLoading = ref(false)   // true while the one-time auto-grab is running
+
+async function autoGrabCoverIfMissing() {
+  if (coverUrl.value || coverLoading.value) return
+  coverLoading.value = true
+  try {
+    const { url } = await api.grabCover(projectId.value)
+    if (projectData.value) projectData.value.cover = url   // url is cache-busted (mtime)
+  } catch (e) {
+    console.error('Auto cover grab failed (user can upload one)', e)
+  } finally {
+    coverLoading.value = false
+  }
+}
+
+async function onUploadCover(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  try {
+    const { url } = await api.uploadCover(projectId.value, file)
+    if (projectData.value) projectData.value.cover = url
+  } catch (err) {
+    console.error('Failed to upload cover', err)
+  } finally {
+    input.value = ''   // allow re-selecting the same file
+  }
+}
 
 const visualSpecFields = computed(() => {
-  const vs = projectData.value?.visual_spec
+  const vs = selectedChar.value?.visual_spec
   if (!vs) return []
   // Multilang dict {zh,en,ja} or legacy plain-text — always show zh by default
   const spec: string = typeof vs === 'object' ? (vs.zh ?? '') : vs
@@ -664,101 +861,122 @@ const visualSpecFields = computed(() => {
 type PlanTab = 'equipment' | 'locations' | 'schedule' | 'notes'
 const summaryTab = ref<PlanTab>('equipment')
 
-interface EquipmentItem { name: string; required?: boolean; desc?: string; category?: string }
-interface ScheduleRow { time: string; scene: string; shotIds: string[]; content: string; duration: string; light?: string; priority?: NotePriority }
+interface EquipmentItem { id?: string; name: string; required?: boolean; desc?: string; category?: string }
+interface ScheduleRow { id?: string; time: string; scene: string; shotIds: string[]; content: string; duration: string; light?: string; priority?: NotePriority }
 type NotePhase = 'pre' | 'onsite' | 'other'
 type NotePriority = 'high' | 'mid' | 'low'
-interface NoteItem { title: string; desc?: string; phase: NotePhase; priority: NotePriority }
+interface NoteItem { id?: string; title: string; desc?: string; phase: NotePhase; priority: NotePriority }
 
-// ⚠️ TEMP MOCK — 临时假数据,仅用于设计四个标签的内容样式。
-// 接后端(brief)真数据时:把 PLAN_MOCK 设为 null,并删除下面 plan computed 里
-// 的 `?? PLAN_MOCK.xxx` 兜底。搜索关键字 "TEMP MOCK" 可一次清干净。
-const PLAN_MOCK = {
-  theme: '安静·青春·轻音部的日常',
-  shootDate: '2026/08/15',
-  crew: { photographers: 2, cosers: 1, logistics: 3 },
-  equipment: [
-    { name: '相机机身', required: true,  desc: '主拍摄设备',        category: 'camera' },
-    { name: '35mm 镜头', required: true,  desc: '适合环境与半身镜头', category: 'lens' },
-    { name: '50mm 镜头', required: true,  desc: '适合特写与中景构图', category: 'lens' },
-    { name: '备用电池 / 存储卡', required: true, desc: '避免中途断拍',  category: 'power' },
-    { name: '反光板', required: false, desc: '用于自然光补光',      category: 'reflector' },
-    { name: '小型补光灯', required: false, desc: '室内或傍晚备用',    category: 'light' },
-    { name: '三脚架', required: false, desc: '长曝光或固定机位用',    category: 'support' },
-  ] as EquipmentItem[],
-  locations: ['音乐教室', '音乐教室窗边', '校园走廊', '舞台'],
-  schedule: [
-    { time: '14:00–14:40', scene: '音乐教室',   shotIds: [], content: '日常练习与互动', duration: '40 分钟', light: '自然光',   priority: 'high' },
-    { time: '14:40–15:20', scene: '音乐教室窗边', shotIds: [], content: '安静独处',       duration: '40 分钟', light: '自然光',   priority: 'high' },
-    { time: '15:20–15:50', scene: '校园走廊',   shotIds: [], content: '走廊行走',       duration: '30 分钟', light: '自然光',   priority: 'mid' },
-    { time: '16:00–17:00', scene: '舞台',       shotIds: [], content: '舞台演出状态',   duration: '60 分钟', light: '灯光为主', priority: 'low' },
-  ] as ScheduleRow[],
-  notes: [
-    { title: '音乐教室使用需提前申请许可', desc: '部分学校场地需要提前提交申请材料并等待审批,建议至少提前 3 个工作日联系。', phase: 'pre',    priority: 'high' },
-    { title: '舞台开放时间需确认',        desc: '不同校区开放时间可能不同,需确认可拍摄时段及是否有其他活动冲突。',       phase: 'pre',    priority: 'mid' },
-    { title: '更衣空间确认',             desc: '确认更衣室位置、可用时间与储物空间,确保换装顺利且物品安全存放。',       phase: 'pre',    priority: 'mid' },
-    { title: '拍摄自然光方向确认',        desc: '到达场地后确认光线方向与强度,根据天气情况调整拍摄计划与机位。',        phase: 'onsite', priority: 'mid' },
-    { title: '设备电量与存储卡检查',      desc: '检查相机、电池、补光灯等设备电量,确认存储卡空间充足,避免拍摄中断。',   phase: 'onsite', priority: 'high' },
-    { title: '备用方案准备',             desc: '如遇天气变化或场地临时调整,准备备选场地或室内拍摄方案。',            phase: 'other',  priority: 'low' },
-  ] as NoteItem[],
+// Plan-panel data comes from the backend: GET /projects/{id} → plan.data, stored
+// on disk at plan/plan.json. snake_case on the wire, camelCase in the UI. All
+// edits round-trip the whole blob back via PUT /projects/{id}/plan (persistPlan).
+const planData = computed<any>(() => projectData.value?.plan?.data ?? {})
+
+function mapScheduleRow(r: any): ScheduleRow {
+  return {
+    time: r.time ?? '', scene: r.scene ?? '', shotIds: r.shot_ids ?? [],
+    content: r.content ?? '', duration: r.duration ?? '', light: r.light, priority: r.priority,
+  }
 }
 
 const plan = computed(() => {
-  const brief = projectData.value?.plan?.brief ?? {}
-  // equipment is currently string[]; normalize to { name, required }. required is
+  const d = planData.value
+  const schedule = (d.schedule ?? []).map(mapScheduleRow) as ScheduleRow[]
+  // 场地名单派生自日程的去重场景(不单独存储)。
+  const locations = [...new Set(schedule.map(r => r.scene).filter(Boolean))]
   return {
-    // TEMP MOCK 兜底:真数据缺失时用 mock 填充(仅为设计样式),接后端后删掉 `?? PLAN_MOCK.*`
-    theme:      (brief.theme      ?? PLAN_MOCK.theme) as string,
-    shootDate:  (brief.shoot_date ?? PLAN_MOCK.shootDate) as string,
+    theme:     (d.theme ?? '') as string,
+    shootDate:  (d.shoot_date ?? '') as string,
     // 参与人数(制片信息):摄影 / coser / 后勤 各几人
-    crew:       (brief.crew ?? PLAN_MOCK.crew) as { photographers?: number; cosers?: number; logistics?: number },
-    locations:  (brief.locations?.length ? brief.locations : PLAN_MOCK.locations) as string[],
-    schedule:   (brief.schedule?.length  ? brief.schedule  : PLAN_MOCK.schedule) as ScheduleRow[],
-    // notes handled by the editable notesList below (like equipment)
+    crew:       (d.crew ?? {}) as { photographers?: number; cosers?: number; logistics?: number },
+    locations,
+    schedule,
   }
 })
 
-// ── Equipment: editable list (add/remove), persisted per-project in localStorage.
-// addEquipment / removeEquipment are the single mutation surface — swapping the
-// localStorage impl for a backend endpoint (or exposing them as AI tools) later
-// won't touch any caller. Field shape { category, name, desc, required } is
-// exactly the future tool's parameter schema.
-const EQUIP_CATEGORIES = [
-  { key: 'camera',    label: '相机机身' },
-  { key: 'lens',      label: '镜头' },
-  { key: 'light',     label: '灯光' },
-  { key: 'reflector', label: '反光 / 柔光板' },
-  { key: 'support',   label: '三脚架 / 支撑' },
-  { key: 'power',     label: '电池 / 存储' },
-  { key: 'charger',   label: '充电' },
-  { key: 'audio',     label: '收音 / 麦克风' },
-  { key: 'backdrop',  label: '背景' },
-  { key: 'misc',      label: '杂项 / 工具' },
-]
-const equipmentList = ref<EquipmentItem[]>([])
-const equipListKey = computed(() => `equip-list-${projectId.value}`)
-function saveEquipment() {
-  localStorage.setItem(equipListKey.value, JSON.stringify(equipmentList.value))
+// Serialize current UI state → the backend blob (camelCase → snake_case) and
+// coarse-save it. schedule/crew have no editing UI yet, so they round-trip
+// verbatim from planData. Every mutation calls persistPlan.
+function buildPlanData() {
+  return {
+    theme: draft.theme,
+    shoot_date: draft.shootDate,
+    crew: planData.value.crew ?? {},
+    equipment: equipmentList.value.map(e => ({
+      id: e.id, name: e.name, required: e.required, desc: e.desc, category: e.category,
+    })),
+    schedule: planData.value.schedule ?? [],
+    notes: notesList.value.map(n => ({
+      id: n.id, title: n.title, desc: n.desc, phase: n.phase, priority: n.priority,
+    })),
+    location_meta: Object.fromEntries(
+      Object.entries(locAddr)
+        .filter(([, v]) => (v as string)?.trim())
+        .map(([k, v]) => [k, { address: (v as string).trim() }]),
+    ),
+    prepared: Object.keys(prepared).filter(k => prepared[k]),
+    notes_done: Object.keys(noteDone).filter(k => noteDone[k]),
+  }
 }
+
+let planSaveTimer: ReturnType<typeof setTimeout> | null = null
+function persistPlan() {
+  if (!projectData.value) return
+  const data = buildPlanData()
+  // Optimistic local sync so planData-derived computeds don't flash stale.
+  if (projectData.value.plan) {
+    projectData.value.plan.data = { ...projectData.value.plan.data, ...data }
+  }
+  if (planSaveTimer) clearTimeout(planSaveTimer)
+  planSaveTimer = setTimeout(() => {
+    api.savePlanData(projectId.value, data).catch(e => console.error('Failed to save plan', e))
+  }, 400)
+}
+
+// Re-seed all editable state from planData. Called on load and whenever the AI
+// assistant mutates the plan (its chat response carries the fresh plan.data).
+// equipmentList / notesList / prepared / noteDone / locAddr / draft are separate
+// reactive state (not derived from planData), so they must be re-synced explicitly.
+function syncPlanFromData() {
+  draft.theme     = plan.value.theme
+  draft.shootDate = plan.value.shootDate
+  loadEquipment()
+  loadPrepared()
+  loadNotes()
+  loadNoteDone()
+  loadLocationMeta()
+}
+
+// ── Equipment: editable list (add/remove), persisted to the backend plan blob.
+// addEquipment / removeEquipment are the single mutation surface — exposing them
+// as AI tools later won't touch any caller. Field shape { category, name, desc,
+// required } is exactly the future tool's parameter schema.
+const EQUIP_CATEGORIES = computed(() => [
+  { key: 'camera',    label: t('projectCanvas.catCamera') },
+  { key: 'lens',      label: t('projectCanvas.catLens') },
+  { key: 'light',     label: t('projectCanvas.catLight') },
+  { key: 'reflector', label: t('projectCanvas.catReflector') },
+  { key: 'support',   label: t('projectCanvas.catSupport') },
+  { key: 'power',     label: t('projectCanvas.catPower') },
+  { key: 'charger',   label: t('projectCanvas.catCharger') },
+  { key: 'audio',     label: t('projectCanvas.catAudio') },
+  { key: 'backdrop',  label: t('projectCanvas.catBackdrop') },
+  { key: 'misc',      label: t('projectCanvas.catMisc') },
+])
+const equipmentList = ref<EquipmentItem[]>([])
 function loadEquipment() {
-  try {
-    const raw = localStorage.getItem(equipListKey.value)
-    if (raw) { equipmentList.value = JSON.parse(raw); return }
-  } catch { /* ignore corrupt */ }
-  // First visit: seed from brief (real data) or the design mock.
-  const brief = projectData.value?.plan?.brief ?? {}
-  const seed = (brief.equipment?.length ? brief.equipment : PLAN_MOCK.equipment) as any[]
-  equipmentList.value = seed.map(e => (typeof e === 'string' ? { name: e } : { ...e }))
+  equipmentList.value = (planData.value.equipment ?? []).map((e: any) =>
+    (typeof e === 'string' ? { name: e } : { ...e }))
 }
 function addEquipment(item: EquipmentItem) {
   equipmentList.value.push({ ...item })
-  saveEquipment()
+  persistPlan()
 }
 function removeEquipment(item: EquipmentItem) {
   const i = equipmentList.value.indexOf(item)
   if (i >= 0) equipmentList.value.splice(i, 1)
   delete prepared[item.name]   // drop its checklist state too
-  saveEquipment()
+  persistPlan()
 }
 
 // Inline two-step delete confirm (no modal — the × arms into a 删除 button that
@@ -797,58 +1015,47 @@ function submitAddEquip() {
 const requiredEquip = computed(() => equipmentList.value.filter(e => e.required !== false))
 const optionalEquip = computed(() => equipmentList.value.filter(e => e.required === false))
 const equipGroups = computed(() => [
-  { cls: 'req', label: '必要设备', items: requiredEquip.value },
-  { cls: 'opt', label: '可选设备', items: optionalEquip.value },
+  { cls: 'req', label: t('projectCanvas.groupRequired'), items: requiredEquip.value },
+  { cls: 'opt', label: t('projectCanvas.groupOptional'), items: optionalEquip.value },
 ].filter(g => g.items.length))
 
 // ── Notes (注意事项): same editable/confirm/CRUD pattern as equipment, but
 // grouped by shoot phase + carries a priority. add/removeNote mirror the future
 // AI-tool params { title, desc, phase, priority }.
-const NOTE_PHASES: { key: NotePhase; label: string }[] = [
-  { key: 'pre',    label: '拍摄前确认' },
-  { key: 'onsite', label: '拍摄当天确认' },
-  { key: 'other',  label: '其他准备' },
-]
-const NOTE_PRIORITIES: { key: NotePriority; label: string }[] = [
-  { key: 'high', label: '高优先级' },
-  { key: 'mid',  label: '中优先级' },
-  { key: 'low',  label: '低优先级' },
-]
-const notePriorityLabel = (p: NotePriority) => NOTE_PRIORITIES.find(x => x.key === p)?.label ?? ''
+const NOTE_PHASES = computed<{ key: NotePhase; label: string }[]>(() => [
+  { key: 'pre',    label: t('projectCanvas.phasePre') },
+  { key: 'onsite', label: t('projectCanvas.phaseOnsite') },
+  { key: 'other',  label: t('projectCanvas.phaseOther') },
+])
+const NOTE_PRIORITIES = computed<{ key: NotePriority; label: string }[]>(() => [
+  { key: 'high', label: t('projectCanvas.prioHigh') },
+  { key: 'mid',  label: t('projectCanvas.prioMid') },
+  { key: 'low',  label: t('projectCanvas.prioLow') },
+])
+const notePriorityLabel = (p: NotePriority) =>
+  p === 'high' ? t('projectCanvas.prioHigh') : p === 'mid' ? t('projectCanvas.prioMid') : t('projectCanvas.prioLow')
 
 const notesList = ref<NoteItem[]>([])
-const notesListKey = computed(() => `notes-list-${projectId.value}`)
-function saveNotes() { localStorage.setItem(notesListKey.value, JSON.stringify(notesList.value)) }
 function loadNotes() {
-  try {
-    const raw = localStorage.getItem(notesListKey.value)
-    if (raw) { notesList.value = JSON.parse(raw); return }
-  } catch { /* ignore */ }
-  const brief = projectData.value?.plan?.brief ?? {}
-  notesList.value = (brief.notes?.length ? brief.notes : PLAN_MOCK.notes) as NoteItem[]
+  notesList.value = (planData.value.notes ?? []).map((n: any) => ({ ...n })) as NoteItem[]
 }
-function addNote(item: NoteItem) { notesList.value.push({ ...item }); saveNotes() }
+function addNote(item: NoteItem) { notesList.value.push({ ...item }); persistPlan() }
 function removeNote(item: NoteItem) {
   const i = notesList.value.indexOf(item)
   if (i >= 0) notesList.value.splice(i, 1)
   delete noteDone[item.title]
-  saveNotes()
+  persistPlan()
 }
 
 // confirmed (已确认) checklist state, per project
 const noteDone = reactive<Record<string, boolean>>({})
-const noteDoneKey = computed(() => `notes-done-${projectId.value}`)
 function loadNoteDone() {
-  try {
-    const raw = localStorage.getItem(noteDoneKey.value)
-    const titles: string[] = raw ? JSON.parse(raw) : []
-    for (const k of Object.keys(noteDone)) delete noteDone[k]
-    titles.forEach(t => { noteDone[t] = true })
-  } catch { /* ignore */ }
+  for (const k of Object.keys(noteDone)) delete noteDone[k]
+  ;(planData.value.notes_done ?? []).forEach((t: string) => { noteDone[t] = true })
 }
 function toggleNoteDone(n: NoteItem) {
   noteDone[n.title] = !noteDone[n.title]
-  localStorage.setItem(noteDoneKey.value, JSON.stringify(Object.keys(noteDone).filter(t => noteDone[t])))
+  persistPlan()
 }
 const isNoteDone = (n: NoteItem) => !!noteDone[n.title]
 const noteDoneCount = computed(() => notesList.value.filter(n => noteDone[n.title]).length)
@@ -857,7 +1064,7 @@ const notePct = computed(() => {
   return t ? Math.round((noteDoneCount.value / t) * 100) : 0
 })
 const noteGroups = computed(() =>
-  NOTE_PHASES.map(p => ({ ...p, items: notesList.value.filter(n => n.phase === p.key) }))
+  NOTE_PHASES.value.map(p => ({ ...p, items: notesList.value.filter(n => n.phase === p.key) }))
     .filter(g => g.items.length))
 
 // Add-note inline form
@@ -871,22 +1078,16 @@ function submitAddNote() {
   newNote.title = ''; newNote.desc = ''   // keep phase/priority for quick repeat
   showAddNote.value = false
 }
-// "已准备" checklist state — user ticks items as they pack. No backend field
-// for this, so it's persisted per-project in localStorage (survives reload).
+// "已准备" checklist state — user ticks items as they pack. Persisted as
+// plan.prepared (a list of equipment names) in the backend plan blob.
 const prepared = reactive<Record<string, boolean>>({})
-const prepStorageKey = computed(() => `equip-prepared-${projectId.value}`)
 function loadPrepared() {
-  try {
-    const raw = localStorage.getItem(prepStorageKey.value)
-    const names: string[] = raw ? JSON.parse(raw) : []
-    for (const k of Object.keys(prepared)) delete prepared[k]
-    names.forEach(n => { prepared[n] = true })
-  } catch { /* ignore */ }
+  for (const k of Object.keys(prepared)) delete prepared[k]
+  ;(planData.value.prepared ?? []).forEach((n: string) => { prepared[n] = true })
 }
 function togglePrepared(e: EquipmentItem) {
   prepared[e.name] = !prepared[e.name]
-  const names = Object.keys(prepared).filter(n => prepared[n])
-  localStorage.setItem(prepStorageKey.value, JSON.stringify(names))
+  persistPlan()
 }
 const isPrepared = (e: EquipmentItem) => !!prepared[e.name]
 const preparedCount = computed(() => equipmentList.value.filter(e => prepared[e.name]).length)
@@ -903,9 +1104,9 @@ const draft = reactive({ theme: '', shootDate: '' })
 const crewText = computed(() => {
   const c = plan.value.crew
   const parts: string[] = []
-  if (c.photographers) parts.push(`摄影 ${c.photographers}`)
-  if (c.cosers)        parts.push(`Coser ${c.cosers}`)
-  if (c.logistics)     parts.push(`后勤 ${c.logistics}`)
+  if (c.photographers) parts.push(`${t('projectCanvas.crewPhotographers')} ${c.photographers}`)
+  if (c.cosers)        parts.push(`${t('projectCanvas.crewCosers')} ${c.cosers}`)
+  if (c.logistics)     parts.push(`${t('projectCanvas.crewLogistics')} ${c.logistics}`)
   return parts.join(' · ')
 })
 
@@ -914,9 +1115,9 @@ const crewText = computed(() => {
 function scheduleTotal(sched: ScheduleRow[]): { pre?: string; num: string; unit: string } | null {
   const mins = sched.reduce((sum, r) => sum + (parseInt(r.duration) || 0), 0)
   if (!mins) return null
-  if (mins < 60) return { num: String(mins), unit: '分钟' }
+  if (mins < 60) return { num: String(mins), unit: t('projectCanvas.unitMinutes') }
   const h = mins / 60
-  return { pre: '约', num: Number.isInteger(h) ? String(h) : h.toFixed(1), unit: '小时' }
+  return { pre: t('projectCanvas.approxPrefix'), num: Number.isInteger(h) ? String(h) : h.toFixed(1), unit: t('projectCanvas.unitHours') }
 }
 
 // Map a stored shot_id → display label S01 (by position in the shots list).
@@ -967,25 +1168,17 @@ const locationCards = computed(() => {
 // 室内/室外/棚子:根据场景自动判定(不由用户选)。mock 阶段用场景名关键词
 // 猜;等 AI 给出 location.type 字段后,把这里换成读那个字段即可。
 function sceneType(scene: string): string {
-  if (/棚|影棚/.test(scene)) return '棚子'
-  if (/室外|户外|街|公园|操场|天台|门口|广场|野外|马路|路口/.test(scene)) return '室外'
-  return '室内'
+  if (/棚|影棚/.test(scene)) return t('projectCanvas.sceneStudio')
+  if (/室外|户外|街|公园|操场|天台|门口|广场|野外|马路|路口/.test(scene)) return t('projectCanvas.sceneOutdoor')
+  return t('projectCanvas.sceneIndoor')
 }
 
 // 地点唯一的用户元数据:实际地址(系统推不出、只有用户知道)。其余(类型/时间/
-// 镜头/光线)全是派生的。按地点名存 localStorage;接后端时改成读写 API 即可。
+// 镜头/光线)全是派生的。按地点名存 plan.location_meta。
 const locAddr = reactive<Record<string, string>>({})
-const locMetaKey = computed(() => `loc-meta-${projectId.value}`)
 function loadLocationMeta() {
-  try {
-    const obj = JSON.parse(localStorage.getItem(locMetaKey.value) || '{}')
-    for (const name in obj) if (obj[name].address) locAddr[name] = obj[name].address
-  } catch { /* ignore */ }
-}
-function saveLocationMeta() {
-  const out: Record<string, { address?: string }> = {}
-  for (const n in locAddr) if (locAddr[n]?.trim()) out[n] = { address: locAddr[n].trim() }
-  localStorage.setItem(locMetaKey.value, JSON.stringify(out))
+  const meta = planData.value.location_meta ?? {}
+  for (const name in meta) if (meta[name]?.address) locAddr[name] = meta[name].address
 }
 
 const schedStats = computed(() => {
@@ -994,12 +1187,12 @@ const schedStats = computed(() => {
   const scenes = new Set(s.map(r => r.scene)).size
   const mustShoot = s.filter(r => r.priority === 'high').length
   return [
-    { num: String(s.length), unit: '段', sub: '拍摄阶段' },
+    { num: String(s.length), unit: t('projectCanvas.unitStage'), sub: t('projectCanvas.statStageSub') },
     total
-      ? { pre: total.pre, num: total.num, unit: total.unit, sub: '总时长' }
-      : { num: '—', unit: '', sub: '总时长' },
-    { num: String(scenes), unit: '个场地', sub: '拍摄地点' },
-    { num: String(mustShoot), unit: '', sub: '必拍段' },
+      ? { pre: total.pre, num: total.num, unit: total.unit, sub: t('projectCanvas.statDurationSub') }
+      : { num: '—', unit: '', sub: t('projectCanvas.statDurationSub') },
+    { num: String(scenes), unit: t('projectCanvas.unitPlaceCount'), sub: t('projectCanvas.statPlaceSub') },
+    { num: String(mustShoot), unit: '', sub: t('projectCanvas.statMustSub') },
   ]
 })
 const schedScroll = ref<HTMLElement | null>(null)
@@ -1035,13 +1228,20 @@ function schedUp() {
 // (and optional small `pre` like "约"), so only the number reads large.
 // When there's no data, `ph` holds the placeholder text instead.
 // 内容区头部:图标 + 标题 + 一句说明,按当前标签切换(四块统一)
-const DETAIL_HEADERS: Record<PlanTab, { icon: any; title: string; desc: string }> = {
-  equipment: { icon: Package,       title: '设备清单', desc: '本次拍摄需要携带的设备,逐项勾选以确认已准备。' },
-  locations: { icon: MapPin,        title: '拍摄场地', desc: '本次拍摄涉及的场景与地点。' },
-  schedule:  { icon: Clock,         title: '拍摄日程', desc: '建议的拍摄顺序与各时段安排。' },
-  notes:     { icon: TriangleAlert, title: '注意事项', desc: '拍摄过程中需重点关注的事项,提前确认可确保拍摄顺利进行。' },
+const DETAIL_ICONS: Record<PlanTab, any> = {
+  equipment: Package, locations: MapPin, schedule: Clock, notes: TriangleAlert,
 }
-const detailHeader = computed(() => DETAIL_HEADERS[summaryTab.value])
+const DETAIL_KEY: Record<PlanTab, string> = {
+  equipment: 'equip', locations: 'loc', schedule: 'sched', notes: 'notes',
+}
+const detailHeader = computed(() => {
+  const tab = summaryTab.value
+  return {
+    icon:  DETAIL_ICONS[tab],
+    title: t(`projectCanvas.${DETAIL_KEY[tab]}HeaderTitle`),
+    desc:  t(`projectCanvas.${DETAIL_KEY[tab]}HeaderDesc`),
+  }
+})
 
 const planTiles = computed(() => {
   const p = plan.value
@@ -1051,21 +1251,101 @@ const planTiles = computed(() => {
   const hasSplit = req + opt > 0
   const sched = p.schedule.length ? scheduleTotal(p.schedule) : null
   return [
-    { id: 'equipment' as PlanTab, label: '设备', icon: Package,
-      num: eq.length ? String(eq.length) : '', unit: '项', ph: eq.length ? '' : '待规划',
-      sub: hasSplit ? `必要 ${req} · 可选 ${opt}` : '' },
-    { id: 'locations' as PlanTab, label: '场地', icon: MapPin,
-      num: p.locations.length ? String(p.locations.length) : '', unit: '个', ph: p.locations.length ? '' : '待规划',
-      sub: p.locations.length ? '拍摄场景' : '' },
-    { id: 'schedule' as PlanTab, label: '拍摄日程', icon: Clock,
-      num: p.schedule.length ? String(p.schedule.length) : '', unit: '段', ph: p.schedule.length ? '' : '待生成',
+    { id: 'equipment' as PlanTab, label: t('projectCanvas.tabEquipment'), icon: Package,
+      num: eq.length ? String(eq.length) : '', unit: t('projectCanvas.unitItems'), ph: eq.length ? '' : t('projectCanvas.todoPlan'),
+      sub: hasSplit ? t('projectCanvas.requiredOptional', { req, opt }) : '' },
+    { id: 'locations' as PlanTab, label: t('projectCanvas.tabLocations'), icon: MapPin,
+      num: p.locations.length ? String(p.locations.length) : '', unit: t('projectCanvas.unitPlaces'), ph: p.locations.length ? '' : t('projectCanvas.todoPlan'),
+      sub: p.locations.length ? t('projectCanvas.shootScenes') : '' },
+    { id: 'schedule' as PlanTab, label: t('projectCanvas.tabSchedule'), icon: Clock,
+      num: p.schedule.length ? String(p.schedule.length) : '', unit: t('projectCanvas.unitSegments'), ph: p.schedule.length ? '' : t('projectCanvas.todoPlan'),
       // 头条用"段数"(计数,不折行);总时长降级到副标题
-      sub: sched ? `共${sched.pre ?? ''}${sched.num}${sched.unit}` : '' },
-    { id: 'notes' as PlanTab, label: '注意事项', icon: TriangleAlert,
-      num: notesList.value.length ? String(notesList.value.length) : '', unit: '点', ph: notesList.value.length ? '' : '待生成',
-      sub: noteDoneCount.value ? `已确认 ${noteDoneCount.value}` : '' },
+      sub: sched ? `${t('projectCanvas.totalPrefix')}${sched.pre ?? ''}${sched.num}${sched.unit}` : '' },
+    { id: 'notes' as PlanTab, label: t('projectCanvas.tabNotes'), icon: TriangleAlert,
+      num: notesList.value.length ? String(notesList.value.length) : '', unit: t('projectCanvas.unitPoints'), ph: notesList.value.length ? '' : t('projectCanvas.todoPlan'),
+      sub: noteDoneCount.value ? t('projectCanvas.confirmedCount', { n: noteDoneCount.value }) : '' },
   ]
 })
+
+// ── Wardrobe (服装 / 道具) — left 设定 panel ─────────────────────────────────
+// Character-level reference (what the coser wears / carries), stored in
+// plan/wardrobe.json (separate from plan.json; the step-1 context extraction
+// stays frozen). Editable list — add/remove only. No 已备/progress tracking:
+// that's execution state and lives on the right-side plan (设备), not 设定.
+interface CostumeItem { id?: string; name: string; category?: string; note?: string }
+interface PropItem { id?: string; name: string; note?: string }
+
+const COSTUME_CATEGORIES = computed(() => [
+  { key: 'wig',       label: t('projectCanvas.catWig') },
+  { key: 'top',       label: t('projectCanvas.catTop') },
+  { key: 'bottom',    label: t('projectCanvas.catBottom') },
+  { key: 'shoes',     label: t('projectCanvas.catShoes') },
+  { key: 'accessory', label: t('projectCanvas.catAccessory') },
+  { key: 'misc',      label: t('projectCanvas.catOther') },
+])
+const costumeList = ref<CostumeItem[]>([])
+const propsList   = ref<PropItem[]>([])
+
+function loadWardrobe() {
+  const w = projectData.value?.wardrobe ?? {}
+  costumeList.value = (w.costume ?? []).map((c: any) => ({ ...c }))
+  propsList.value   = (w.props ?? []).map((p: any) => ({ ...p }))
+}
+
+function buildWardrobe() {
+  return {
+    costume: costumeList.value.map(c => ({ id: c.id, name: c.name, category: c.category, note: c.note })),
+    props:   propsList.value.map(p => ({ id: p.id, name: p.name, note: p.note })),
+  }
+}
+
+let wardrobeSaveTimer: ReturnType<typeof setTimeout> | null = null
+function persistWardrobe() {
+  if (!projectData.value) return
+  const data = buildWardrobe()
+  projectData.value.wardrobe = data   // optimistic
+  if (wardrobeSaveTimer) clearTimeout(wardrobeSaveTimer)
+  wardrobeSaveTimer = setTimeout(() => {
+    api.saveWardrobe(projectId.value, data).catch(e => console.error('Failed to save wardrobe', e))
+  }, 400)
+}
+
+// costume grouped by category, in canonical order, only non-empty groups
+const costumeGroups = computed(() =>
+  COSTUME_CATEGORIES.value
+    .map(c => ({ ...c, items: costumeList.value.filter(x => (x.category || 'misc') === c.key) }))
+    .filter(g => g.items.length))
+
+function removeCostume(item: CostumeItem) {
+  const i = costumeList.value.indexOf(item)
+  if (i >= 0) costumeList.value.splice(i, 1)
+  persistWardrobe()
+}
+function removeProp(item: PropItem) {
+  const i = propsList.value.indexOf(item)
+  if (i >= 0) propsList.value.splice(i, 1)
+  persistWardrobe()
+}
+
+// Add-item inline forms
+const showAddCostume = ref(false)
+const newCostume = reactive({ category: 'top', name: '', note: '' })
+function submitAddCostume() {
+  if (!newCostume.name.trim()) return
+  costumeList.value.push({ category: newCostume.category, name: newCostume.name.trim(), note: newCostume.note.trim() || undefined })
+  newCostume.name = ''; newCostume.note = ''
+  showAddCostume.value = false
+  persistWardrobe()
+}
+const showAddProp = ref(false)
+const newProp = reactive({ name: '', note: '' })
+function submitAddProp() {
+  if (!newProp.name.trim()) return
+  propsList.value.push({ name: newProp.name.trim(), note: newProp.note.trim() || undefined })
+  newProp.name = ''; newProp.note = ''
+  showAddProp.value = false
+  persistWardrobe()
+}
 
 const exporting = ref(false)
 async function doExport() {
@@ -1085,14 +1365,9 @@ onMounted(async () => {
     if (savedHistory.length > 0) {
       aiMessages.value = savedHistory
     }
-    // Seed the inline-editable overview drafts from whatever's stored.
-    draft.theme     = plan.value.theme
-    draft.shootDate = plan.value.shootDate
-    loadEquipment()
-    loadPrepared()
-    loadNotes()
-    loadNoteDone()
-    loadLocationMeta()
+    syncPlanFromData()
+    loadWardrobe()
+    autoGrabCoverIfMissing()   // one-time: grab a cover if the project has none
   } catch (e) {
     console.error('Failed to load project', e)
   }
@@ -1107,7 +1382,7 @@ async function quickAddShot() {
   if (shotAdding.value) return
   shotAdding.value = true
   const n = (projectData.value?.shots?.length ?? 0) + 1
-  const title = `新分镜 ${n}`
+  const title = t('projectCanvas.newShotName', { n })
   try {
     const shot = await api.createShot(projectId.value, title, '')
     if (projectData.value) {
@@ -1133,7 +1408,7 @@ async function removeShot(shotId: string) {
 
 
 // ── AI assistant ──────────────────────────────────────────
-const GREETING = '你好！可以帮你规划拍摄场景、整理设备需求或优化拍摄故事。随时问我。'
+const GREETING = t('projectCanvas.aiGreeting')
 const aiContainer = ref<HTMLElement | null>(null)
 const aiInput     = ref('')
 const aiLoading   = ref(false)
@@ -1170,13 +1445,18 @@ async function sendAiMessage(retryText?: string) {
   await nextTick()
   if (aiContainer.value) aiContainer.value.scrollTop = aiContainer.value.scrollHeight
   try {
-    const { reply, brief } = await withRetry(() => api.projectChat(projectId.value, text, history))
+    const { reply, brief, plan: newPlan } = await withRetry(() => api.projectChat(projectId.value, text, history))
     aiMessages.value.push({ role: 'agent', text: reply })
     if (brief && projectData.value) {
       projectData.value.plan = { ...projectData.value.plan, brief }
     }
+    // AI edited the plan panel this turn → adopt the fresh data + re-sync the UI.
+    if (newPlan && projectData.value) {
+      projectData.value.plan = { ...projectData.value.plan, data: newPlan }
+      syncPlanFromData()
+    }
   } catch {
-    aiMessages.value.push({ role: 'agent', text: '出了点问题，请稍后重试。', retryText: text })
+    aiMessages.value.push({ role: 'agent', text: t('projectCanvas.aiError'), retryText: text })
   } finally {
     // Guaranteed to run even if something above throws unexpectedly —
     // the input/send button must never stay stuck disabled.
@@ -1187,11 +1467,11 @@ async function sendAiMessage(retryText?: string) {
 }
 
 // ── Dock layout ───────────────────────────────────────────
-const panelTitles: Record<string, string> = {
-  shots:    '拍摄计划',
-  summary:  '拍摄总结',
-  settings: '设定',
-}
+const panelTitles = computed<Record<string, string>>(() => ({
+  shots:    t('projectCanvas.panelShots'),
+  summary:  t('projectCanvas.panelSummary'),
+  settings: t('projectCanvas.panelSettings'),
+}))
 
 const defaultLayout = (): LayoutNode => ({
   type: 'split', dir: 'h', ratio: 22,
@@ -1222,7 +1502,7 @@ function startDrag(panelId: PanelId) {
   dragging.value = panelId
 
   ghostEl = document.createElement('div')
-  ghostEl.textContent = panelTitles[panelId]
+  ghostEl.textContent = panelTitles.value[panelId]
   ghostEl.style.cssText = [
     'position:fixed', 'pointer-events:none', 'z-index:9999',
     'background:var(--avatar-bg)', 'border:1px solid var(--accent)', 'border-radius:6px',
@@ -1596,6 +1876,82 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 .ni-prio.p-mid  { color: var(--orange); border-color: var(--orange); }
 .ni-prio.p-low  { color: var(--text-quiet); border-color: var(--border); }
 
+/* 角色头像选择器 */
+.char-picker { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.char-ava {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  width: 60px; padding: 0; background: none; border: none; cursor: pointer;
+}
+.ca-img {
+  width: 52px; height: 52px; border-radius: 50%; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-inset); border: 2px solid var(--border-md);
+  transition: border-color 0.15s, transform 0.15s;
+}
+.ca-img img { width: 100%; height: 100%; object-fit: cover; }
+.ca-ph { font-size: 20px; font-weight: 700; color: var(--text-quiet); }
+.char-ava:hover .ca-img { border-color: var(--accent-dim); }
+.char-ava.on .ca-img { border-color: var(--accent); transform: scale(1.04); }
+.char-ava.on .ca-name { color: var(--accent); font-weight: 700; }
+.ca-name {
+  font-size: 10.5px; color: var(--text-quiet); max-width: 60px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ca-img.add { border-style: dashed; color: var(--text-quiet); }
+.ca-img.add :deep(svg) { width: 20px; height: 20px; }
+.char-ava.add:hover .ca-img.add { color: var(--accent); border-color: var(--accent-dim); }
+
+/* 三段标签导航 */
+.char-tabs {
+  display: flex; gap: 4px; margin-bottom: 14px;
+  background: var(--surface-inset); border: 1px solid var(--border); border-radius: 10px; padding: 3px;
+}
+.char-tab {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 7px 6px; border-radius: 7px; cursor: pointer;
+  font-size: 11.5px; font-weight: 600; color: var(--text-quiet);
+  background: none; border: none; transition: background 0.15s, color 0.15s;
+}
+.char-tab:hover { color: var(--text-2); }
+.char-tab.on { background: var(--surface); color: var(--accent); box-shadow: 0 1px 4px var(--shadow); }
+.ct-ico { width: 13px; height: 13px; flex-shrink: 0; }
+
+/* 每段内容的小节标题 */
+.char-panel { display: flex; flex-direction: column; }
+.cp-sub {
+  font-size: 11px; font-weight: 700; color: var(--text-2);
+  margin: 14px 0 8px; letter-spacing: 0.02em;
+}
+.cp-sub:first-child { margin-top: 2px; }
+
+/* 名场面 */
+.moments { display: flex; flex-direction: column; gap: 7px; }
+.moment-item {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 9px 11px; border-radius: 9px;
+  background: var(--surface-inset); border: 1px solid var(--border);
+}
+.mi-ico { width: 14px; height: 14px; color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+.mi-text { font-size: 12px; color: var(--text-hi); line-height: 1.55; }
+
+/* transient toast (bottom-center) */
+.toast {
+  position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%);
+  z-index: 10000; padding: 9px 18px; border-radius: 10px;
+  font-size: 12.5px; font-weight: 600; color: var(--text-hi);
+  background: var(--surface-raised); border: 1px solid var(--border-md);
+  box-shadow: 0 6px 24px var(--shadow); white-space: nowrap;
+}
+.toast-fade-enter-active, .toast-fade-leave-active { transition: opacity 0.2s, transform 0.2s; }
+.toast-fade-enter-from, .toast-fade-leave-to { opacity: 0; transform: translateX(-50%) translateY(8px); }
+
+/* Wardrobe (服装/道具) section sub-headers in the left 设定 panel */
+.wd-sub {
+  display: flex; align-items: center; gap: 6px; margin-top: 2px;
+  font-size: 11.5px; font-weight: 700; color: var(--text-2);
+}
+.wd-si { width: 14px; height: 14px; color: var(--accent); flex-shrink: 0; }
+
 /* Equipment detail — summary line + 准备进度 + 必要/可选 grouped cards */
 .equip { display: flex; flex-direction: column; gap: 14px; }
 /* 内容区头部:图标 + 标题 + 说明 */
@@ -1804,11 +2160,67 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 
 /* ── 设定面板 ── */
 .setting-block  { margin-bottom: 22px; }
-.s-section      { font-size: 10px; color: var(--text-quiet); margin-bottom: 8px; letter-spacing: 0.04em; }
+.s-section      { font-size: 13px; font-weight: 700; color: var(--text-2); margin-bottom: 12px; letter-spacing: 0; }
+
+/* collapse chevron (背景设定 title row toggle) */
+.s-chev {
+  width: 16px; height: 16px; color: var(--text-quiet); flex-shrink: 0;
+  margin-left: auto; transition: transform 0.2s; transform: rotate(-90deg);
+}
+.s-chev.open { transform: rotate(0deg); }
 .s-row         { display: flex; gap: 10px; margin-bottom: 5px; align-items: baseline; }
 .s-row-top     { align-items: flex-start; }
 .s-key         { font-size: 10px; color: var(--text-quiet); flex-shrink: 0; width: 44px; padding-top: 1px; }
 .s-val         { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+/* ── 作品设定 (redesigned hero + sections) ─────────────────── */
+.ws-hero { margin-bottom: 16px; }
+.ws-cover {
+  position: relative; width: 100%; aspect-ratio: 16/10; border-radius: 12px;
+  overflow: hidden; background: var(--surface-inset); border: 1px solid var(--border);
+}
+.ws-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ws-cover-ph { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-ghost); }
+.ws-cover-ph :deep(svg) { width: 26px; height: 26px; }
+.ws-cover-btn {
+  position: absolute; right: 8px; bottom: 8px;
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 9px; border-radius: 7px; cursor: pointer;
+  font-size: 11px; font-weight: 600; color: #fff;
+  background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.25);
+  backdrop-filter: blur(4px); transition: background 0.15s;
+}
+.ws-cover-btn:hover:not(.disabled) { background: rgba(0,0,0,0.68); }
+.ws-cover-btn.disabled { cursor: default; opacity: 0.8; }
+.ws-cover-btn :deep(svg) { width: 12px; height: 12px; }
+.ws-cover :deep(svg.spin) { animation: spin 0.8s linear infinite; }
+.ws-title-row {
+  display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 10px;
+  background: none; border: none; padding: 0; cursor: pointer; text-align: left;
+}
+.ws-hero-title { flex: 1; min-width: 0; font-size: 15px; font-weight: 800; color: var(--text-hi); line-height: 1.35; }
+.ws-hero-sub {
+  font-size: 11.5px; color: var(--text-muted); line-height: 1.65; margin-top: 6px;
+}
+
+/* section sub-headers (基础信息 / 氛围设定 / …) */
+.ws-sub {
+  display: flex; align-items: center; gap: 6px; margin: 16px 0 8px;
+  font-size: 11.5px; font-weight: 700; color: var(--text-2);
+}
+.ws-si { width: 14px; height: 14px; color: var(--accent); flex-shrink: 0; }
+
+/* icon-labelled key/value rows, boxed like the mockup */
+.ws-info {
+  display: flex; flex-direction: column;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-inset); padding: 4px 2px;
+}
+.ws-irow { display: flex; align-items: flex-start; gap: 7px; padding: 8px 10px; }
+.ws-ii { width: 13px; height: 13px; color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+.ws-ik { font-size: 11px; color: var(--text-quiet); flex-shrink: 0; width: 58px; padding-top: 1px; }
+.ws-iv { font-size: 12px; color: var(--text-hi); line-height: 1.5; min-width: 0; }
+
 
 .ref-add-card {
   width: 100%; aspect-ratio: 2/3;
