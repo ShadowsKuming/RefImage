@@ -60,6 +60,11 @@ class ShotCharacterRequest(BaseModel):
     character_id: str
 
 
+class ShotAttrsRequest(BaseModel):
+    priority: str | None = None
+    essential: bool | None = None
+
+
 @router.post("/{project_id}/shots")
 def create_shot(
     project_id: str,
@@ -91,6 +96,23 @@ def set_shot_character(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True}
+
+
+@router.patch("/{project_id}/shots/{shot_id}/attrs")
+def set_shot_attrs(
+    project_id: str,
+    shot_id: str,
+    req: ShotAttrsRequest,
+    user_id: str = Depends(get_current_user),
+):
+    """Update a shot's priority (high|mid|low) and/or essential (必拍/可选)."""
+    _check_owner(project_id, user_id)
+    try:
+        return project_service.set_shot_attrs(project_id, shot_id, req.priority, req.essential)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Shot not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/{project_id}/shots/{shot_id}")

@@ -281,6 +281,8 @@ def get_project(project_id: str) -> dict:
             if shot_dir.is_dir() and shot_file.exists():
                 shot = json.loads(shot_file.read_text())
                 shot.setdefault("character_id", primary_id)   # legacy shots → primary
+                shot.setdefault("priority", "mid")
+                shot.setdefault("essential", True)
                 shots.append(shot)
 
     return {
@@ -343,6 +345,8 @@ def create_shot(project_id: str, title: str, mood: str, description: str = "",
         "mood":         mood,
         "description":  description,
         "character_id": character_id,
+        "priority":     "mid",     # high | mid | low
+        "essential":    True,      # 必拍(true) | 可选(false)
         "status":       "pending",
         "created_at":   datetime.utcnow().isoformat() + "Z",
     }
@@ -408,6 +412,23 @@ def set_shot_character(project_id: str, shot_id: str, character_id: str) -> None
     shot = json.loads(shot_file.read_text())
     shot["character_id"] = character_id
     shot_file.write_text(json.dumps(shot, ensure_ascii=False, indent=2))
+
+
+def set_shot_attrs(project_id: str, shot_id: str,
+                   priority: str | None = None, essential: bool | None = None) -> dict:
+    """Update a shot's priority (high|mid|low) and/or essential (必拍/可选)."""
+    shot_file = STORAGE_ROOT / project_id / "shots" / shot_id / "shot.json"
+    if not shot_file.exists():
+        raise FileNotFoundError(f"Shot {shot_id!r} not found")
+    shot = json.loads(shot_file.read_text())
+    if priority is not None:
+        if priority not in ("high", "mid", "low"):
+            raise ValueError(f"Bad priority {priority!r}")
+        shot["priority"] = priority
+    if essential is not None:
+        shot["essential"] = bool(essential)
+    shot_file.write_text(json.dumps(shot, ensure_ascii=False, indent=2))
+    return {"priority": shot.get("priority", "mid"), "essential": shot.get("essential", True)}
 
 
 def get_shot(project_id: str, shot_id: str) -> dict:

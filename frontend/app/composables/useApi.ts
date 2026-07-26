@@ -247,6 +247,14 @@ export const useApi = () => {
     return api<{ ok: boolean }>(`/projects/${projectId}/shots/${shotId}`, { method: 'DELETE' })
   }
 
+  function setShotAttrs(projectId: string, shotId: string, attrs: { priority?: string; essential?: boolean }) {
+    return api<{ priority: string; essential: boolean }>(`/projects/${projectId}/shots/${shotId}/attrs`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(attrs),
+    })
+  }
+
   function updateShotTitle(projectId: string, shotId: string, title: string) {
     return api<{ ok: boolean }>(`/projects/${projectId}/shots/${shotId}/title`, {
       method: 'PATCH',
@@ -435,6 +443,7 @@ export const useApi = () => {
     projectChat,
     addExtraRef,
     createShot,
+    setShotAttrs,
     deleteShot,
     updateShotTitle,
     shotChat,

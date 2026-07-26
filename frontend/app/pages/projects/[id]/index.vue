@@ -63,23 +63,55 @@
             <!-- Grid view -->
             <div v-if="viewMode === 'grid'" class="shots-grid">
               <div
-                v-for="shot in shots"
+                v-for="(shot, si) in shots"
                 :key="shot.shot_id"
                 class="shot-card"
-                :class="{ 'shot-card-no-thumb': !shot.image_url, 'shot-card-refined': shot.status === 'refined' }"
+                :class="{ 'shot-card-refined': shot.status === 'refined' }"
                 @click="navigateTo(`/projects/${projectId}/shots/${shot.shot_id}`)"
               >
-                <div v-if="shot.image_url" class="sc-thumb-wrap">
-                  <img :src="BASE_URL + shot.image_url" class="sc-thumb" :alt="shot.title" />
+                <!-- header: 编号 + 标题 + 必拍/可选 + 优先级 -->
+                <div class="sc-head">
+                  <span class="sc-num">{{ shotLabel(si) }}</span>
+                  <span class="sc-title">{{ shot.title }}</span>
+                  <span class="sc-pill ess" :class="shot.essential === false ? 'opt' : ''">
+                    {{ shot.essential === false ? t('projectCanvas.scOptional') : t('projectCanvas.scEssential') }}
+                  </span>
+                  <span class="sc-pill prio" :class="'p-' + (shot.priority || 'mid')">{{ shotPrioLabel(shot.priority) }}</span>
+                </div>
+
+                <!-- image -->
+                <div class="sc-thumb-wrap" :class="{ empty: !shot.image_url }">
+                  <img v-if="shot.image_url" :src="BASE_URL + shot.image_url" class="sc-thumb" :alt="shot.title" />
+                  <ImageIcon v-else class="sc-thumb-ph" />
                   <div v-if="shot.status === 'refined'" class="sc-refined-overlay">✓ {{ t('projectCanvas.refined') }}</div>
                 </div>
-                <div class="sc-mood">{{ shot.mood }}</div>
-                <div class="sc-title">{{ shot.title }}</div>
-                <div class="sc-desc" v-if="shot.description">{{ shot.description }}</div>
+
+                <!-- info rows -->
+                <div class="sc-info">
+                  <div v-if="shot.mood || shot.description" class="sc-irow">
+                    <Clapperboard class="sc-ii" /><span class="sc-ik">{{ t('projectCanvas.scMood') }}</span>
+                    <span class="sc-iv">{{ shot.description || shot.mood }}</span>
+                  </div>
+                  <div class="sc-irow">
+                    <CircleDot class="sc-ii" /><span class="sc-ik">{{ t('projectCanvas.scStatus') }}</span>
+                    <span class="sc-status" :class="shotStatusMeta(shot).cls"><span class="sc-dot" />{{ shotStatusMeta(shot).label }}</span>
+                  </div>
+                </div>
+
+                <!-- footer: ⋯ menu -->
                 <div class="sc-footer">
-                  <span v-if="shot.status === 'error'" class="sc-error-dot" :title="t('projectCanvas.genError')">!</span>
-                  <span v-else class="sc-spacer" />
-                  <button class="sc-del" @click.stop="removeShot(shot.shot_id)" :title="t('projectCanvas.delete')">✕</button>
+                  <div class="sc-menu-wrap">
+                    <button class="sc-kebab" @click.stop="toggleShotMenu(shot.shot_id)"><MoreVertical /></button>
+                    <div v-if="openShotMenu === shot.shot_id" class="wd-menu sc-menu" @click.stop>
+                      <button class="wd-mi" @click="setShotAttr(shot, { essential: shot.essential === false })">
+                        <Star /><span>{{ shot.essential === false ? t('projectCanvas.scSetEssential') : t('projectCanvas.scSetOptional') }}</span>
+                      </button>
+                      <button class="wd-mi" :class="{ on: (shot.priority||'mid')==='high' }" @click="setShotAttr(shot, { priority: 'high' })"><span class="sc-mdot p-high" />{{ t('projectCanvas.scPrioHigh') }}</button>
+                      <button class="wd-mi" :class="{ on: (shot.priority||'mid')==='mid' }" @click="setShotAttr(shot, { priority: 'mid' })"><span class="sc-mdot p-mid" />{{ t('projectCanvas.scPrioMid') }}</button>
+                      <button class="wd-mi" :class="{ on: (shot.priority||'mid')==='low' }" @click="setShotAttr(shot, { priority: 'low' })"><span class="sc-mdot p-low" />{{ t('projectCanvas.scPrioLow') }}</button>
+                      <button class="wd-mi danger" @click="removeShot(shot.shot_id); openShotMenu = null"><X /><span>{{ t('projectCanvas.delete') }}</span></button>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="shot-add" :class="{ adding: shotAdding }" @click="quickAddShot">
@@ -747,7 +779,7 @@ import {
   MapPin, Clock, TriangleAlert, Package, Check, CircleCheck, X, Sun, Clapperboard, FileText,
   Camera, Aperture, Lightbulb, Disc, BatteryFull, Plug, Mic, Image as ImageIcon, Wrench, Shirt,
   Tag, Sparkles, Star, RefreshCw, Upload, ChevronDown, User, Plus, Pencil, MoreVertical,
-  Scissors, Gem, Footprints,
+  Scissors, Gem, Footprints, CircleDot,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import TripodIcon from '~/components/equip-icons/TripodIcon.vue'
@@ -1700,6 +1732,36 @@ async function removeShot(shotId: string) {
   }
 }
 
+// ── Shot card: number label, status dot, priority/essential pills + ⋯ menu ────
+const shotLabel = (i: number) => `S${String(i + 1).padStart(2, '0')}`
+const shotStatusMeta = (s: any) => {
+  const st = s.status || 'pending'
+  const map: Record<string, { cls: string; key: string }> = {
+    pending:  { cls: 'st-pending', key: 'stPending' },
+    refined:  { cls: 'st-refined', key: 'stRefined' },
+    done:     { cls: 'st-done',    key: 'stDone' },
+    error:    { cls: 'st-error',   key: 'stError' },
+  }
+  const m = map[st] || map.pending
+  return { cls: m.cls, label: t(`projectCanvas.${m.key}`) }
+}
+const shotPrioLabel = (p?: string) =>
+  p === 'high' ? t('projectCanvas.scPrioHigh') : p === 'low' ? t('projectCanvas.scPrioLow') : t('projectCanvas.scPrioMid')
+
+const openShotMenu = ref<string | null>(null)
+function toggleShotMenu(id: string) { openShotMenu.value = openShotMenu.value === id ? null : id }
+if (typeof window !== 'undefined') window.addEventListener('click', () => { openShotMenu.value = null })
+
+async function setShotAttr(shot: any, attrs: { priority?: string; essential?: boolean }) {
+  Object.assign(shot, attrs)   // optimistic
+  openShotMenu.value = null
+  try {
+    await api.setShotAttrs(projectId.value, shot.shot_id, attrs)
+  } catch (e) {
+    console.error('Failed to set shot attrs', e)
+  }
+}
+
 
 // ── AI assistant ──────────────────────────────────────────
 const GREETING = t('projectCanvas.aiGreeting')
@@ -1957,56 +2019,82 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 
 .shots-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
 }
 .shot-card {
-  min-height: 130px; background: var(--surface);
-  border: 1px solid var(--border); border-radius: 12px;
-  padding: 0; display: flex; flex-direction: column; gap: 0;
+  background: var(--surface);
+  border: 1px solid var(--border); border-radius: 14px;
+  padding: 12px; display: flex; flex-direction: column; gap: 10px;
   cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
-  overflow: hidden;
 }
-.shot-card:hover { border-color: var(--accent-dim); box-shadow: 0 2px 12px var(--shadow); }
+.shot-card:hover { border-color: var(--accent-dim); box-shadow: 0 4px 16px var(--shadow); }
 .shot-card-refined { border-color: var(--badge-done-text); }
-.shot-card-no-thumb { padding: 12px; }
-.shot-card-no-thumb .sc-mood  { padding: 0; }
-.shot-card-no-thumb .sc-title { padding: 0; }
-.shot-card-no-thumb .sc-desc  { padding: 0; }
-.shot-card-no-thumb .sc-footer { padding: 6px 0 0; }
+
+/* header */
+.sc-head { display: flex; align-items: center; gap: 7px; }
+.sc-num {
+  flex-shrink: 0; font-size: 11px; font-weight: 800; letter-spacing: 0.03em;
+  color: #fff; background: var(--accent-dim); border-radius: 6px; padding: 2px 7px;
+}
+.sc-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 700; color: var(--text-hi);
+  line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-pill { flex-shrink: 0; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.sc-pill.ess { color: var(--accent); background: var(--surface-raised); border: 1px solid var(--accent-dim); }
+.sc-pill.ess.opt { color: #fff; background: var(--accent-dim); border-color: var(--accent-dim); }
+.sc-pill.prio { border: 1px solid transparent; }
+.sc-pill.prio.p-high { color: var(--error);  border-color: var(--error); }
+.sc-pill.prio.p-mid  { color: var(--orange); border-color: var(--orange); }
+.sc-pill.prio.p-low  { color: var(--text-quiet); border-color: var(--border-md); }
+
+/* image */
 .sc-thumb-wrap {
-  width: 100%; overflow: hidden; flex-shrink: 0;
+  width: 100%; aspect-ratio: 16/10; overflow: hidden; flex-shrink: 0; border-radius: 10px;
   background: var(--surface-inset); position: relative;
-}
-.sc-thumb {
-  width: 100%; height: 120px; object-fit: cover; display: block;
-}
-.sc-mood  { font-size: 10px; color: var(--accent); padding: 10px 12px 0; }
-.sc-title { font-size: 13px; font-weight: 600; color: var(--text-hi); line-height: 1.3; padding: 4px 12px 0; }
-.sc-desc  { font-size: 11px; color: var(--text-dim); line-height: 1.4; margin-top: 2px; flex: 1; padding: 0 12px; }
-.sc-footer {
-  display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding: 6px 12px 10px;
-}
-.sc-spacer { flex: 1; }
-.sc-error-dot {
-  width: 18px; height: 18px; border-radius: 50%;
-  background: var(--error); color: white;
-  font-size: 10px; font-weight: 700;
   display: flex; align-items: center; justify-content: center;
 }
+.sc-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sc-thumb-ph { width: 26px; height: 26px; color: var(--text-ghost); }
 .sc-refined-overlay {
   position: absolute; bottom: 0; left: 0; right: 0;
-  background: rgba(0,0,0,0.45);
-  color: white; font-size: 10px; font-weight: 600;
-  text-align: center; padding: 4px 0;
-  letter-spacing: 0.04em;
+  background: rgba(0,0,0,0.45); color: white; font-size: 10px; font-weight: 600;
+  text-align: center; padding: 4px 0; letter-spacing: 0.04em;
 }
-.sc-del {
-  background: none; border: none; color: var(--text-ghost); font-size: 10px;
-  cursor: pointer; padding: 2px 4px; border-radius: 3px; line-height: 1;
-  transition: color 0.15s, background 0.15s;
+
+/* info rows */
+.sc-info { display: flex; flex-direction: column; gap: 6px; }
+.sc-irow { display: flex; align-items: flex-start; gap: 7px; }
+.sc-ii { width: 13px; height: 13px; color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+.sc-ik { font-size: 11px; color: var(--text-quiet); flex-shrink: 0; width: 46px; }
+.sc-iv { font-size: 11.5px; color: var(--text-hi); line-height: 1.45; min-width: 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sc-status { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; }
+.sc-dot { width: 6px; height: 6px; border-radius: 50%; }
+.sc-status.st-pending { color: var(--accent); }
+.sc-status.st-pending .sc-dot { background: var(--accent); }
+.sc-status.st-refined { color: var(--badge-done-text); }
+.sc-status.st-refined .sc-dot { background: var(--badge-done-text); }
+.sc-status.st-done { color: var(--badge-done-text); }
+.sc-status.st-done .sc-dot { background: var(--badge-done-text); }
+.sc-status.st-error { color: var(--error); }
+.sc-status.st-error .sc-dot { background: var(--error); }
+
+/* footer + menu */
+.sc-footer { display: flex; justify-content: flex-end; align-items: center; margin-top: auto; }
+.sc-menu-wrap { position: relative; }
+.sc-kebab {
+  width: 26px; height: 26px; padding: 0; border: none; background: none; cursor: pointer;
+  color: var(--text-quiet); border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
 }
-.sc-del:hover { color: var(--error); background: var(--surface-inset); }
+.sc-kebab:hover { background: var(--surface-inset); color: var(--text-2); }
+.sc-kebab :deep(svg) { width: 16px; height: 16px; }
+.sc-menu { right: 0; top: 30px; min-width: 148px; }
+.wd-mi.on { background: var(--surface-inset); }
+.sc-mdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.sc-mdot.p-high { background: var(--error); }
+.sc-mdot.p-mid { background: var(--orange); }
+.sc-mdot.p-low { background: var(--text-quiet); }
 
 /* ── List view ── */
 .shots-list { display: flex; flex-direction: column; gap: 6px; }
