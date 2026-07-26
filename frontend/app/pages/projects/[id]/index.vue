@@ -578,7 +578,8 @@
                 </button>
               </div>
 
-              <!-- ③ 名场面:标题 + 大概出处 + 详细描述(设定参考,非拍摄指令) -->
+              <!-- ③ 名场面:标题 + 大概出处 + 详细描述(设定参考,非拍摄指令)。
+                   项目创建后在后台静默生成一次,用户无感;之后可手动增删。 -->
               <div v-else class="char-panel mo">
                 <div v-if="momentsList.length" class="mo-list">
                   <div v-for="(m, i) in momentsList" :key="m.id || i" class="mo-card">
@@ -599,11 +600,6 @@
                   </div>
                 </div>
                 <p v-else-if="!momentsLoading" class="detail-empty">{{ t('projectCanvas.emptyMoments') }}</p>
-
-                <button class="mo-gen" :disabled="momentsLoading" @click="doGenerateMoments">
-                  <Sparkles :class="{ spin: momentsLoading }" />
-                  {{ momentsLoading ? t('projectCanvas.momentsGenerating') : (momentsList.length ? t('projectCanvas.momentsRegenerate') : t('projectCanvas.momentsGenerate')) }}
-                </button>
 
                 <div v-if="showAddMoment" class="equip-form">
                   <input v-model="newMoment.title" class="ef-input" :placeholder="t('projectCanvas.momentTitlePlaceholder')" @keydown.enter="submitAddMoment" />
@@ -860,17 +856,25 @@ const momentsLoading = ref(false)
 function loadMoments() {
   momentsList.value = (selectedChar.value?.moments ?? []).map((m: any) => ({ ...m }))
 }
-watch(selectedCharId, loadMoments)
+// Resolved id (selectedCharId may lag on first load; selectedChar falls back to
+// the primary character, so use its id for API calls).
+const activeCharId = computed(() => selectedChar.value?.id || '')
 function persistMoments() {
+  const cid = activeCharId.value
+  if (!cid) return
   if (selectedChar.value) selectedChar.value.moments = momentsList.value.map(m => ({ ...m }))
-  api.saveMoments(projectId.value, selectedCharId.value, momentsList.value)
+  api.saveMoments(projectId.value, cid, momentsList.value)
     .catch(e => console.error('Failed to save moments', e))
 }
-async function doGenerateMoments() {
-  if (momentsLoading.value) return
+// Generated once per character, silently in the background when the project is
+// opened and the character has none — the user never sees a loading step; by the
+// time they browse to 名场面 it's already there. Cached forever after.
+async function autoGenerateMomentsIfMissing() {
+  const cid = activeCharId.value
+  if (!cid || momentsList.value.length || momentsLoading.value) return
   momentsLoading.value = true
   try {
-    const { moments } = await api.generateMoments(projectId.value, selectedCharId.value)
+    const { moments } = await api.generateMoments(projectId.value, cid)
     if (selectedChar.value) selectedChar.value.moments = moments
     momentsList.value = moments.map((m: any) => ({ ...m }))
   } catch (e) {
@@ -879,6 +883,7 @@ async function doGenerateMoments() {
     momentsLoading.value = false
   }
 }
+watch(selectedCharId, () => { loadMoments(); autoGenerateMomentsIfMissing() })
 function removeMoment(item: MomentItem) {
   const i = momentsList.value.indexOf(item)
   if (i >= 0) momentsList.value.splice(i, 1)
@@ -1532,7 +1537,8 @@ onMounted(async () => {
     syncPlanFromData()
     loadWardrobe()
     loadMoments()
-    autoGrabCoverIfMissing()   // one-time: grab a cover if the project has none
+    autoGrabCoverIfMissing()      // one-time: grab a cover if the project has none
+    autoGenerateMomentsIfMissing()  // one-time: silently generate 名场面 in the background
   } catch (e) {
     console.error('Failed to load project', e)
   }
@@ -2120,18 +2126,6 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 }
 .mo-desc { font-size: 11.5px; color: var(--text-quiet); line-height: 1.6; margin-left: 26px; }
 
-/* generate button */
-.mo-gen {
-  display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: 100%;
-  padding: 10px; border-radius: 11px; cursor: pointer;
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  border: 1px solid var(--accent-dim); color: var(--accent);
-  font-size: 12.5px; font-weight: 600; transition: background 0.15s;
-}
-.mo-gen:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 20%, transparent); }
-.mo-gen:disabled { opacity: 0.7; cursor: default; }
-.mo-gen :deep(svg) { width: 15px; height: 15px; }
-.mo-gen :deep(svg.spin) { animation: spin 0.8s linear infinite; }
 .mo-ta { resize: vertical; font-family: inherit; line-height: 1.5; }
 
 /* transient toast (bottom-center) */
