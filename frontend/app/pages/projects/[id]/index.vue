@@ -495,10 +495,10 @@
                   <div v-for="f in visualSpecFields" :key="f.label" class="s-row s-row-top">
                     <span class="s-key">{{ f.label }}</span>
                     <div v-if="parseColors(f.value).length" class="swatches">
-                      <span
-                        v-for="(c, i) in parseColors(f.value)" :key="i"
-                        class="swatch" :style="{ background: c.hex }" :title="`${c.name} ${c.hex}`"
-                      />
+                      <span v-for="(c, i) in parseColors(f.value)" :key="i" class="swatch-wrap">
+                        <span class="swatch" :style="{ background: c.hex }" />
+                        <span class="swatch-tip">{{ c.name }} {{ c.hex }}</span>
+                      </span>
                     </div>
                     <span v-else class="s-val">{{ f.value }}</span>
                   </div>
@@ -506,11 +506,9 @@
 
                 <template v-if="relations.length">
                   <div class="cp-sub">{{ t('projectCanvas.secRelations') }}</div>
-                  <div class="rel-list">
-                    <div v-for="(r, i) in relations" :key="i" class="rel-item">
-                      <span class="rel-name">{{ r.name }}</span>
-                      <span class="rel-rel">{{ r.relationship }}</span>
-                    </div>
+                  <div v-for="(r, i) in relations" :key="i" class="s-row s-row-top">
+                    <span class="s-key">{{ r.name }}</span>
+                    <span class="s-val">{{ r.relationship }}</span>
                   </div>
                 </template>
 
@@ -2160,23 +2158,24 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 
 .mo-ta { resize: vertical; font-family: inherit; line-height: 1.5; }
 
-/* 配色 swatches (hover shows name + hex via native title) */
+/* 配色 swatches — hover shows a styled tip with name + hex */
 .swatches { display: flex; flex-wrap: wrap; gap: 7px; padding-top: 1px; }
+.swatch-wrap { position: relative; display: inline-flex; }
 .swatch {
   width: 22px; height: 22px; border-radius: 6px; cursor: default;
   border: 1px solid var(--border-md);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
 }
-
-/* 人物关系 */
-.rel-list { display: flex; flex-direction: column; gap: 7px; }
-.rel-item {
-  display: flex; align-items: baseline; gap: 8px;
-  padding: 8px 10px; border-radius: 9px;
-  background: var(--surface-inset); border: 1px solid var(--border);
+.swatch-tip {
+  position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  z-index: 30; white-space: nowrap; pointer-events: none;
+  padding: 4px 8px; border-radius: 6px; font-size: 10.5px; font-weight: 600;
+  color: var(--text-hi); background: var(--surface-raised);
+  border: 1px solid var(--border-md); box-shadow: 0 4px 14px var(--shadow);
+  font-variant-numeric: tabular-nums; text-transform: uppercase;
+  opacity: 0; transition: opacity 0.12s;
 }
-.rel-name { flex-shrink: 0; font-size: 12px; font-weight: 700; color: var(--text-hi); }
-.rel-rel { font-size: 11px; color: var(--text-quiet); line-height: 1.5; }
+.swatch-wrap:hover .swatch-tip { opacity: 1; }
 
 /* transient toast (bottom-center) */
 .toast {
