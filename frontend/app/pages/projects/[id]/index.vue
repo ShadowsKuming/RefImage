@@ -515,48 +515,47 @@
                 </div>
               </div>
 
-              <!-- ② 服装 · 道具 -->
+              <!-- ② 服装 · 道具:假发/上衣/…/道具 都是并列的可折叠分组 -->
               <div v-else-if="charTab === 'wardrobe'" class="char-panel wd">
-                <!-- 服装 -->
                 <div class="wd-head">
-                  <span class="wd-h-title"><Shirt class="wd-si" />{{ t('projectCanvas.subCostume') }}</span>
                   <span class="wd-badge">{{ t('projectCanvas.wdBadge', { c: costumeCount, p: propsCount }) }}</span>
                 </div>
 
-                <div v-for="g in costumeGroups" :key="g.key" class="wd-group">
+                <div v-for="g in wardrobeGroups" :key="g.key" class="wd-group">
                   <button class="wd-group-head" @click="toggleCat(g.key)">
                     <span class="wd-gh-dot" />{{ g.label }} <span class="wd-gh-count">{{ g.items.length }}</span>
                     <ChevronDown class="wd-gh-chev" :class="{ open: openCats[g.key] }" />
                   </button>
-                  <div v-show="openCats[g.key]" v-for="c in g.items" :key="c.id" class="wd-card">
+                  <div v-show="openCats[g.key]" v-for="it in g.items" :key="it.id" class="wd-card">
                     <span class="wd-thumb">
-                      <img v-if="itemImg(c)" :src="itemImg(c)" :alt="c.name" />
-                      <Shirt v-else class="wd-thumb-ph" />
+                      <img v-if="itemImg(it)" :src="itemImg(it)" :alt="it.name" />
+                      <component v-else :is="g.icon" class="wd-thumb-ph" />
                     </span>
                     <div class="wd-body">
-                      <span class="wd-name">{{ c.name }}</span>
-                      <span v-if="c.note" class="wd-note">{{ c.note }}</span>
+                      <span class="wd-name">{{ it.name }}</span>
+                      <span v-if="it.note" class="wd-note">{{ it.note }}</span>
                     </div>
-                    <span class="wd-pill" :class="c.essential === false ? 'backup' : 'ess'">
-                      {{ c.essential === false ? t('projectCanvas.wdBackup') : t('projectCanvas.wdEssential') }}
+                    <span class="wd-pill" :class="it.essential === false ? 'backup' : 'ess'">
+                      {{ it.essential === false ? t('projectCanvas.wdBackup') : t('projectCanvas.wdEssential') }}
                     </span>
                     <div class="wd-menu-wrap">
-                      <button class="wd-kebab" @click.stop="toggleItemMenu(c.id)"><MoreVertical /></button>
-                      <div v-if="openItemMenu === c.id" class="wd-menu" @click.stop>
+                      <button class="wd-kebab" @click.stop="toggleItemMenu(it.id)"><MoreVertical /></button>
+                      <div v-if="openItemMenu === it.id" class="wd-menu" @click.stop>
                         <label class="wd-mi">
-                          <input type="file" accept="image/*" hidden @change="e => onUploadItemImage(e, c)" />
+                          <input type="file" accept="image/*" hidden @change="e => onUploadItemImage(e, it)" />
                           <Upload /><span>{{ t('projectCanvas.wdMenuUpload') }}</span>
                         </label>
-                        <button class="wd-mi" @click="toggleEssential(c)">
-                          <Star /><span>{{ c.essential === false ? t('projectCanvas.wdMenuSetEssential') : t('projectCanvas.wdMenuSetBackup') }}</span>
+                        <button class="wd-mi" @click="toggleEssential(it)">
+                          <Star /><span>{{ it.essential === false ? t('projectCanvas.wdMenuSetEssential') : t('projectCanvas.wdMenuSetBackup') }}</span>
                         </button>
-                        <button class="wd-mi danger" @click="removeCostume(c); openItemMenu = null"><X /><span>{{ t('projectCanvas.delete') }}</span></button>
+                        <button class="wd-mi danger" @click="removeItem(it); openItemMenu = null"><X /><span>{{ t('projectCanvas.delete') }}</span></button>
                       </div>
                     </div>
                   </div>
                 </div>
-                <p v-if="!costumeList.length" class="detail-empty">{{ t('projectCanvas.emptyCostume') }}</p>
+                <p v-if="!costumeList.length && !propsList.length" class="detail-empty">{{ t('projectCanvas.emptyCostume') }}</p>
 
+                <!-- 添加 服装 / 道具 -->
                 <div v-if="showAddCostume" class="equip-form">
                   <select v-model="newCostume.category" class="ef-select">
                     <option v-for="c in COSTUME_CATEGORIES" :key="c.key" :value="c.key">{{ c.label }}</option>
@@ -568,43 +567,7 @@
                     <button class="ef-submit" @click="submitAddCostume">{{ t('projectCanvas.add') }}</button>
                   </div>
                 </div>
-                <button v-else class="equip-add-btn" @click="showAddCostume = true">{{ t('projectCanvas.addCostume') }}</button>
-
-                <!-- 道具 -->
-                <div class="wd-head props">
-                  <span class="wd-h-title"><Package class="wd-si" />{{ t('projectCanvas.subProps') }}</span>
-                </div>
-                <div v-if="propsList.length" class="wd-group">
-                  <div v-for="pr in propsList" :key="pr.id" class="wd-card">
-                    <span class="wd-thumb">
-                      <img v-if="itemImg(pr)" :src="itemImg(pr)" :alt="pr.name" />
-                      <Package v-else class="wd-thumb-ph" />
-                    </span>
-                    <div class="wd-body">
-                      <span class="wd-name">{{ pr.name }}</span>
-                      <span v-if="pr.note" class="wd-note">{{ pr.note }}</span>
-                    </div>
-                    <span class="wd-pill" :class="pr.essential === false ? 'backup' : 'ess'">
-                      {{ pr.essential === false ? t('projectCanvas.wdBackup') : t('projectCanvas.wdEssential') }}
-                    </span>
-                    <div class="wd-menu-wrap">
-                      <button class="wd-kebab" @click.stop="toggleItemMenu(pr.id)"><MoreVertical /></button>
-                      <div v-if="openItemMenu === pr.id" class="wd-menu" @click.stop>
-                        <label class="wd-mi">
-                          <input type="file" accept="image/*" hidden @change="e => onUploadItemImage(e, pr)" />
-                          <Upload /><span>{{ t('projectCanvas.wdMenuUpload') }}</span>
-                        </label>
-                        <button class="wd-mi" @click="toggleEssential(pr)">
-                          <Star /><span>{{ pr.essential === false ? t('projectCanvas.wdMenuSetEssential') : t('projectCanvas.wdMenuSetBackup') }}</span>
-                        </button>
-                        <button class="wd-mi danger" @click="removeProp(pr); openItemMenu = null"><X /><span>{{ t('projectCanvas.delete') }}</span></button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <p v-else class="detail-empty">{{ t('projectCanvas.emptyProps') }}</p>
-
-                <div v-if="showAddProp" class="equip-form">
+                <div v-else-if="showAddProp" class="equip-form">
                   <input v-model="newProp.name" class="ef-input" :placeholder="t('projectCanvas.propNamePlaceholder')" @keydown.enter="submitAddProp" />
                   <input v-model="newProp.note" class="ef-input" :placeholder="t('projectCanvas.notePlaceholder')" @keydown.enter="submitAddProp" />
                   <div class="ef-actions">
@@ -612,7 +575,10 @@
                     <button class="ef-submit" @click="submitAddProp">{{ t('projectCanvas.add') }}</button>
                   </div>
                 </div>
-                <button v-else class="equip-add-btn" @click="showAddProp = true">{{ t('projectCanvas.addProp') }}</button>
+                <div v-else class="wd-add-row">
+                  <button class="equip-add-btn" @click="showAddCostume = true">{{ t('projectCanvas.addCostume') }}</button>
+                  <button class="equip-add-btn" @click="showAddProp = true">{{ t('projectCanvas.addProp') }}</button>
+                </div>
               </div>
 
               <!-- ③ 名场面 -->
@@ -1376,6 +1342,20 @@ const costumeGroups = computed(() =>
 const openCats = reactive<Record<string, boolean>>({})
 function toggleCat(key: string) { openCats[key] = !openCats[key] }
 
+// Unified collapsible groups: each costume category (假发/上衣/…) + 道具 are all
+// top-level peers (假发 parallel with 服装; 道具 collapses like the rest).
+const wardrobeGroups = computed(() => {
+  const groups = costumeGroups.value.map(g => ({ ...g, kind: 'costume' as const, icon: Shirt }))
+  if (propsList.value.length) {
+    groups.push({ key: 'props', label: t('projectCanvas.subProps'), items: propsList.value, kind: 'props' as const, icon: Package })
+  }
+  return groups
+})
+function removeItem(item: any) {
+  if (costumeList.value.includes(item)) removeCostume(item)
+  else removeProp(item)
+}
+
 function removeCostume(item: CostumeItem) {
   const i = costumeList.value.indexOf(item)
   if (i >= 0) costumeList.value.splice(i, 1)
@@ -2057,12 +2037,9 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 
 /* ── Wardrobe card list ─────────────────────────────────── */
 .wd { display: flex; flex-direction: column; gap: 10px; }
-.wd-head { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
-.wd-head.props { margin-top: 12px; }
-.wd-h-title {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 13px; font-weight: 700; color: var(--text-2);
-}
+.wd-head { display: flex; align-items: center; justify-content: flex-end; margin-top: 2px; }
+.wd-add-row { display: flex; gap: 8px; }
+.wd-add-row .equip-add-btn { flex: 1; }
 .wd-badge {
   font-size: 11px; font-weight: 600; color: var(--text-2);
   padding: 3px 10px; border-radius: 999px;
