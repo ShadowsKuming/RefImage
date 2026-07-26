@@ -513,13 +513,14 @@
                 </template>
 
                 <template v-if="charBg">
-                  <div class="cp-sub">{{ t('projectCanvas.secRelations') }}</div>
+                  <div class="cp-sub cp-sub-row">
+                    <span>{{ t('projectCanvas.secRelations') }}</span>
+                    <button class="cp-add" :title="'添加关系'" @click="addRelation"><Plus /></button>
+                  </div>
                   <div v-for="(r, i) in relations" :key="i" class="s-row s-row-top rel-row">
                     <EditableText class="s-key rel-name" :model-value="r.name || ''" :placeholder="'姓名'" @save="v => saveRelationField(i, 'name', v)" />
                     <EditableText class="s-val" :model-value="r.relationship || ''" :placeholder="'关系'" @save="v => saveRelationField(i, 'relationship', v)" />
-                    <button class="rel-del" title="删除" @click="removeRelation(i)"><X /></button>
                   </div>
-                  <button class="rel-add" @click="addRelation"><Plus />添加关系</button>
                 </template>
 
                 <div class="cp-sub">{{ t('projectCanvas.sectionRefs') }}</div>
@@ -908,28 +909,31 @@ function saveCharField(path: string, value: string) {
   api.saveCharacterData(projectId.value, cd).catch(e => console.error('Failed to save character', e))
 }
 
-// 人物关系: [{ name, relationship, importance }] — editable rows (add/remove/edit)
-const relations = computed<any[]>(() => {
+// 人物关系: [{ name, relationship, importance }] — editable rows.
+// A local list is the editing source so a freshly-added (still empty) row can be
+// filled in; empty rows (no name & no relationship) are NEVER persisted, so an
+// accidental "添加" self-heals — it just isn't saved and is gone on reload.
+const relations = ref<any[]>([])
+function syncRelations() {
   const r = charBg.value?.relations
-  return Array.isArray(r) ? r : []
-})
-function _saveRelations(list: any[]) {
+  relations.value = Array.isArray(r) ? r.map((x: any) => ({ ...x })) : []
+}
+function _persistRelations() {
   const cd = selectedChar.value?.character_data
   if (!cd) return
   if (!cd.characterBackground) cd.characterBackground = {}
-  cd.characterBackground.relations = list
+  const clean = relations.value.filter(r => (r.name || '').trim() || (r.relationship || '').trim())
+  cd.characterBackground.relations = clean
   if (projectData.value) projectData.value.character_data = cd
   api.saveCharacterData(projectId.value, cd).catch(e => console.error('Failed to save relations', e))
 }
 function saveRelationField(i: number, key: 'name' | 'relationship', value: string) {
-  const list = relations.value.map((r, idx) => idx === i ? { ...r, [key]: value } : r)
-  _saveRelations(list)
+  if (relations.value[i]) relations.value[i] = { ...relations.value[i], [key]: value }
+  _persistRelations()
 }
 function addRelation() {
-  _saveRelations([...relations.value, { name: '', relationship: '', importance: '' }])
-}
-function removeRelation(i: number) {
-  _saveRelations(relations.value.filter((_, idx) => idx !== i))
+  // local only — not persisted until it has content (empty adds don't stick)
+  relations.value.push({ name: '', relationship: '', importance: '' })
 }
 
 // 配色 field → color swatches. Parses "名称（#HEX）、名称（#HEX）" into { name, hex }.
@@ -978,7 +982,7 @@ async function autoGenerateMomentsIfMissing() {
     momentsLoading.value = false
   }
 }
-watch(selectedCharId, () => { loadMoments(); autoGenerateMomentsIfMissing() })
+watch(selectedCharId, () => { loadMoments(); autoGenerateMomentsIfMissing(); syncRelations() })
 function removeMoment(item: MomentItem) {
   const i = momentsList.value.indexOf(item)
   if (i >= 0) momentsList.value.splice(i, 1)
@@ -1655,6 +1659,7 @@ onMounted(async () => {
     syncPlanFromData()
     loadWardrobe()
     loadMoments()
+    syncRelations()
     autoGrabCoverIfMissing()      // one-time: grab a cover if the project has none
     autoGenerateMomentsIfMissing()  // one-time: silently generate 名场面 in the background
   } catch (e) {
@@ -2278,21 +2283,16 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 /* 人物关系 editable rows */
 .rel-row { align-items: center; }
 .rel-name { font-weight: 700; color: var(--text-hi); }
-.rel-del {
-  flex-shrink: 0; width: 18px; height: 18px; padding: 0; border: none; background: none;
-  cursor: pointer; color: var(--text-ghost); border-radius: 5px;
+/* section sub-header with a trailing add (+) button */
+.cp-sub-row { display: flex; align-items: center; justify-content: space-between; }
+.cp-add {
+  width: 20px; height: 20px; padding: 0; cursor: pointer;
+  border: none; background: none; color: var(--text-quiet);
   display: flex; align-items: center; justify-content: center;
+  transition: color 0.12s;
 }
-.rel-del:hover { color: var(--error); background: var(--surface-inset); }
-.rel-del :deep(svg) { width: 12px; height: 12px; }
-.rel-add {
-  display: inline-flex; align-items: center; gap: 5px; margin-top: 4px;
-  padding: 5px 10px; border-radius: 8px; cursor: pointer;
-  background: none; border: 1px dashed var(--border-focus);
-  color: var(--accent); font-size: 11.5px; font-weight: 600;
-}
-.rel-add:hover { background: var(--surface-inset); border-color: var(--accent-dim); }
-.rel-add :deep(svg) { width: 12px; height: 12px; }
+.cp-add:hover { color: var(--accent); }
+.cp-add :deep(svg) { width: 14px; height: 14px; }
 
 /* transient toast (bottom-center) */
 .toast {
