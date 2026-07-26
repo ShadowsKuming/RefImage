@@ -515,21 +515,27 @@
                 </div>
               </div>
 
-              <!-- ② 服装 · 道具:假发/上衣/…/道具 都是并列的可折叠分组 -->
+              <!-- ② 服装 · 道具:假发/上衣/…/道具 都是并列的可折叠分组卡片 -->
               <div v-else-if="charTab === 'wardrobe'" class="char-panel wd">
                 <div class="wd-head">
-                  <span class="wd-badge">{{ t('projectCanvas.wdBadge', { c: costumeCount, p: propsCount }) }}</span>
+                  <span class="wd-badge">{{ t('projectCanvas.wdTotal', { n: wardrobeTotal }) }}</span>
                 </div>
 
                 <div v-for="g in wardrobeGroups" :key="g.key" class="wd-group">
-                  <button class="wd-group-head" @click="toggleCat(g.key)">
-                    <span class="wd-gh-dot" />{{ g.label }} <span class="wd-gh-count">{{ g.items.length }}</span>
+                  <button class="wd-cat" @click="toggleCat(g.key)">
+                    <span class="wd-cat-ico" :style="{ background: `color-mix(in srgb, ${catStyle(g.key).hue} 16%, transparent)`, color: catStyle(g.key).hue }">
+                      <component :is="catStyle(g.key).icon" />
+                    </span>
+                    <div class="wd-cat-body">
+                      <span class="wd-cat-line1"><span class="wd-cat-name">{{ g.label }}</span><span class="wd-cat-count">{{ g.items.length }}</span></span>
+                      <span class="wd-cat-preview">{{ groupPreview(g.items) }}</span>
+                    </div>
                     <ChevronDown class="wd-gh-chev" :class="{ open: openCats[g.key] }" />
                   </button>
                   <div v-show="openCats[g.key]" v-for="it in g.items" :key="it.id" class="wd-card">
                     <span class="wd-thumb">
                       <img v-if="itemImg(it)" :src="itemImg(it)" :alt="it.name" />
-                      <component v-else :is="g.icon" class="wd-thumb-ph" />
+                      <component v-else :is="catStyle(g.key).icon" class="wd-thumb-ph" />
                     </span>
                     <div class="wd-body">
                       <span class="wd-name">{{ it.name }}</span>
@@ -576,8 +582,12 @@
                   </div>
                 </div>
                 <div v-else class="wd-add-row">
-                  <button class="equip-add-btn" @click="showAddCostume = true">{{ t('projectCanvas.addCostume') }}</button>
-                  <button class="equip-add-btn" @click="showAddProp = true">{{ t('projectCanvas.addProp') }}</button>
+                  <button class="wd-add-card" @click="showAddCostume = true">
+                    <span class="wd-add-ico"><Plus /></span><span>{{ t('projectCanvas.addCostume') }}</span>
+                  </button>
+                  <button class="wd-add-card" @click="showAddProp = true">
+                    <span class="wd-add-ico"><Plus /></span><span>{{ t('projectCanvas.addProp') }}</span>
+                  </button>
                 </div>
               </div>
 
@@ -698,6 +708,7 @@ import {
   MapPin, Clock, TriangleAlert, Package, Check, CircleCheck, X, Sun, Clapperboard, FileText,
   Camera, Aperture, Lightbulb, Disc, BatteryFull, Plug, Mic, Image as ImageIcon, Wrench, Shirt,
   Tag, Sparkles, Star, RefreshCw, Upload, ChevronDown, User, Plus, Pencil, MoreVertical,
+  Scissors, Gem, Footprints,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import TripodIcon from '~/components/equip-icons/TripodIcon.vue'
@@ -1345,9 +1356,9 @@ function toggleCat(key: string) { openCats[key] = !openCats[key] }
 // Unified collapsible groups: each costume category (假发/上衣/…) + 道具 are all
 // top-level peers (假发 parallel with 服装; 道具 collapses like the rest).
 const wardrobeGroups = computed(() => {
-  const groups = costumeGroups.value.map(g => ({ ...g, kind: 'costume' as const, icon: Shirt }))
+  const groups = costumeGroups.value.map(g => ({ key: g.key, label: g.label, items: g.items }))
   if (propsList.value.length) {
-    groups.push({ key: 'props', label: t('projectCanvas.subProps'), items: propsList.value, kind: 'props' as const, icon: Package })
+    groups.push({ key: 'props', label: t('projectCanvas.subProps'), items: propsList.value })
   }
   return groups
 })
@@ -1355,6 +1366,22 @@ function removeItem(item: any) {
   if (costumeList.value.includes(item)) removeCostume(item)
   else removeProp(item)
 }
+const wardrobeTotal = computed(() => costumeList.value.length + propsList.value.length)
+const groupPreview = (items: any[]) => items.map(i => i.name).join('、')
+
+// Per-category left icon + tint hue (Lucide where a fit exists; wig/bottom reuse
+// the closest — see note to user re: custom SVGs for exact glyphs). Tint uses
+// color-mix so it reads on both light and dark themes.
+const CAT_STYLE: Record<string, { icon: any; hue: string }> = {
+  wig:       { icon: Scissors,   hue: '#e26aa0' },
+  top:       { icon: Shirt,      hue: '#9a8cf0' },
+  bottom:    { icon: Shirt,      hue: '#6aa0f0' },
+  shoes:     { icon: Footprints, hue: '#5fbf8a' },
+  accessory: { icon: Gem,        hue: '#f0a860' },
+  misc:      { icon: Package,    hue: '#9aa0b0' },
+  props:     { icon: Package,    hue: '#e07a9a' },
+}
+const catStyle = (k: string) => CAT_STYLE[k] || CAT_STYLE.misc
 
 function removeCostume(item: CostumeItem) {
   const i = costumeList.value.indexOf(item)
@@ -2046,19 +2073,52 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
   background: var(--surface-inset); border: 1px solid var(--border-md);
 }
 .wd-group { display: flex; flex-direction: column; gap: 8px; }
-.wd-group-head {
-  display: flex; align-items: center; gap: 6px; width: 100%;
-  padding: 4px 0; margin-top: 2px; cursor: pointer;
-  background: none; border: none; text-align: left;
-  font-size: 11px; font-weight: 600; color: var(--text-2);
+/* category card (collapsed row): left tinted icon + name/count + preview + chevron */
+.wd-cat {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 10px 12px; border-radius: 12px; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border);
+  text-align: left; transition: border-color 0.15s, box-shadow 0.15s;
 }
-.wd-gh-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
-.wd-gh-count { color: var(--text-quiet); font-weight: 500; }
+.wd-cat:hover { border-color: var(--accent-dim); box-shadow: 0 2px 10px var(--shadow); }
+.wd-cat-ico {
+  width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.wd-cat-ico :deep(svg) { width: 20px; height: 20px; }
+.wd-cat-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.wd-cat-line1 { display: flex; align-items: center; gap: 7px; }
+.wd-cat-name { font-size: 13px; font-weight: 700; color: var(--text-2); }
+.wd-cat-count {
+  font-size: 10.5px; font-weight: 700; color: var(--accent);
+  min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px;
+  background: var(--surface-inset); display: inline-flex; align-items: center; justify-content: center;
+}
+.wd-cat-preview {
+  font-size: 11px; color: var(--text-quiet); line-height: 1.4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .wd-gh-chev {
-  width: 14px; height: 14px; margin-left: auto; color: var(--text-quiet);
+  width: 16px; height: 16px; flex-shrink: 0; color: var(--text-quiet);
   transition: transform 0.2s; transform: rotate(-90deg);
 }
 .wd-gh-chev.open { transform: rotate(0deg); }
+
+/* add cards (服装 / 道具): same card language, left + icon */
+.wd-add-card {
+  flex: 1; display: flex; align-items: center; gap: 9px;
+  padding: 10px 12px; border-radius: 12px; cursor: pointer;
+  background: none; border: 1px dashed var(--border-focus);
+  color: var(--accent); font-size: 12.5px; font-weight: 600;
+  transition: background 0.15s, border-color 0.15s;
+}
+.wd-add-card:hover { background: var(--surface-inset); border-color: var(--accent-dim); }
+.wd-add-ico {
+  width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent);
+}
+.wd-add-ico :deep(svg) { width: 16px; height: 16px; }
 
 .wd-card {
   display: flex; align-items: center; gap: 10px;
