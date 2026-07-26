@@ -2064,7 +2064,7 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 
 /* ── Wardrobe card list ─────────────────────────────────── */
 .wd { display: flex; flex-direction: column; gap: 10px; }
-.wd-head { display: flex; align-items: center; justify-content: flex-end; margin-top: 2px; }
+.wd-head { display: flex; align-items: center; justify-content: flex-start; margin-top: 2px; }
 .wd-add-row { display: flex; gap: 8px; }
 .wd-add-row .equip-add-btn { flex: 1; }
 .wd-badge {
