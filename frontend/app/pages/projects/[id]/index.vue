@@ -507,6 +507,7 @@
                         <span class="swatch-tip">{{ c.name }} {{ c.hex }}</span>
                       </span>
                     </div>
+                    <EditableText v-else-if="f.field" class="s-val" multiline :model-value="f.value" @save="v => saveAppearanceField(f.field, v)" />
                     <span v-else class="s-val">{{ f.value }}</span>
                   </div>
                 </template>
@@ -1005,6 +1006,11 @@ async function onUploadCover(e: Event) {
   }
 }
 
+// zh appearance label → canonical field key (for editing the right field)
+const ZH_LABEL_TO_FIELD: Record<string, string> = {
+  '发型': 'hairstyle', '妆容': 'face_makeup', '上身': 'upper_body', '下身': 'lower_body',
+  '鞋履': 'shoes', '体型': 'proportions', '特征': 'distinctive', '配色': 'color_palette',
+}
 const visualSpecFields = computed(() => {
   const vs = selectedChar.value?.visual_spec
   if (!vs) return []
@@ -1015,10 +1021,28 @@ const visualSpecFields = computed(() => {
     .map(line => {
       const idx = line.indexOf(': ')
       if (idx === -1) return null
-      return { label: line.slice(0, idx), value: line.slice(idx + 2) }
+      const label = line.slice(0, idx)
+      return { label, field: ZH_LABEL_TO_FIELD[label] ?? '', value: line.slice(idx + 2) }
     })
-    .filter(Boolean) as { label: string; value: string }[]
+    .filter(Boolean) as { label: string; field: string; value: string }[]
 })
+
+// Edit an appearance field: backend re-translates zh→en + rebuilds the image-gen
+// prompt so the correction affects generation, then returns the fresh visual_spec.
+const appearanceSaving = ref(false)
+async function saveAppearanceField(field: string, value: string) {
+  if (!field) return
+  appearanceSaving.value = true
+  try {
+    const { visual_spec } = await api.saveAppearanceField(projectId.value, field, value)
+    if (selectedChar.value) selectedChar.value.visual_spec = visual_spec
+    if (projectData.value) projectData.value.visual_spec = visual_spec
+  } catch (e) {
+    console.error('Failed to save appearance', e)
+  } finally {
+    appearanceSaving.value = false
+  }
+}
 
 // ── Plan panel (right) — 项目概览 + 4 指标方块(标签)+ 细节区 ──────────────
 // UI is built to the agreed field contract; fields the backend/AI don't produce

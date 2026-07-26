@@ -182,6 +182,25 @@ def save_character(project_id: str, req: CharacterDataRequest, user_id: str = De
     return {"ok": True}
 
 
+class AppearanceFieldRequest(BaseModel):
+    field: str
+    value: str
+
+
+@router.put("/{project_id}/appearance")
+def save_appearance_field(project_id: str, req: AppearanceFieldRequest, user_id: str = Depends(get_current_user)):
+    """User edit to one 外貌特征 field (zh). Re-translates + rebuilds the image-gen
+    prompt so the correction affects generation. Returns the fresh visual_spec."""
+    _check_owner(project_id, user_id)
+    try:
+        visual_spec = project_service.update_appearance_field(project_id, req.field, req.value)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"visual_spec": visual_spec}
+
+
 @router.post("/{project_id}/cover/grab")
 def grab_cover(project_id: str, user_id: str = Depends(get_current_user)):
     """Auto-grab a work cover: image search → vision-pick → save locally.

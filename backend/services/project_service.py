@@ -571,6 +571,52 @@ def _require_project(project_id: str) -> Path:
     return base
 
 
+def update_appearance_field(project_id: str, field: str, zh_value: str) -> dict:
+    """User corrected one 外貌特征 field (in Chinese). Re-translate zh→en/ja,
+    recompile the visual_spec blobs, and rebuild the English image-gen prompt, so
+    the correction actually flows into later image generation. Returns the fresh
+    visual_spec { zh, en, ja, prompt }.
+
+    Editing appearance is special (vs world/character coarse-save) precisely
+    because it feeds generation via the English prompt — editing zh alone would
+    otherwise be a no-op for output."""
+    from agents.character_extractor import FIELDS
+    from tools.translate import translate_fields_to_en_ja
+    from services.analyze_service import _compile_visual_spec
+
+    if field not in FIELDS:
+        raise ValueError(f"Unknown appearance field {field!r}")
+    base = _require_project(project_id)
+    ctx = base / "context"
+
+    ext_path = ctx / "extracted.json"
+    extracted = json.loads(ext_path.read_text()) if ext_path.exists() else {"zh": {}, "en": {}, "ja": {}}
+    for lang in ("zh", "en", "ja"):
+        extracted.setdefault(lang, {})
+
+    zh_value = (zh_value or "").strip()
+    extracted["zh"][field] = zh_value or None
+    if zh_value:
+        tr = translate_fields_to_en_ja({field: zh_value})
+        extracted["en"][field] = tr["en"].get(field) or zh_value
+        extracted["ja"][field] = tr["ja"].get(field) or zh_value
+    else:
+        extracted["en"][field] = None
+        extracted["ja"][field] = None
+    ext_path.write_text(json.dumps(extracted, ensure_ascii=False, indent=2))
+
+    visual_spec = _compile_visual_spec(extracted)  # { zh, en, ja } blobs
+    char_name = json.loads((ctx / "character.json").read_text()).get("character", "")
+    try:
+        visual_spec["prompt"] = _build_image_prompt(char_name, visual_spec.get("en", ""))
+    except Exception:
+        # keep the previous prompt if the rebuild call fails
+        prev = json.loads((ctx / "visual_spec.json").read_text()) if (ctx / "visual_spec.json").exists() else {}
+        visual_spec["prompt"] = prev.get("prompt", "")
+    (ctx / "visual_spec.json").write_text(json.dumps(visual_spec, ensure_ascii=False, indent=2))
+    return visual_spec
+
+
 def save_world(project_id: str, world: dict) -> None:
     base = _require_project(project_id)
     (base / "context" / "world.json").write_text(json.dumps(world, ensure_ascii=False, indent=2))

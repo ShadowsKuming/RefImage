@@ -169,6 +169,14 @@ export const useApi = () => {
     })
   }
 
+  function saveAppearanceField(projectId: string, field: string, value: string) {
+    return api<{ visual_spec: Record<string, any> }>(`/projects/${projectId}/appearance`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ field, value }),
+    })
+  }
+
   function generateMoments(projectId: string, cid: string) {
     return api<{ moments: any[] }>(`/projects/${projectId}/characters/${cid}/moments/generate`, { method: 'POST' })
   }
@@ -421,6 +429,7 @@ export const useApi = () => {
     saveMoments,
     saveWorld,
     saveCharacterData,
+    saveAppearanceField,
     exportProject,
     importProject,
     projectChat,

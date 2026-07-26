@@ -61,3 +61,43 @@ def translate_visual_spec(fields_en: dict) -> dict:
     ja = {f: result["ja"].get(f) if f in to_translate else None for f in FIELDS}
 
     return {"zh": zh, "en": dict(fields_en), "ja": ja}
+
+
+_ZH2EN_SYSTEM = (
+    "你是一个动漫角色外貌描述翻译专家。"
+    "将中文的角色外貌描述翻译成自然、准确的英文，"
+    "保留颜色、款式等专业术语，不要逐词直译。"
+)
+
+
+def translate_fields_to_en_ja(fields_zh: dict) -> dict:
+    """User edited the Chinese appearance; re-derive English (+Japanese) for the
+    changed fields so the image-gen prompt reflects the correction. One LLM call.
+
+    Args:  { field: zh_value_or_None }
+    Returns: { "en": { field: en }, "ja": { field: ja } } for the given fields;
+             falls back to the zh text on failure (so nothing is left blank).
+    """
+    to_translate = {k: v for k, v in fields_zh.items() if not _is_null(v)}
+    if not to_translate:
+        return {"en": {}, "ja": {}}
+    items = "\n".join(f'  "{k}": "{v}"' for k, v in to_translate.items())
+    user_msg = (
+        f"将以下动漫角色外貌描述从中文翻译成英文（en）和日文（ja）：\n\n"
+        f"{{\n{items}\n}}\n\n"
+        f"返回 JSON，字段名保持英文不变：\n"
+        f'{{"en": {{"field": "English", ...}}, "ja": {{"field": "日本語", ...}}}}'
+    )
+    try:
+        raw = call([{"role": "user", "content": user_msg}], _ZH2EN_SYSTEM, max_tokens=1500)
+        start, end = raw.find("{"), raw.rfind("}") + 1
+        result = json.loads(raw if start == -1 else raw[start:end])
+        en = {k: result.get("en", {}).get(k) for k in to_translate}
+        ja = {k: result.get("ja", {}).get(k) for k in to_translate}
+        # any field the model dropped → fall back to the zh text
+        for k, v in to_translate.items():
+            if _is_null(en.get(k)): en[k] = v
+            if _is_null(ja.get(k)): ja[k] = v
+        return {"en": en, "ja": ja}
+    except Exception:
+        return {"en": dict(to_translate), "ja": dict(to_translate)}
