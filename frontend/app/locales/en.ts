@@ -133,6 +133,7 @@ export default {
     fieldThemes: 'Themes', fieldIconic: 'Iconic Scenes',
     sectionCharacter: 'Character', addCharacter: '＋ Add Character', addCharacterTitle: 'Add character',
     charTabSetting: 'Profile', charTabWardrobe: 'Wardrobe', charTabMoments: 'Moments',
+    secRelations: 'Relationships',
     subBaseInfo: 'Basic Info', addCharacterShort: 'Add', emptyMoments: 'No signature moments yet.',
     momentsGenerate: 'Generate Moments', momentsRegenerate: 'Regenerate', momentsGenerating: 'Generating…', addMoment: 'Add moment',
     momentTitlePlaceholder: 'Moment title', momentSourcePlaceholder: 'Rough source (e.g. S1 Ep6)', momentDescPlaceholder: 'Describe this moment: event, timing, context…',

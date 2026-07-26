@@ -133,6 +133,7 @@ export default {
     fieldThemes: 'テーマ', fieldIconic: '象徴的な舞台',
     sectionCharacter: 'キャラ設定', addCharacter: '＋ キャラ追加', addCharacterTitle: 'キャラ追加',
     charTabSetting: '設定', charTabWardrobe: '衣装', charTabMoments: '名場面',
+    secRelations: '人物関係',
     subBaseInfo: '基本情報', addCharacterShort: '追加', emptyMoments: 'まだ名場面がありません。',
     momentsGenerate: '名場面を生成', momentsRegenerate: '再生成', momentsGenerating: '生成中…', addMoment: '名場面を追加',
     momentTitlePlaceholder: '名場面タイトル', momentSourcePlaceholder: 'おおよその出典（例：1期 第6話）', momentDescPlaceholder: 'この名場面の説明：出来事・時期・背景…',

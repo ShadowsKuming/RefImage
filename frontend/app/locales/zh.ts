@@ -131,6 +131,7 @@ const zh = {
     fieldThemes: '核心主题', fieldIconic: '标志场景',
     sectionCharacter: '人物设定', addCharacter: '＋ 添加角色', addCharacterTitle: '添加角色',
     charTabSetting: '设定', charTabWardrobe: '服装道具', charTabMoments: '名场面',
+    secRelations: '人物关系',
     subBaseInfo: '基本信息', addCharacterShort: '添加', emptyMoments: '还没有代表场景。',
     momentsGenerate: '生成名场面', momentsRegenerate: '重新生成', momentsGenerating: '生成中…', addMoment: '添加名场面',
     momentTitlePlaceholder: '名场面标题', momentSourcePlaceholder: '大概出处（如 第一季 第6话）', momentDescPlaceholder: '描述这个名场面：事件、时间、背景…',

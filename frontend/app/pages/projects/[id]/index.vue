@@ -494,7 +494,23 @@
                   <div class="cp-sub">{{ t('projectCanvas.sectionAppearance') }}</div>
                   <div v-for="f in visualSpecFields" :key="f.label" class="s-row s-row-top">
                     <span class="s-key">{{ f.label }}</span>
-                    <span class="s-val">{{ f.value }}</span>
+                    <div v-if="parseColors(f.value).length" class="swatches">
+                      <span
+                        v-for="(c, i) in parseColors(f.value)" :key="i"
+                        class="swatch" :style="{ background: c.hex }" :title="`${c.name} ${c.hex}`"
+                      />
+                    </div>
+                    <span v-else class="s-val">{{ f.value }}</span>
+                  </div>
+                </template>
+
+                <template v-if="relations.length">
+                  <div class="cp-sub">{{ t('projectCanvas.secRelations') }}</div>
+                  <div class="rel-list">
+                    <div v-for="(r, i) in relations" :key="i" class="rel-item">
+                      <span class="rel-name">{{ r.name }}</span>
+                      <span class="rel-rel">{{ r.relationship }}</span>
+                    </div>
                   </div>
                 </template>
 
@@ -846,6 +862,22 @@ function onAvatarSaved(url: string) {
 }
 
 const charBg = computed(() => selectedChar.value?.character_data?.characterBackground ?? null)
+
+// 人物关系: [{ name, relationship, importance }]
+const relations = computed<any[]>(() => {
+  const r = charBg.value?.relations
+  return Array.isArray(r) ? r.filter(x => x?.name) : []
+})
+
+// 配色 field → color swatches. Parses "名称（#HEX）、名称（#HEX）" into { name, hex }.
+function parseColors(v?: string): { name: string; hex: string }[] {
+  if (!v) return []
+  const out: { name: string; hex: string }[] = []
+  const re = /([^、,（(]+)\s*[（(]\s*(#[0-9A-Fa-f]{3,8})\s*[）)]/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(v))) out.push({ name: m[1].trim(), hex: m[2] })
+  return out
+}
 
 // ── 名场面 (signature scenes) — character canon, LLM-generated + editable ──────
 // { title, source (rough), description } — reference for shots + the user, no
@@ -2127,6 +2159,24 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 .mo-desc { font-size: 11.5px; color: var(--text-quiet); line-height: 1.6; margin-left: 26px; }
 
 .mo-ta { resize: vertical; font-family: inherit; line-height: 1.5; }
+
+/* 配色 swatches (hover shows name + hex via native title) */
+.swatches { display: flex; flex-wrap: wrap; gap: 7px; padding-top: 1px; }
+.swatch {
+  width: 22px; height: 22px; border-radius: 6px; cursor: default;
+  border: 1px solid var(--border-md);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
+}
+
+/* 人物关系 */
+.rel-list { display: flex; flex-direction: column; gap: 7px; }
+.rel-item {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 8px 10px; border-radius: 9px;
+  background: var(--surface-inset); border: 1px solid var(--border);
+}
+.rel-name { flex-shrink: 0; font-size: 12px; font-weight: 700; color: var(--text-hi); }
+.rel-rel { font-size: 11px; color: var(--text-quiet); line-height: 1.5; }
 
 /* transient toast (bottom-center) */
 .toast {
