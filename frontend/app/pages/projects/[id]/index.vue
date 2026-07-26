@@ -561,34 +561,21 @@
                 </div>
                 <p v-if="!costumeList.length && !propsList.length" class="detail-empty">{{ t('projectCanvas.emptyCostume') }}</p>
 
-                <!-- 添加 服装 / 道具 -->
-                <div v-if="showAddCostume" class="equip-form">
-                  <select v-model="newCostume.category" class="ef-select">
-                    <option v-for="c in COSTUME_CATEGORIES" :key="c.key" :value="c.key">{{ c.label }}</option>
+                <!-- 添加(服装或道具:分类里选道具即加道具) -->
+                <div v-if="showAdd" class="equip-form">
+                  <select v-model="newItem.category" class="ef-select">
+                    <option v-for="c in ADD_CATEGORIES" :key="c.key" :value="c.key">{{ c.label }}</option>
                   </select>
-                  <input v-model="newCostume.name" class="ef-input" :placeholder="t('projectCanvas.costumeNamePlaceholder')" @keydown.enter="submitAddCostume" />
-                  <input v-model="newCostume.note" class="ef-input" :placeholder="t('projectCanvas.notePlaceholder')" @keydown.enter="submitAddCostume" />
+                  <input v-model="newItem.name" class="ef-input" :placeholder="newItem.category === 'props' ? t('projectCanvas.propNamePlaceholder') : t('projectCanvas.costumeNamePlaceholder')" @keydown.enter="submitAdd" />
+                  <input v-model="newItem.note" class="ef-input" :placeholder="t('projectCanvas.notePlaceholder')" @keydown.enter="submitAdd" />
                   <div class="ef-actions">
-                    <button class="ef-cancel" @click="showAddCostume = false">{{ t('projectCanvas.cancel') }}</button>
-                    <button class="ef-submit" @click="submitAddCostume">{{ t('projectCanvas.add') }}</button>
+                    <button class="ef-cancel" @click="showAdd = false">{{ t('projectCanvas.cancel') }}</button>
+                    <button class="ef-submit" @click="submitAdd">{{ t('projectCanvas.add') }}</button>
                   </div>
                 </div>
-                <div v-else-if="showAddProp" class="equip-form">
-                  <input v-model="newProp.name" class="ef-input" :placeholder="t('projectCanvas.propNamePlaceholder')" @keydown.enter="submitAddProp" />
-                  <input v-model="newProp.note" class="ef-input" :placeholder="t('projectCanvas.notePlaceholder')" @keydown.enter="submitAddProp" />
-                  <div class="ef-actions">
-                    <button class="ef-cancel" @click="showAddProp = false">{{ t('projectCanvas.cancel') }}</button>
-                    <button class="ef-submit" @click="submitAddProp">{{ t('projectCanvas.add') }}</button>
-                  </div>
-                </div>
-                <div v-else class="wd-add-row">
-                  <button class="wd-add-card" @click="showAddCostume = true">
-                    <span class="wd-add-ico"><Plus /></span><span>{{ t('projectCanvas.addCostume') }}</span>
-                  </button>
-                  <button class="wd-add-card" @click="showAddProp = true">
-                    <span class="wd-add-ico"><Plus /></span><span>{{ t('projectCanvas.addProp') }}</span>
-                  </button>
-                </div>
+                <button v-else class="wd-add-card single" @click="showAdd = true">
+                  <span class="wd-add-ico"><Plus /></span><span>{{ t('projectCanvas.add') }}</span>
+                </button>
               </div>
 
               <!-- ③ 名场面 -->
@@ -1394,23 +1381,22 @@ function removeProp(item: PropItem) {
   persistWardrobe()
 }
 
-// Add-item inline forms
-const showAddCostume = ref(false)
-const newCostume = reactive({ category: 'top', name: '', note: '' })
-function submitAddCostume() {
-  if (!newCostume.name.trim()) return
-  costumeList.value.push({ category: newCostume.category, name: newCostume.name.trim(), note: newCostume.note.trim() || undefined, essential: true })
-  newCostume.name = ''; newCostume.note = ''
-  showAddCostume.value = false
-  persistWardrobe()
-}
-const showAddProp = ref(false)
-const newProp = reactive({ name: '', note: '' })
-function submitAddProp() {
-  if (!newProp.name.trim()) return
-  propsList.value.push({ name: newProp.name.trim(), note: newProp.note.trim() || undefined, essential: true })
-  newProp.name = ''; newProp.note = ''
-  showAddProp.value = false
+// Unified add form: one 添加 for both costume and props. The category dropdown
+// includes 道具 as an option — picking it adds a prop, otherwise a costume item.
+const showAdd = ref(false)
+const newItem = reactive({ category: 'top', name: '', note: '' })
+const ADD_CATEGORIES = computed(() => [...COSTUME_CATEGORIES.value, { key: 'props', label: t('projectCanvas.subProps') }])
+function submitAdd() {
+  const name = newItem.name.trim()
+  if (!name) return
+  const note = newItem.note.trim() || undefined
+  if (newItem.category === 'props') {
+    propsList.value.push({ name, note, essential: true })
+  } else {
+    costumeList.value.push({ category: newItem.category, name, note, essential: true })
+  }
+  newItem.name = ''; newItem.note = ''
+  showAdd.value = false
   persistWardrobe()
 }
 
@@ -2112,6 +2098,7 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
   color: var(--accent); font-size: 12.5px; font-weight: 600;
   transition: background 0.15s, border-color 0.15s;
 }
+.wd-add-card.single { width: 100%; justify-content: center; }
 .wd-add-card:hover { background: var(--surface-inset); border-color: var(--accent-dim); }
 .wd-add-ico {
   width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%;
