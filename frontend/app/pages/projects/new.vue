@@ -11,8 +11,7 @@
 
     <!-- Upload + extract + confirm-with-AI. Profile review/edit now happens in
          the workspace 设定 panel, so there's no separate review step. -->
-    <template>
-      <div class="step1-body">
+    <div class="step1-body">
 
         <div class="step-header">
           <h2 class="step-title">{{ t('newProject.step1Title') }}</h2>
@@ -207,7 +206,6 @@
           <span>AI</span>
         </button>
       </div>
-    </template>
 
   </div>
 </template>
