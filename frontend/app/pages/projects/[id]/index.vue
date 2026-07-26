@@ -38,40 +38,57 @@
         <!-- ① 拍摄计划 -->
         <template #shots>
           <div class="p-inner shots-panel">
-            <!-- Panel toolbar -->
+            <!-- Panel toolbar: count pill + view toggle + group dropdown -->
             <div class="shots-toolbar">
-              <span class="shots-count">{{ shots.length }} {{ t('projectCanvas.shotCountSuffix') }}</span>
-              <div class="view-toggle">
-                <button class="vt-btn" :class="{ active: viewMode === 'grid' }" :title="t('projectCanvas.gridView')" @click="viewMode = 'grid'">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <rect x="0" y="0" width="6" height="6" rx="1" fill="currentColor"/>
-                    <rect x="8" y="0" width="6" height="6" rx="1" fill="currentColor"/>
-                    <rect x="0" y="8" width="6" height="6" rx="1" fill="currentColor"/>
-                    <rect x="8" y="8" width="6" height="6" rx="1" fill="currentColor"/>
-                  </svg>
-                </button>
-                <button class="vt-btn" :class="{ active: viewMode === 'list' }" :title="t('projectCanvas.listView')" @click="viewMode = 'list'">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <rect x="0" y="1" width="14" height="2.5" rx="1" fill="currentColor"/>
-                    <rect x="0" y="5.75" width="14" height="2.5" rx="1" fill="currentColor"/>
-                    <rect x="0" y="10.5" width="14" height="2.5" rx="1" fill="currentColor"/>
-                  </svg>
-                </button>
+              <span class="shots-count-pill">{{ shots.length }} {{ t('projectCanvas.scCountUnit') }}</span>
+              <div class="st-controls">
+                <div class="view-toggle">
+                  <button class="vt-btn" :class="{ active: viewMode === 'grid' }" :title="t('projectCanvas.gridView')" @click="viewMode = 'grid'">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <rect x="0" y="0" width="6" height="6" rx="1" fill="currentColor"/>
+                      <rect x="8" y="0" width="6" height="6" rx="1" fill="currentColor"/>
+                      <rect x="0" y="8" width="6" height="6" rx="1" fill="currentColor"/>
+                      <rect x="8" y="8" width="6" height="6" rx="1" fill="currentColor"/>
+                    </svg>
+                  </button>
+                  <button class="vt-btn" :class="{ active: viewMode === 'list' }" :title="t('projectCanvas.listView')" @click="viewMode = 'list'">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <rect x="0" y="1" width="14" height="2.5" rx="1" fill="currentColor"/>
+                      <rect x="0" y="5.75" width="14" height="2.5" rx="1" fill="currentColor"/>
+                      <rect x="0" y="10.5" width="14" height="2.5" rx="1" fill="currentColor"/>
+                    </svg>
+                  </button>
+                </div>
+                <div class="st-select-wrap">
+                  <select v-model="groupMode" class="st-select">
+                    <option value="none">{{ t('projectCanvas.groupNone') }}</option>
+                    <option value="scene">{{ t('projectCanvas.groupScene') }}</option>
+                    <option value="status">{{ t('projectCanvas.groupStatus') }}</option>
+                    <option value="priority">{{ t('projectCanvas.groupPriority') }}</option>
+                  </select>
+                  <ChevronDown class="st-chev" />
+                </div>
               </div>
             </div>
 
-            <!-- Grid view -->
-            <div v-if="viewMode === 'grid'" class="shots-grid">
+            <!-- Grid view (grouped by scene when selected) -->
+            <div v-if="viewMode === 'grid'" class="shots-grid-wrap">
+             <template v-for="(g, gi) in shotGroups" :key="g.key">
+              <div v-if="g.label" class="shots-group-head">
+                <component :is="groupMode === 'scene' ? MapPin : groupMode === 'priority' ? Star : CircleDot" class="sgh-ico" />
+                <span>{{ g.label }}</span><span class="sgh-count">{{ g.shots.length }}</span>
+              </div>
+              <div class="shots-grid">
               <div
-                v-for="(shot, si) in shots"
+                v-for="shot in g.shots"
                 :key="shot.shot_id"
                 class="shot-card"
                 :class="{ 'shot-card-refined': shot.status === 'refined' }"
-                @click="navigateTo(`/projects/${projectId}/shots/${shot.shot_id}`)"
+                @click="openShot(shot)"
               >
-                <!-- header: 编号 + 标题 + 必拍/可选 + 优先级 -->
+                <!-- header: 编号 + 标题 + 优先级 -->
                 <div class="sc-head">
-                  <span class="sc-num">{{ shotLabel(si) }}</span>
+                  <span class="sc-num">{{ 'S' + String(shotNum(shot)).padStart(2, '0') }}</span>
                   <span class="sc-title">{{ shot.title }}</span>
                   <span class="sc-pill prio" :class="'p-' + (shot.priority || 'mid')">{{ shotPrioLabel(shot.priority) }}</span>
                 </div>
@@ -85,6 +102,10 @@
 
                 <!-- info rows -->
                 <div class="sc-info">
+                  <div v-if="shot.scene" class="sc-irow">
+                    <MapPin class="sc-ii" /><span class="sc-ik">{{ t('projectCanvas.scScene') }}</span>
+                    <span class="sc-iv">{{ shot.scene }}</span>
+                  </div>
                   <div v-if="shot.mood || shot.description" class="sc-irow">
                     <Clapperboard class="sc-ii" /><span class="sc-ik">{{ t('projectCanvas.scMood') }}</span>
                     <span class="sc-iv">{{ shot.description || shot.mood }}</span>
@@ -95,8 +116,13 @@
                   </div>
                 </div>
 
-                <!-- footer: ⋯ menu -->
+                <!-- footer: 勾选 · 收藏 · ⋯ -->
                 <div class="sc-footer">
+                  <button class="sc-check" :class="{ on: selectedShots[shot.shot_id] }" @click.stop="toggleSelect(shot)">
+                    <Check v-if="selectedShots[shot.shot_id]" class="sc-check-ico" />
+                  </button>
+                  <span class="sc-spacer" />
+                  <button class="sc-star" :class="{ on: favoriteShots[shot.shot_id] }" @click.stop="toggleFavorite(shot)"><Star /></button>
                   <div class="sc-menu-wrap">
                     <button class="sc-kebab" @click.stop="toggleShotMenu(shot.shot_id)"><MoreVertical /></button>
                     <div v-if="openShotMenu === shot.shot_id" class="wd-menu sc-menu" @click.stop>
@@ -108,38 +134,61 @@
                   </div>
                 </div>
               </div>
-              <div class="shot-add" :class="{ adding: shotAdding }" @click="quickAddShot">
+              <div v-if="gi === shotGroups.length - 1" class="shot-add" :class="{ adding: shotAdding }" @click="quickAddShot">
                 <span class="add-icon">{{ shotAdding ? '…' : '+' }}</span>
                 <span class="add-text">{{ t('projectCanvas.addShot') }}</span>
               </div>
+              </div>
+             </template>
             </div>
 
-            <!-- List view -->
+            <!-- List view (grouped when selected) -->
             <div v-else class="shots-list">
-              <div
-                v-for="shot in shots"
-                :key="shot.shot_id"
-                class="sl-row"
-                :class="{ 'sl-refined': shot.status === 'refined' }"
-                @click="navigateTo(`/projects/${projectId}/shots/${shot.shot_id}`)"
-              >
-                <div class="sl-thumb-wrap">
-                  <img v-if="shot.image_url" :src="BASE_URL + shot.image_url" class="sl-thumb" :alt="shot.title" />
-                  <div v-else class="sl-thumb-empty">—</div>
+              <template v-for="(g, gi) in shotGroups" :key="g.key">
+                <div v-if="g.label" class="shots-group-head">
+                  <component :is="groupMode === 'scene' ? MapPin : groupMode === 'priority' ? Star : CircleDot" class="sgh-ico" />
+                  <span>{{ g.label }}</span><span class="sgh-count">{{ g.shots.length }}</span>
                 </div>
-                <div class="sl-info">
-                  <span class="sl-title">{{ shot.title }}</span>
-                  <span v-if="shot.mood" class="sl-mood">{{ shot.mood }}</span>
+                <div
+                  v-for="shot in g.shots"
+                  :key="shot.shot_id"
+                  class="sl-row"
+                  :class="{ 'sl-refined': shot.status === 'refined' }"
+                  @click="openShot(shot)"
+                >
+                  <div class="sl-thumb-wrap">
+                    <img v-if="shot.image_url" :src="BASE_URL + shot.image_url" class="sl-thumb" :alt="shot.title" />
+                    <ImageIcon v-else class="sl-thumb-ph" />
+                  </div>
+                  <div class="sl-main">
+                    <div class="sl-line1">
+                      <span class="sl-num">{{ 'S' + String(shotNum(shot)).padStart(2, '0') }}</span>
+                      <span class="sl-title">{{ shot.title }}</span>
+                      <span class="sc-pill prio" :class="'p-' + (shot.priority || 'mid')">{{ shotPrioLabel(shot.priority) }}</span>
+                    </div>
+                    <div class="sl-meta">
+                      <span v-if="shot.scene" class="sl-meta-i"><MapPin class="sl-mi" />{{ shot.scene }}</span>
+                      <span v-if="shot.description || shot.mood" class="sl-meta-i"><Clapperboard class="sl-mi" />{{ shot.description || shot.mood }}</span>
+                      <span class="sc-status" :class="shotStatusMeta(shot).cls"><span class="sc-dot" />{{ shotStatusMeta(shot).label }}</span>
+                    </div>
+                  </div>
+                  <div class="sl-right">
+                    <button class="sc-star" :class="{ on: favoriteShots[shot.shot_id] }" @click.stop="toggleFavorite(shot)"><Star /></button>
+                    <div class="sc-menu-wrap">
+                      <button class="sc-kebab" @click.stop="toggleShotMenu(shot.shot_id)"><MoreVertical /></button>
+                      <div v-if="openShotMenu === shot.shot_id" class="wd-menu sc-menu" @click.stop>
+                        <button class="wd-mi" :class="{ on: (shot.priority||'mid')==='high' }" @click="setShotAttr(shot, { priority: 'high' })"><span class="sc-mdot p-high" />{{ t('projectCanvas.scPrioHigh') }}</button>
+                        <button class="wd-mi" :class="{ on: (shot.priority||'mid')==='mid' }" @click="setShotAttr(shot, { priority: 'mid' })"><span class="sc-mdot p-mid" />{{ t('projectCanvas.scPrioMid') }}</button>
+                        <button class="wd-mi" :class="{ on: (shot.priority||'mid')==='low' }" @click="setShotAttr(shot, { priority: 'low' })"><span class="sc-mdot p-low" />{{ t('projectCanvas.scPrioLow') }}</button>
+                        <button class="wd-mi danger" @click="removeShot(shot.shot_id); openShotMenu = null"><X /><span>{{ t('projectCanvas.delete') }}</span></button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div class="sl-right">
-                  <span v-if="shot.status === 'refined'" class="sl-badge-refined">{{ t('projectCanvas.refined') }}</span>
-                  <span v-else-if="shot.status === 'error'" class="sl-badge-error">{{ t('projectCanvas.errorBadge') }}</span>
-                  <button class="sc-del" @click.stop="removeShot(shot.shot_id)" :title="t('projectCanvas.delete')">✕</button>
-                </div>
-              </div>
-              <button class="sl-add" :disabled="shotAdding" @click="quickAddShot">
-                {{ shotAdding ? '…' : '+ ' + t('projectCanvas.addShot') }}
-              </button>
+                <button v-if="gi === shotGroups.length - 1" class="sl-add" :disabled="shotAdding" @click="quickAddShot">
+                  {{ shotAdding ? '…' : '+ ' + t('projectCanvas.addShot') }}
+                </button>
+              </template>
             </div>
           </div>
         </template>
@@ -1686,6 +1735,7 @@ onMounted(async () => {
     loadWardrobe()
     loadMoments()
     syncRelations()
+    seedMockShots()               // TEMP MOCK — remove with SHOTS_MOCK
     autoGrabCoverIfMissing()      // one-time: grab a cover if the project has none
     autoGenerateMomentsIfMissing()  // one-time: silently generate 名场面 in the background
   } catch (e) {
@@ -1694,9 +1744,57 @@ onMounted(async () => {
 })
 
 // ── Shots ─────────────────────────────────────────────────
-const shots    = computed<any[]>(() => projectData.value?.shots ?? [])
+// ⚠️ TEMP MOCK — fake shots so we can iterate on the card design without real
+// shots. Renders ONLY when the project has no real shots. Interactions are
+// local-only (guarded by ._mock). Remove when done — search "SHOTS_MOCK".
+const SHOTS_MOCK = ref<any[]>([])
+function seedMockShots() {
+  const img = projectData.value?.refs?.[0] || ''   // raw path; BASE_URL prepended in template
+  SHOTS_MOCK.value = [
+    { shot_id: 'mock-1', title: '音乐教室 贝斯练习', scene: '音乐教室',       description: '认真练习贝斯，专注而安静', priority: 'high', status: 'pending', image_url: img, _mock: true },
+    { shot_id: 'mock-2', title: '与乐队互动',       scene: '音乐教室',       description: '与队友交流，微笑自然',   priority: 'mid',  status: 'refined', image_url: img, _mock: true },
+    { shot_id: 'mock-3', title: '窗边独处 阅读歌词', scene: '教室 / 窗边',    description: '安静阅读歌词，思考旋律', priority: 'low',  status: 'pending', image_url: '',  _mock: true },
+  ]
+}
+const shots    = computed<any[]>(() => {
+  const real = projectData.value?.shots ?? []
+  return real.length ? real : SHOTS_MOCK.value   // TEMP MOCK fallback
+})
 const viewMode = ref<'grid' | 'list'>('grid')
 const shotAdding = ref(false)
+
+// toolbar: group by scene / status / priority (no sort — these are categorical)
+type GroupMode = 'none' | 'scene' | 'status' | 'priority'
+const groupMode = ref<GroupMode>('none')
+// S## number is stable (creation order), independent of grouping.
+const shotNum = (shot: any) => shots.value.findIndex(s => s.shot_id === shot.shot_id) + 1
+
+const _groupKey = (s: any): string =>
+  groupMode.value === 'scene'    ? (s.scene || '—')
+  : groupMode.value === 'status'   ? (s.status || 'pending')
+  : /* priority */                   (s.priority || 'mid')
+const _groupLabel = (key: string): string =>
+  groupMode.value === 'status'   ? shotStatusMeta({ status: key }).label
+  : groupMode.value === 'priority' ? shotPrioLabel(key)
+  : key
+// canonical order for status/priority groups
+const _GROUP_ORDER: Record<string, string[]> = {
+  status:   ['pending', 'refined', 'done', 'error'],
+  priority: ['high', 'mid', 'low'],
+}
+const shotGroups = computed(() => {
+  if (groupMode.value === 'none') return [{ key: '__all', label: '', shots: shots.value }]
+  const map = new Map<string, any[]>()
+  for (const s of shots.value) {
+    const k = _groupKey(s)
+    if (!map.has(k)) map.set(k, [])
+    map.get(k)!.push(s)
+  }
+  let keys = [...map.keys()]
+  const order = _GROUP_ORDER[groupMode.value]
+  if (order) keys = keys.sort((a, b) => order.indexOf(a) - order.indexOf(b))
+  return keys.map(k => ({ key: k, label: _groupLabel(k), shots: map.get(k)! }))
+})
 
 async function quickAddShot() {
   if (shotAdding.value) return
@@ -1716,6 +1814,10 @@ async function quickAddShot() {
 }
 
 async function removeShot(shotId: string) {
+  if (shotId.startsWith('mock-')) {   // TEMP MOCK — local only
+    SHOTS_MOCK.value = SHOTS_MOCK.value.filter(s => s.shot_id !== shotId)
+    return
+  }
   try {
     await api.deleteShot(projectId.value, shotId)
     if (projectData.value) {
@@ -1726,8 +1828,7 @@ async function removeShot(shotId: string) {
   }
 }
 
-// ── Shot card: number label, status dot, priority/essential pills + ⋯ menu ────
-const shotLabel = (i: number) => `S${String(i + 1).padStart(2, '0')}`
+// ── Shot card: status dot + priority pill + ⋯ menu ───────────────────────────
 const shotStatusMeta = (s: any) => {
   const st = s.status || 'pending'
   const map: Record<string, { cls: string; key: string }> = {
@@ -1742,13 +1843,27 @@ const shotStatusMeta = (s: any) => {
 const shotPrioLabel = (p?: string) =>
   p === 'high' ? t('projectCanvas.scPrioHigh') : p === 'low' ? t('projectCanvas.scPrioLow') : t('projectCanvas.scPrioMid')
 
+// Per-shot markers: 勾选(select) + 收藏(favorite). Local-only for now — the plan
+// is that these become how the user points the AI planner at specific shots
+// ("我选中/收藏的这几个"). Keyed by shot_id.
+const selectedShots = reactive<Record<string, boolean>>({})
+const favoriteShots = reactive<Record<string, boolean>>({})
+function toggleSelect(shot: any) { selectedShots[shot.shot_id] = !selectedShots[shot.shot_id] }
+function toggleFavorite(shot: any) { favoriteShots[shot.shot_id] = !favoriteShots[shot.shot_id] }
+
 const openShotMenu = ref<string | null>(null)
 function toggleShotMenu(id: string) { openShotMenu.value = openShotMenu.value === id ? null : id }
 if (typeof window !== 'undefined') window.addEventListener('click', () => { openShotMenu.value = null })
 
+// open shot editor (mock shots have no real page → no-op, for design iteration)
+function openShot(shot: any) {
+  if (shot._mock) return
+  navigateTo(`/projects/${projectId.value}/shots/${shot.shot_id}`)
+}
 async function setShotAttr(shot: any, attrs: { priority?: string; essential?: boolean }) {
   Object.assign(shot, attrs)   // optimistic
   openShotMenu.value = null
+  if (shot._mock) return       // TEMP MOCK — local only
   try {
     await api.setShotAttrs(projectId.value, shot.shot_id, attrs)
   } catch (e) {
@@ -2000,16 +2115,48 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
   display: flex; align-items: center; justify-content: space-between;
   flex-shrink: 0;
 }
-.shots-count { font-size: 11px; color: var(--text-ghost); }
-.view-toggle { display: flex; gap: 2px; }
+.shots-count-pill {
+  font-size: 11.5px; font-weight: 600; color: var(--text-2);
+  padding: 3px 11px; border-radius: 999px;
+  background: var(--surface-inset); border: 1px solid var(--border-md);
+}
+.st-controls { display: flex; align-items: center; gap: 8px; }
+/* segmented grid/list toggle */
+.view-toggle { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--surface-inset); border: 1px solid var(--border); }
 .vt-btn {
-  width: 28px; height: 28px; border: none; background: none;
-  color: var(--text-ghost); cursor: pointer; border-radius: 6px;
+  width: 26px; height: 24px; border: none; background: none;
+  color: var(--text-quiet); cursor: pointer; border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
   transition: background 0.12s, color 0.12s;
 }
-.vt-btn:hover { background: var(--surface-inset); color: var(--text-muted); }
-.vt-btn.active { background: var(--surface-inset); color: var(--accent); }
+.vt-btn:hover { color: var(--text-2); }
+.vt-btn.active { background: var(--surface); color: var(--accent); box-shadow: 0 1px 3px var(--shadow); }
+/* group/sort dropdowns */
+.st-select-wrap { position: relative; display: inline-flex; }
+.st-select {
+  appearance: none; -webkit-appearance: none;
+  font: inherit; font-size: 11.5px; font-weight: 600; color: var(--text-2);
+  padding: 5px 26px 5px 11px; border-radius: 8px; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border-md);
+  transition: border-color 0.12s;
+}
+.st-select:hover { border-color: var(--accent-dim); }
+.st-select:focus { outline: none; border-color: var(--accent); }
+.st-chev { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 13px; height: 13px; color: var(--text-quiet); pointer-events: none; }
+
+/* grouped grid + scene group headers */
+.shots-grid-wrap { display: flex; flex-direction: column; gap: 12px; }
+.shots-group-head {
+  display: flex; align-items: center; gap: 6px; margin-top: 4px;
+  font-size: 12px; font-weight: 700; color: var(--text-2);
+}
+.shots-group-head:first-child { margin-top: 0; }
+.sgh-ico { width: 14px; height: 14px; color: var(--accent); flex-shrink: 0; }
+.sgh-count {
+  font-size: 10.5px; font-weight: 700; color: var(--text-quiet);
+  padding: 0 6px; height: 16px; border-radius: 8px; background: var(--surface-inset);
+  display: inline-flex; align-items: center;
+}
 
 .shots-grid {
   display: grid;
@@ -2072,7 +2219,24 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 .sc-status.st-error .sc-dot { background: var(--error); }
 
 /* footer + menu */
-.sc-footer { display: flex; justify-content: flex-end; align-items: center; margin-top: auto; }
+.sc-footer { display: flex; align-items: center; gap: 4px; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--border); }
+.sc-spacer { flex: 1; }
+.sc-check {
+  width: 18px; height: 18px; flex-shrink: 0; padding: 0; cursor: pointer;
+  border: 1.5px solid var(--border-focus); border-radius: 5px; background: var(--surface);
+  display: flex; align-items: center; justify-content: center; transition: background 0.15s, border-color 0.15s;
+}
+.sc-check.on { background: var(--accent); border-color: var(--accent); }
+.sc-check-ico { width: 12px; height: 12px; color: #fff; stroke-width: 3; }
+.sc-star {
+  width: 26px; height: 26px; padding: 0; border: none; background: none; cursor: pointer;
+  color: var(--text-quiet); border-radius: 6px;
+  display: flex; align-items: center; justify-content: center; transition: color 0.15s;
+}
+.sc-star:hover { color: var(--orange); }
+.sc-star.on { color: var(--orange); }
+.sc-star.on :deep(svg) { fill: var(--orange); }
+.sc-star :deep(svg) { width: 15px; height: 15px; }
 .sc-menu-wrap { position: relative; }
 .sc-kebab {
   width: 26px; height: 26px; padding: 0; border: none; background: none; cursor: pointer;
@@ -2091,32 +2255,29 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 /* ── List view ── */
 .shots-list { display: flex; flex-direction: column; gap: 6px; }
 .sl-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 10px; border-radius: 10px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: 11px;
   border: 1px solid var(--border); background: var(--surface);
   cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
 }
 .sl-row:hover { border-color: var(--accent-dim); box-shadow: 0 1px 8px var(--shadow); }
 .sl-refined { border-color: var(--badge-done-text); }
 .sl-thumb-wrap {
-  width: 44px; height: 44px; flex-shrink: 0;
-  border-radius: 6px; overflow: hidden; background: var(--surface-inset);
+  width: 54px; height: 54px; flex-shrink: 0;
+  border-radius: 8px; overflow: hidden; background: var(--surface-inset);
   display: flex; align-items: center; justify-content: center;
 }
 .sl-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
-.sl-thumb-empty { font-size: 10px; color: var(--text-ghost); }
-.sl-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.sl-title { font-size: 12px; font-weight: 600; color: var(--text-hi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sl-mood  { font-size: 10px; color: var(--accent); }
-.sl-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.sl-badge-refined {
-  font-size: 10px; padding: 2px 6px; border-radius: 4px;
-  background: var(--badge-done-bg); color: var(--badge-done-text); font-weight: 600;
-}
-.sl-badge-error {
-  font-size: 10px; padding: 2px 6px; border-radius: 4px;
-  background: var(--surface-inset); color: var(--error);
-}
+.sl-thumb-ph { width: 18px; height: 18px; color: var(--text-ghost); }
+.sl-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.sl-line1 { display: flex; align-items: center; gap: 8px; }
+.sl-num { flex-shrink: 0; font-size: 10px; font-weight: 800; letter-spacing: 0.03em; color: #fff; background: var(--accent-dim); border-radius: 5px; padding: 1px 6px; }
+.sl-title { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 700; color: var(--text-hi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sl-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+.sl-meta-i { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-quiet); min-width: 0; }
+.sl-meta-i:nth-child(2) { max-width: 46%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sl-mi { width: 12px; height: 12px; color: var(--accent); flex-shrink: 0; }
+.sl-right { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .sl-add {
   margin-top: 4px; padding: 8px; width: 100%;
   border: 1.5px dashed var(--border); border-radius: 10px;
