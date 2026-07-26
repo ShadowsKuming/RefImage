@@ -524,8 +524,11 @@
                 </div>
 
                 <div v-for="g in costumeGroups" :key="g.key" class="wd-group">
-                  <div class="wd-group-head"><span class="wd-gh-dot" />{{ g.label }} <span class="wd-gh-count">{{ g.items.length }}</span></div>
-                  <div v-for="c in g.items" :key="c.id" class="wd-card">
+                  <button class="wd-group-head" @click="toggleCat(g.key)">
+                    <span class="wd-gh-dot" />{{ g.label }} <span class="wd-gh-count">{{ g.items.length }}</span>
+                    <ChevronDown class="wd-gh-chev" :class="{ open: openCats[g.key] }" />
+                  </button>
+                  <div v-show="openCats[g.key]" v-for="c in g.items" :key="c.id" class="wd-card">
                     <span class="wd-thumb">
                       <img v-if="itemImg(c)" :src="itemImg(c)" :alt="c.name" />
                       <Shirt v-else class="wd-thumb-ph" />
@@ -1369,6 +1372,10 @@ const costumeGroups = computed(() =>
     .map(c => ({ ...c, items: costumeList.value.filter(x => (x.category || 'misc') === c.key) }))
     .filter(g => g.items.length))
 
+// category groups collapse by default (常态收起, saves vertical space)
+const openCats = reactive<Record<string, boolean>>({})
+function toggleCat(key: string) { openCats[key] = !openCats[key] }
+
 function removeCostume(item: CostumeItem) {
   const i = costumeList.value.indexOf(item)
   if (i >= 0) costumeList.value.splice(i, 1)
@@ -2063,11 +2070,18 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 }
 .wd-group { display: flex; flex-direction: column; gap: 8px; }
 .wd-group-head {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 11px; font-weight: 600; color: var(--text-quiet); margin-top: 2px;
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  padding: 4px 0; margin-top: 2px; cursor: pointer;
+  background: none; border: none; text-align: left;
+  font-size: 11px; font-weight: 600; color: var(--text-2);
 }
 .wd-gh-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 .wd-gh-count { color: var(--text-quiet); font-weight: 500; }
+.wd-gh-chev {
+  width: 14px; height: 14px; margin-left: auto; color: var(--text-quiet);
+  transition: transform 0.2s; transform: rotate(-90deg);
+}
+.wd-gh-chev.open { transform: rotate(0deg); }
 
 .wd-card {
   display: flex; align-items: center; gap: 10px;
