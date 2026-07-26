@@ -346,4 +346,9 @@ def project_chat(
         )
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Project not found")
-    return {"reply": result["reply"], "brief": result["brief"], "plan": result.get("plan")}
+    return {
+        "reply": result["reply"], "brief": result["brief"],
+        "plan": result.get("plan"),
+        "wardrobe": result.get("wardrobe"),
+        "moments": result.get("moments"),
+    }

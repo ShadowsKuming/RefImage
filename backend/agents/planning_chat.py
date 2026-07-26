@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from tools.llm import call_agent
 from tools.search import web_search as _web_search
-from services import plan_service
+from services import plan_service, wardrobe_service, moments_service
 
 STORAGE_ROOT = Path(__file__).parent.parent / "storage" / "projects"
 
@@ -202,6 +202,70 @@ _PLAN_TOOLS = [
     },
 ]
 
+# 服装/道具 + 名场面工具(角色设定层,和 plan 一样只增删,不整段重写)。
+_SETTING_TOOLS = [
+    {
+        "name": "add_costume",
+        "description": "往角色的服装清单添加一件。只在用户明确要求时调用。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name":      {"type": "string", "description": "服装名称,如 黑长直假发"},
+                "category":  {"type": "string",
+                              "enum": ["wig", "top", "bottom", "shoes", "accessory", "misc"],
+                              "description": "分类:假发wig/上衣top/下装bottom/鞋袜shoes/配饰accessory/其他misc"},
+                "note":      {"type": "string", "description": "备注,如 白衬衫+米色背心"},
+                "essential": {"type": "boolean", "description": "必备(true,默认)还是备用(false)"},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "add_prop",
+        "description": "往角色的道具清单添加一件(乐器/手持物等)。只在用户明确要求时调用。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name":      {"type": "string", "description": "道具名称,如 左手贝斯"},
+                "note":      {"type": "string", "description": "备注"},
+                "essential": {"type": "boolean", "description": "必备(true,默认)还是备用(false)"},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "remove_wardrobe_item",
+        "description": "按 id 删除一件服装或道具(id 形如 cs_/pr_,见「服装 / 道具」列表)。修改＝先删后加。",
+        "input_schema": {
+            "type": "object",
+            "properties": {"id": {"type": "string", "description": "服装或道具 id"}},
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "add_moment",
+        "description": "往角色的名场面添加一条(设定参考,写事件+大概时间背景,不要写拍摄建议)。只在用户明确要求时调用。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title":       {"type": "string", "description": "简短标题"},
+                "source":      {"type": "string", "description": "大概出处,如 第一季 第6话(不确定写模糊范围)"},
+                "description": {"type": "string", "description": "详细描述:发生了什么、大概在故事什么阶段、前后背景"},
+            },
+            "required": ["title"],
+        },
+    },
+    {
+        "name": "remove_moment",
+        "description": "按 id 删除一条名场面(id 形如 mo_xxxx)。修改＝先删后加。",
+        "input_schema": {
+            "type": "object",
+            "properties": {"id": {"type": "string", "description": "名场面 id"}},
+            "required": ["id"],
+        },
+    },
+]
+
 
 def _format_plan(plan: dict) -> list[str]:
     """Render the current plan.json (with item ids) so the AI knows the live
@@ -247,6 +311,37 @@ def _format_plan(plan: dict) -> list[str]:
     return lines
 
 
+def _primary_cid(project: dict) -> str:
+    chars = project.get("characters") or []
+    return chars[0]["id"] if chars else "c1"
+
+
+def _format_wardrobe(w: dict) -> list[str]:
+    """Render 服装/道具 (with ids) so the AI can add/remove by id."""
+    lines = ["", "═══ 服装 / 道具（可用工具增删）═══"]
+    costume = w.get("costume") or []
+    lines.append(f"服装（{len(costume)}）：" + ("" if costume else "（空）"))
+    for c in costume:
+        tag = "必备" if c.get("essential", True) else "备用"
+        note = f" — {c['note']}" if c.get("note") else ""
+        lines.append(f"  [{c.get('id')}] {c.get('name')}（{c.get('category', 'misc')}，{tag}）{note}")
+    props = w.get("props") or []
+    lines.append(f"道具（{len(props)}）：" + ("" if props else "（空）"))
+    for p in props:
+        tag = "必备" if p.get("essential", True) else "备用"
+        note = f" — {p['note']}" if p.get("note") else ""
+        lines.append(f"  [{p.get('id')}] {p.get('name')}（{tag}）{note}")
+    return lines
+
+
+def _format_moments(moments: list) -> list[str]:
+    lines = ["", "═══ 名场面（可用工具增删）═══" + ("" if moments else "（空）")]
+    for m in moments:
+        src = f"（{m['source']}）" if m.get("source") else ""
+        lines.append(f"  [{m.get('id')}] {m.get('title')}{src}")
+    return lines
+
+
 # ── System prompt ─────────────────────────────────────────────────────────────
 
 def _build_system(project: dict, project_id: str) -> str:
@@ -283,6 +378,9 @@ def _build_system(project: dict, project_id: str) -> str:
         "（id 见「拍摄计划总表」，形如 eq_/nt_/sg_）。一次只改需要动的那几项，别把用户已有的内容重建一遍",
         "- 场地卡片和室内外标签是根据日程自动生成的，不用单独维护；改日程即可。"
         "地点的实际地址只有用户知道，你不要编造",
+        "- 你也可以编辑角色的服装/道具（add_costume/add_prop/remove_wardrobe_item，id 形如 cs_/pr_）"
+        "和名场面（add_moment/remove_moment，id 形如 mo_）。同样只增删、按 id、先删后加，"
+        "只在用户明确要求时改动，别主动大改用户已有的内容",
         "- 如果话题跑偏，自然引导回拍摄规划",
         "",
         "═══ 角色资料 ═══",
@@ -362,6 +460,10 @@ def _build_system(project: dict, project_id: str) -> str:
 
     plan_data = project.get("plan", {}).get("data") or plan_service.load_plan_data(project_id)
     lines += _format_plan(plan_data)
+
+    cid = _primary_cid(project)
+    lines += _format_wardrobe(wardrobe_service.load_wardrobe(project_id))
+    lines += _format_moments(moments_service.load_moments(project_id, cid)["moments"])
 
     return "\n".join(lines)
 
@@ -461,6 +563,50 @@ def chat(message: str, history: list[dict], project: dict, project_id: str,
             return f"没找到 id 为 {inp['id']} 的拍摄时段，可能已被删除。"
         return _dirty(f"已删除拍摄时段「{r['scene']}」。")
 
+    # 服装/道具 + 名场面 mutations (设定层). Flag separate dirty flags so the caller
+    # reloads + returns only what changed.
+    cid = _primary_cid(project)
+
+    def _dirty_wd(msg: str) -> str:
+        state["wardrobe_dirty"] = True
+        return msg
+
+    def _dirty_mo(msg: str) -> str:
+        state["moments_dirty"] = True
+        return msg
+
+    def _ex_add_costume(inp: dict) -> str:
+        item = wardrobe_service.add_costume(
+            project_id, name=inp["name"], category=inp.get("category"),
+            note=inp.get("note"), essential=inp.get("essential", True),
+        )
+        return _dirty_wd(f"已添加服装「{item['name']}」（id {item['id']}）。")
+
+    def _ex_add_prop(inp: dict) -> str:
+        item = wardrobe_service.add_prop(
+            project_id, name=inp["name"], note=inp.get("note"), essential=inp.get("essential", True),
+        )
+        return _dirty_wd(f"已添加道具「{item['name']}」（id {item['id']}）。")
+
+    def _ex_remove_wardrobe(inp: dict) -> str:
+        r = wardrobe_service.remove_item(project_id, inp["id"])
+        if r is None:
+            return f"没找到 id 为 {inp['id']} 的服装/道具，可能已被删除。"
+        return _dirty_wd(f"已删除「{r['name']}」。")
+
+    def _ex_add_moment(inp: dict) -> str:
+        item = moments_service.add_moment(
+            project_id, cid, title=inp["title"],
+            source=inp.get("source"), description=inp.get("description"),
+        )
+        return _dirty_mo(f"已添加名场面「{item['title']}」（id {item['id']}）。")
+
+    def _ex_remove_moment(inp: dict) -> str:
+        r = moments_service.remove_moment(project_id, cid, inp["id"])
+        if r is None:
+            return f"没找到 id 为 {inp['id']} 的名场面，可能已被删除。"
+        return _dirty_mo(f"已删除名场面「{r['title']}」。")
+
     tool_executor = {
         "web_search":    lambda inp: _web_search(inp["query"], lang=inp.get("lang", "zh-cn")),
         "update_brief":  _execute_update_brief,
@@ -471,12 +617,17 @@ def chat(message: str, history: list[dict], project: dict, project_id: str,
         "remove_note":             _ex_remove_note,
         "add_schedule_segment":    _ex_add_schedule,
         "remove_schedule_segment": _ex_remove_schedule,
+        "add_costume":             _ex_add_costume,
+        "add_prop":                _ex_add_prop,
+        "remove_wardrobe_item":    _ex_remove_wardrobe,
+        "add_moment":              _ex_add_moment,
+        "remove_moment":           _ex_remove_moment,
     }
 
     result = call_agent(
         messages=messages,
         system=system,
-        tools=TOOLS + _PLAN_TOOLS,
+        tools=TOOLS + _PLAN_TOOLS + _SETTING_TOOLS,
         tool_executor=tool_executor,
         max_turns=8,
         max_tokens=1000,
@@ -485,5 +636,7 @@ def chat(message: str, history: list[dict], project: dict, project_id: str,
     return {
         "reply": result["text"],
         "brief": captured_brief if captured_brief else None,
-        "plan":  plan_service.load_plan_data(project_id) if state["plan_dirty"] else None,
+        "plan":     plan_service.load_plan_data(project_id) if state["plan_dirty"] else None,
+        "wardrobe": wardrobe_service.load_wardrobe(project_id) if state.get("wardrobe_dirty") else None,
+        "moments":  moments_service.load_moments(project_id, cid)["moments"] if state.get("moments_dirty") else None,
     }

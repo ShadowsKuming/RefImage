@@ -121,11 +121,60 @@ def save_wardrobe(project_id: str, data: dict) -> dict:
     for k in merged:
         if k in data:
             merged[k] = data[k]
-    # `image` is derived from wardrobe_images/, not stored in the json
-    for coll in _ID_COLLECTIONS:
-        for item in merged.get(coll, []):
-            if isinstance(item, dict):
-                item.pop("image", None)
+    _strip_images(merged)  # `image` is derived from wardrobe_images/, not stored
     _ensure_ids(merged)
     _write(project_id, merged)
     return load_wardrobe(project_id)
+
+
+def _strip_images(data: dict) -> None:
+    for coll in _ID_COLLECTIONS:
+        for item in data.get(coll, []):
+            if isinstance(item, dict):
+                item.pop("image", None)
+
+
+# ── Granular mutations (the AI-tool surface; add / remove only) ─────────────────
+# Same discipline as plan_service: stable ids, add/remove only, no wholesale
+# rewrite, so a user's manual edits survive an AI turn.
+
+def add_costume(project_id: str, name: str, category: str | None = None,
+                note: str | None = None, essential: bool = True) -> dict:
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("costume name is required")
+    if category not in COSTUME_CATEGORIES:
+        category = "misc"
+    data = load_wardrobe(project_id)
+    _strip_images(data)
+    item = {"id": _new_id("cs"), "name": name, "category": category,
+            "note": note or "", "essential": bool(essential)}
+    data["costume"].append(item)
+    _write(project_id, data)
+    return item
+
+
+def add_prop(project_id: str, name: str, note: str | None = None,
+             essential: bool = True) -> dict:
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("prop name is required")
+    data = load_wardrobe(project_id)
+    _strip_images(data)
+    item = {"id": _new_id("pr"), "name": name, "note": note or "", "essential": bool(essential)}
+    data["props"].append(item)
+    _write(project_id, data)
+    return item
+
+
+def remove_item(project_id: str, id: str) -> dict | None:
+    """Remove a costume or prop by id. Returns the removed item, or None."""
+    data = load_wardrobe(project_id)
+    _strip_images(data)
+    for coll in _ID_COLLECTIONS:
+        for i, item in enumerate(data[coll]):
+            if item.get("id") == id:
+                removed = data[coll].pop(i)
+                _write(project_id, data)
+                return removed
+    return None

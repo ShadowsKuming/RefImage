@@ -1646,7 +1646,8 @@ async function sendAiMessage(retryText?: string) {
   await nextTick()
   if (aiContainer.value) aiContainer.value.scrollTop = aiContainer.value.scrollHeight
   try {
-    const { reply, brief, plan: newPlan } = await withRetry(() => api.projectChat(projectId.value, text, history))
+    const { reply, brief, plan: newPlan, wardrobe: newWardrobe, moments: newMoments } =
+      await withRetry(() => api.projectChat(projectId.value, text, history))
     aiMessages.value.push({ role: 'agent', text: reply })
     if (brief && projectData.value) {
       projectData.value.plan = { ...projectData.value.plan, brief }
@@ -1655,6 +1656,15 @@ async function sendAiMessage(retryText?: string) {
     if (newPlan && projectData.value) {
       projectData.value.plan = { ...projectData.value.plan, data: newPlan }
       syncPlanFromData()
+    }
+    // AI edited 服装/道具 or 名场面 (设定 tab) → adopt fresh data + re-sync.
+    if (newWardrobe && projectData.value) {
+      projectData.value.wardrobe = newWardrobe
+      loadWardrobe()
+    }
+    if (newMoments && selectedChar.value) {
+      selectedChar.value.moments = newMoments
+      loadMoments()
     }
   } catch {
     aiMessages.value.push({ role: 'agent', text: t('projectCanvas.aiError'), retryText: text })

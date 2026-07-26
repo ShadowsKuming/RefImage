@@ -82,6 +82,31 @@ def save_moments(project_id: str, cid: str, moments: list[dict]) -> dict:
     return data
 
 
+def add_moment(project_id: str, cid: str, title: str,
+               source: str | None = None, description: str | None = None) -> dict:
+    """Add one 名场面 (AI-tool surface; add/remove only)."""
+    title = (title or "").strip()
+    if not title:
+        raise ValueError("moment title is required")
+    data = load_moments(project_id, cid)
+    item = {"id": _new_id(), "title": title,
+            "source": (source or "").strip(), "description": (description or "").strip()}
+    data["moments"].append(item)
+    _write(project_id, cid, data)
+    return item
+
+
+def remove_moment(project_id: str, cid: str, id: str) -> dict | None:
+    """Remove a 名场面 by id. Returns the removed item, or None."""
+    data = load_moments(project_id, cid)
+    for i, m in enumerate(data["moments"]):
+        if m.get("id") == id:
+            removed = data["moments"].pop(i)
+            _write(project_id, cid, data)
+            return removed
+    return None
+
+
 def generate_moments(project_id: str, cid: str) -> dict:
     """Research the character's 名场面 via LLM + web_search and save them.
     Replaces the stored list. Returns { moments: [...] }.

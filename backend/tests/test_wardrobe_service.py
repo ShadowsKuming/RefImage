@@ -37,3 +37,32 @@ def test_ids_stable_across_loads():
     a = ws.load_wardrobe("p1")["costume"][0]["id"]
     b = ws.load_wardrobe("p1")["costume"][0]["id"]
     assert a == b
+
+
+def test_add_costume_prop_and_remove():
+    c = ws.add_costume("p1", "  黑长直假发 ", category="wig", note="n", essential=False)
+    assert c["id"].startswith("cs_") and c["name"] == "黑长直假发"
+    assert c["category"] == "wig" and c["essential"] is False
+    p = ws.add_prop("p1", "贝斯")
+    assert p["id"].startswith("pr_") and p["essential"] is True
+    d = ws.load_wardrobe("p1")
+    assert len(d["costume"]) == 1 and len(d["props"]) == 1
+    assert ws.remove_item("p1", "nope") is None
+    assert ws.remove_item("p1", c["id"])["name"] == "黑长直假发"
+    assert len(ws.load_wardrobe("p1")["costume"]) == 0
+
+
+def test_add_costume_bad_category_falls_back_and_blank_rejected():
+    c = ws.add_costume("p1", "东西", category="bogus")
+    assert c["category"] == "misc"
+    with pytest.raises(ValueError):
+        ws.add_costume("p1", "   ")
+    with pytest.raises(ValueError):
+        ws.add_prop("p1", "")
+
+
+def test_granular_add_does_not_persist_derived_image():
+    import json
+    ws.add_prop("p1", "贝斯")
+    raw = json.loads((ws.STORAGE_ROOT / "p1" / "plan" / "wardrobe.json").read_text())
+    assert all("image" not in i for i in raw["props"])

@@ -197,8 +197,8 @@ export const useApi = () => {
     projectId: string,
     message: string,
     history: { role: string; text: string }[],
-  ): Promise<{ reply: string; brief: Record<string, any> | null; plan: Record<string, any> | null }> {
-    return api<{ reply: string; brief: Record<string, any> | null; plan: Record<string, any> | null }>(`/projects/${projectId}/chat`, {
+  ): Promise<{ reply: string; brief: Record<string, any> | null; plan: Record<string, any> | null; wardrobe: Record<string, any> | null; moments: any[] | null }> {
+    return api<{ reply: string; brief: Record<string, any> | null; plan: Record<string, any> | null; wardrobe: Record<string, any> | null; moments: any[] | null }>(`/projects/${projectId}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, history, reply_lang: useLocale().locale.value }),

@@ -51,6 +51,11 @@ def planning_chat(project_id: str, message: str, history: list[dict], reply_lang
     if brief:
         project_service.save_brief(project_id, brief)
 
-    # result["plan"] is the fresh plan.data when the AI mutated it this turn
-    # (already persisted by plan_service), else None.
-    return {"reply": reply, "brief": brief, "plan": result.get("plan")}
+    # result["plan"/"wardrobe"/"moments"] are the fresh values when the AI mutated
+    # them this turn (already persisted by the services), else None.
+    return {
+        "reply": reply, "brief": brief,
+        "plan": result.get("plan"),
+        "wardrobe": result.get("wardrobe"),
+        "moments": result.get("moments"),
+    }
