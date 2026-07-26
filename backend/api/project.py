@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from api.auth import get_current_user
-from services import project_service, guide_service, export_service, wardrobe_service, cover_service
+from services import project_service, guide_service, export_service, wardrobe_service, cover_service, avatar_service
 
 router = APIRouter()
 
@@ -159,6 +159,72 @@ def get_cover(project_id: str):
     path = cover_service.cover_path(project_id)
     if not path:
         raise HTTPException(status_code=404, detail="No cover")
+    media_type = mimetypes.guess_type(str(path))[0] or "image/jpeg"
+    return FileResponse(path, media_type=media_type)
+
+
+class AvatarCropRequest(BaseModel):
+    x: float
+    y: float
+    size: float
+
+
+@router.post("/{project_id}/characters/{cid}/avatar")
+async def upload_avatar_source(
+    project_id: str,
+    cid: str,
+    image: UploadFile = File(...),
+    user_id: str = Depends(get_current_user),
+):
+    """Upload a source image for a character avatar. Returns { src_url }."""
+    _check_owner(project_id, user_id)
+    data = await image.read()
+    url = avatar_service.save_source(project_id, cid, data, image.filename or "avatar.jpg",
+                                     image.content_type or "")
+    return {"src_url": url}
+
+
+@router.put("/{project_id}/characters/{cid}/avatar/crop")
+def crop_avatar(
+    project_id: str,
+    cid: str,
+    req: AvatarCropRequest,
+    user_id: str = Depends(get_current_user),
+):
+    """Crop the uploaded source by a normalized square rect into the avatar."""
+    _check_owner(project_id, user_id)
+    try:
+        url = avatar_service.apply_crop(project_id, cid, req.x, req.y, req.size)
+    except FileNotFoundError:
+        raise HTTPException(status_code=400, detail="No avatar source uploaded")
+    return {"avatar_url": url}
+
+
+@router.post("/{project_id}/characters/{cid}/avatar/auto")
+def auto_avatar_crop(project_id: str, cid: str, user_id: str = Depends(get_current_user)):
+    """Vision-model face-box guess → normalized { x, y, size } to seed the frame."""
+    _check_owner(project_id, user_id)
+    try:
+        return avatar_service.auto_crop_guess(project_id, cid)
+    except FileNotFoundError:
+        raise HTTPException(status_code=400, detail="No avatar source uploaded")
+
+
+@router.get("/{project_id}/characters/{cid}/avatar")
+def get_avatar(project_id: str, cid: str):
+    """Serve the cropped avatar — no auth (used via <img>)."""
+    path = avatar_service.avatar_path(project_id, cid)
+    if not path:
+        raise HTTPException(status_code=404, detail="No avatar")
+    return FileResponse(path, media_type="image/png")
+
+
+@router.get("/{project_id}/characters/{cid}/avatar/source")
+def get_avatar_source(project_id: str, cid: str):
+    """Serve the avatar source image — no auth (used in the crop editor)."""
+    path = avatar_service.source_path(project_id, cid)
+    if not path:
+        raise HTTPException(status_code=404, detail="No avatar source")
     media_type = mimetypes.guess_type(str(path))[0] or "image/jpeg"
     return FileResponse(path, media_type=media_type)
 

@@ -135,6 +135,24 @@ export const useApi = () => {
     return api<{ url: string }>(`/projects/${projectId}/cover`, { method: 'POST', body: fd })
   }
 
+  function uploadAvatarSource(projectId: string, cid: string, file: File) {
+    const fd = new FormData()
+    fd.append('image', file, file.name)
+    return api<{ src_url: string }>(`/projects/${projectId}/characters/${cid}/avatar`, { method: 'POST', body: fd })
+  }
+
+  function cropAvatar(projectId: string, cid: string, rect: { x: number; y: number; size: number }) {
+    return api<{ avatar_url: string }>(`/projects/${projectId}/characters/${cid}/avatar/crop`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rect),
+    })
+  }
+
+  function autoAvatarCrop(projectId: string, cid: string) {
+    return api<{ x: number; y: number; size: number }>(`/projects/${projectId}/characters/${cid}/avatar/auto`, { method: 'POST' })
+  }
+
   function listProjects() {
     return api<any[]>('/home/')
   }
@@ -361,6 +379,9 @@ export const useApi = () => {
     saveWardrobe,
     grabCover,
     uploadCover,
+    uploadAvatarSource,
+    cropAvatar,
+    autoAvatarCrop,
     exportProject,
     importProject,
     projectChat,

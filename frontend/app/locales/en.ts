@@ -134,6 +134,8 @@ export default {
     sectionCharacter: 'Character', addCharacter: '＋ Add Character', addCharacterTitle: 'Add character',
     charTabSetting: 'Profile', charTabWardrobe: 'Wardrobe', charTabMoments: 'Moments',
     subBaseInfo: 'Basic Info', addCharacterShort: 'Add', emptyMoments: 'No signature moments yet.',
+    avatarEditorTitle: 'Edit Avatar', avatarUpload: 'Upload Image', avatarAuto: 'Auto Detect', avatarSize: 'Size',
+    avatarDragHint: 'Drag the frame, slide to resize', avatarNoImage: 'Upload an image to use as the avatar', avatarSave: 'Save',
     addCharacterComingSoon: 'Adding characters is coming soon ✨',
     fieldCharacter: 'Character', fieldRole: 'Role', fieldAge: 'Age', fieldBackstory: 'Backstory',
     fieldSurface: 'Surface', fieldInner: 'Inner', fieldDesire: 'Desire', fieldMoments: 'Moments',

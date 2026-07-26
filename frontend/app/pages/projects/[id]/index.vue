@@ -452,11 +452,12 @@
                 <button
                   v-for="c in characters" :key="c.id"
                   class="char-ava" :class="{ on: c.id === selectedCharId }"
-                  @click="selectedCharId = c.id"
+                  @click="c.id === selectedCharId ? openAvatarEditor(c) : (selectedCharId = c.id)"
                 >
                   <span class="ca-img">
                     <img v-if="charAvatar(c)" :src="charAvatar(c)" :alt="c.name" />
                     <span v-else class="ca-ph">{{ (c.name || '?').slice(0, 1) }}</span>
+                    <span v-if="c.id === selectedCharId" class="ca-edit"><Pencil /></span>
                   </span>
                   <span class="ca-name">{{ c.name || t('projectCanvas.fieldCharacter') }}</span>
                 </button>
@@ -680,6 +681,14 @@
       <div v-if="toast" class="toast">{{ toast }}</div>
     </Transition>
 
+    <AvatarEditor
+      v-if="avatarEditFor"
+      :project-id="projectId"
+      :character="avatarEditFor"
+      @close="avatarEditFor = null"
+      @saved="onAvatarSaved"
+    />
+
   </div>
 </template>
 
@@ -689,10 +698,11 @@ import { useRoute } from 'vue-router'
 import {
   MapPin, Clock, TriangleAlert, Package, Check, CircleCheck, X, Sun, Clapperboard, FileText,
   Camera, Aperture, Lightbulb, Disc, BatteryFull, Plug, Mic, Image as ImageIcon, Wrench, Shirt,
-  Tag, Sparkles, Star, RefreshCw, Upload, ChevronDown, User, Plus,
+  Tag, Sparkles, Star, RefreshCw, Upload, ChevronDown, User, Plus, Pencil,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import TripodIcon from '~/components/equip-icons/TripodIcon.vue'
+import AvatarEditor from '~/components/AvatarEditor.vue'
 
 // 设备分类 → 图标(线描,跟随主题色)。support 用用户提供的三脚架矢量,其余 Lucide。
 const EQUIP_ICONS: Record<string, Component> = {
@@ -796,10 +806,19 @@ const charTabs = computed<{ id: CharTab; label: string; icon: any }[]>(() => [
   { id: 'wardrobe', label: t('projectCanvas.charTabWardrobe'), icon: Shirt },
   { id: 'moments',  label: t('projectCanvas.charTabMoments'),  icon: Star },
 ])
-// Avatar = the character's first reference image (project-level refs for now,
-// since only the primary character exists; future characters get their own).
-function charAvatar(_c: any): string {
+// Avatar = the character's own cropped avatar if set, else its first reference
+// image (project-level refs for now; future characters get their own).
+function charAvatar(c: any): string {
+  if (c?.avatar) return BASE_URL + c.avatar
   return allRefUrls.value[0] || ''
+}
+
+// Avatar editor overlay (click a character avatar to upload + crop).
+const avatarEditFor = ref<any>(null)
+function openAvatarEditor(c: any) { avatarEditFor.value = c }
+function onAvatarSaved(url: string) {
+  const c = characters.value.find((x: any) => x.id === avatarEditFor.value?.id)
+  if (c) c.avatar = url   // cache-busted url from backend
 }
 
 const charBg = computed(() => selectedChar.value?.character_data?.characterBackground ?? null)
@@ -1893,6 +1912,16 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 .char-ava:hover .ca-img { border-color: var(--accent-dim); }
 .char-ava.on .ca-img { border-color: var(--accent); transform: scale(1.04); }
 .char-ava.on .ca-name { color: var(--accent); font-weight: 700; }
+.ca-img { position: relative; }
+.ca-edit {
+  position: absolute; right: -1px; bottom: -1px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--surface); opacity: 0; transition: opacity 0.15s;
+}
+.char-ava.on:hover .ca-edit { opacity: 1; }
+.ca-edit :deep(svg) { width: 10px; height: 10px; }
 .ca-name {
   font-size: 10.5px; color: var(--text-quiet); max-width: 60px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

@@ -266,6 +266,9 @@ def get_project(project_id: str) -> dict:
         "series":         character_data.get("series") or meta.get("series", ""),
         "character_data": character_data,
         "visual_spec":    visual_spec,
+        "avatar":         avatar_service.avatar_url(project_id, primary_id),
+        "avatar_src":     avatar_service.source_url(project_id, primary_id),
+        "avatar_crop":    avatar_service.crop_rect(project_id, primary_id),
     }]
 
     # ── shots/ ────────────────────────────────────────────────────────────────
@@ -537,6 +540,7 @@ def activate_version(project_id: str, shot_id: str, version_id: str) -> None:
 from services.plan_service import load_plan_data, save_plan_data  # noqa: E402
 from services import wardrobe_service  # noqa: E402
 from services import cover_service  # noqa: E402
+from services import avatar_service  # noqa: E402
 
 
 def save_chat_history(project_id: str, history: list[dict]) -> None:
