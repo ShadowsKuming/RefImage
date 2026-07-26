@@ -73,9 +73,6 @@
                 <div class="sc-head">
                   <span class="sc-num">{{ shotLabel(si) }}</span>
                   <span class="sc-title">{{ shot.title }}</span>
-                  <span class="sc-pill ess" :class="shot.essential === false ? 'opt' : ''">
-                    {{ shot.essential === false ? t('projectCanvas.scOptional') : t('projectCanvas.scEssential') }}
-                  </span>
                   <span class="sc-pill prio" :class="'p-' + (shot.priority || 'mid')">{{ shotPrioLabel(shot.priority) }}</span>
                 </div>
 
@@ -103,9 +100,6 @@
                   <div class="sc-menu-wrap">
                     <button class="sc-kebab" @click.stop="toggleShotMenu(shot.shot_id)"><MoreVertical /></button>
                     <div v-if="openShotMenu === shot.shot_id" class="wd-menu sc-menu" @click.stop>
-                      <button class="wd-mi" @click="setShotAttr(shot, { essential: shot.essential === false })">
-                        <Star /><span>{{ shot.essential === false ? t('projectCanvas.scSetEssential') : t('projectCanvas.scSetOptional') }}</span>
-                      </button>
                       <button class="wd-mi" :class="{ on: (shot.priority||'mid')==='high' }" @click="setShotAttr(shot, { priority: 'high' })"><span class="sc-mdot p-high" />{{ t('projectCanvas.scPrioHigh') }}</button>
                       <button class="wd-mi" :class="{ on: (shot.priority||'mid')==='mid' }" @click="setShotAttr(shot, { priority: 'mid' })"><span class="sc-mdot p-mid" />{{ t('projectCanvas.scPrioMid') }}</button>
                       <button class="wd-mi" :class="{ on: (shot.priority||'mid')==='low' }" @click="setShotAttr(shot, { priority: 'low' })"><span class="sc-mdot p-low" />{{ t('projectCanvas.scPrioLow') }}</button>
@@ -2039,11 +2033,9 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 }
 .sc-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 700; color: var(--text-hi);
   line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sc-pill { flex-shrink: 0; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
-.sc-pill.ess { color: var(--accent); background: var(--surface-raised); border: 1px solid var(--accent-dim); }
-.sc-pill.ess.opt { color: #fff; background: var(--accent-dim); border-color: var(--accent-dim); }
-.sc-pill.prio { border: 1px solid transparent; }
-.sc-pill.prio.p-high { color: var(--error);  border-color: var(--error); }
+.sc-pill { flex-shrink: 0; font-size: 10px; font-weight: 700; padding: 2px 9px; border-radius: 999px; white-space: nowrap; border: 1px solid transparent; }
+/* 必拍(high) filled+prominent, 建议(mid) orange outline, 可选(low) grey outline */
+.sc-pill.prio.p-high { color: #fff; background: var(--accent); border-color: var(--accent); }
 .sc-pill.prio.p-mid  { color: var(--orange); border-color: var(--orange); }
 .sc-pill.prio.p-low  { color: var(--text-quiet); border-color: var(--border-md); }
 
