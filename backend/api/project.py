@@ -152,6 +152,36 @@ def get_wardrobe_image(project_id: str, item_id: str):
     return FileResponse(path, media_type=media_type)
 
 
+class WorldRequest(BaseModel):
+    world: dict
+
+
+class CharacterDataRequest(BaseModel):
+    character_data: dict
+
+
+@router.put("/{project_id}/world")
+def save_world(project_id: str, req: WorldRequest, user_id: str = Depends(get_current_user)):
+    """User edit to 背景设定 (world.json). AI-frozen; user may correct fields."""
+    _check_owner(project_id, user_id)
+    try:
+        project_service.save_world(project_id, req.world)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"ok": True}
+
+
+@router.put("/{project_id}/character")
+def save_character(project_id: str, req: CharacterDataRequest, user_id: str = Depends(get_current_user)):
+    """User edit to 人物设定 (character.json)."""
+    _check_owner(project_id, user_id)
+    try:
+        project_service.save_character_data(project_id, req.character_data)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"ok": True}
+
+
 @router.post("/{project_id}/cover/grab")
 def grab_cover(project_id: str, user_id: str = Depends(get_current_user)):
     """Auto-grab a work cover: image search → vision-pick → save locally.

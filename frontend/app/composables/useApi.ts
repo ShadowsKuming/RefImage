@@ -153,6 +153,22 @@ export const useApi = () => {
     return api<{ x: number; y: number; size: number }>(`/projects/${projectId}/characters/${cid}/avatar/auto`, { method: 'POST' })
   }
 
+  function saveWorld(projectId: string, world: Record<string, any>) {
+    return api<{ ok: boolean }>(`/projects/${projectId}/world`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ world }),
+    })
+  }
+
+  function saveCharacterData(projectId: string, characterData: Record<string, any>) {
+    return api<{ ok: boolean }>(`/projects/${projectId}/character`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_data: characterData }),
+    })
+  }
+
   function generateMoments(projectId: string, cid: string) {
     return api<{ moments: any[] }>(`/projects/${projectId}/characters/${cid}/moments/generate`, { method: 'POST' })
   }
@@ -403,6 +419,8 @@ export const useApi = () => {
     uploadWardrobeImage,
     generateMoments,
     saveMoments,
+    saveWorld,
+    saveCharacterData,
     exportProject,
     importProject,
     projectChat,

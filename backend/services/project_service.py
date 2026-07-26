@@ -559,6 +559,39 @@ def save_brief(project_id: str, brief: dict) -> None:
     (plan_dir / "brief.json").write_text(json.dumps(brief, ensure_ascii=False, indent=2))
 
 
+# ── User edits to the (otherwise AI-frozen) 设定 context ────────────────────────
+# world.json / character.json are step-1 extraction output; the AI never rewrites
+# them, but the USER may correct/fill fields in the 设定 panel. These persist the
+# whole object the frontend sends back (coarse save).
+
+def _require_project(project_id: str) -> Path:
+    base = STORAGE_ROOT / project_id
+    if not base.exists():
+        raise FileNotFoundError(f"Project {project_id!r} not found")
+    return base
+
+
+def save_world(project_id: str, world: dict) -> None:
+    base = _require_project(project_id)
+    (base / "context" / "world.json").write_text(json.dumps(world, ensure_ascii=False, indent=2))
+
+
+def save_character_data(project_id: str, character_data: dict) -> None:
+    base = _require_project(project_id)
+    (base / "context" / "character.json").write_text(json.dumps(character_data, ensure_ascii=False, indent=2))
+    # keep meta's display name in sync if the character name changed
+    name = character_data.get("character")
+    if name:
+        meta_path = base / "meta.json"
+        try:
+            meta = json.loads(meta_path.read_text())
+            if meta.get("character") != name:
+                meta["character"] = name
+                meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2))
+        except (json.JSONDecodeError, OSError):
+            pass
+
+
 # ── Reference images ───────────────────────────────────────────────────────────
 
 def add_extra_ref(project_id: str, image_bytes: bytes, image_name: str) -> str:

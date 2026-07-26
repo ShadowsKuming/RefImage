@@ -424,13 +424,17 @@
                   <span class="ws-hero-title">{{ project.work }}</span>
                   <ChevronDown class="s-chev" :class="{ open: bgOpen }" />
                 </button>
-                <p v-if="bgOpen && worldSetting?.synopsis" class="ws-hero-sub">{{ worldSetting.synopsis }}</p>
+                <p v-if="bgOpen && worldSetting" class="ws-hero-sub">
+                  <EditableText multiline :model-value="worldSetting.synopsis ?? ''" :placeholder="'—'" @save="v => saveWorldField('worldSetting.synopsis', v)" />
+                </p>
               </div>
 
               <!-- 展开才显示的信息盒:类型 / 时代·地点 / 氛围 / 核心主题 / 标志场景 -->
               <div v-if="worldSetting" v-show="bgOpen" class="ws-info">
-                <div class="ws-irow"><Tag class="ws-ii" /><span class="ws-ik">{{ t('projectCanvas.fieldGenre') }}</span><span class="ws-iv">{{ worldSetting.genre ?? '—' }}</span></div>
-                <div class="ws-irow"><Clock class="ws-ii" /><span class="ws-ik">{{ t('projectCanvas.fieldEraPlace') }}</span><span class="ws-iv">{{ worldSetting.timeline || worldSetting.era || '—' }}</span></div>
+                <div class="ws-irow"><Tag class="ws-ii" /><span class="ws-ik">{{ t('projectCanvas.fieldGenre') }}</span>
+                  <EditableText class="ws-iv" :model-value="worldSetting.genre ?? ''" :placeholder="'—'" @save="v => saveWorldField('worldSetting.genre', v)" /></div>
+                <div class="ws-irow"><Clock class="ws-ii" /><span class="ws-ik">{{ t('projectCanvas.fieldEraPlace') }}</span>
+                  <EditableText class="ws-iv" :model-value="worldSetting.timeline || worldSetting.era || ''" :placeholder="'—'" @save="v => saveWorldField('worldSetting.timeline', v)" /></div>
                 <div class="ws-irow"><Sparkles class="ws-ii" /><span class="ws-ik">{{ t('projectCanvas.fieldAtmosphere') }}</span><span class="ws-iv">{{ [worldSetting.tone?.visual, worldSetting.tone?.emotion].filter(Boolean).join(' · ') || '—' }}</span></div>
                 <div v-if="worldSetting.themes?.length" class="ws-irow">
                   <Star class="ws-ii" /><span class="ws-ik">{{ t('projectCanvas.fieldThemes') }}</span>
@@ -480,15 +484,18 @@
               <div v-if="charTab === 'setting'" class="char-panel">
                 <div class="cp-sub">{{ t('projectCanvas.subBaseInfo') }}</div>
                 <div class="s-row"><span class="s-key">{{ t('projectCanvas.fieldCharacter') }}</span><span class="s-val">{{ selectedChar?.name || '—' }} · {{ project.work }}</span></div>
-                <div class="s-row"><span class="s-key">{{ t('projectCanvas.fieldRole') }}</span><span class="s-val">{{ charBg?.role ?? '—' }}</span></div>
-                <div class="s-row"><span class="s-key">{{ t('projectCanvas.fieldAge') }}</span><span class="s-val">{{ charBg?.age ?? '—' }}</span></div>
-                <div v-if="charBg?.backstory" class="s-row s-row-top">
-                  <span class="s-key">{{ t('projectCanvas.fieldBackstory') }}</span>
-                  <span class="s-val">{{ charBg.backstory }}</span>
-                </div>
-                <div class="s-row"><span class="s-key">{{ t('projectCanvas.fieldSurface') }}</span><span class="s-val">{{ charBg?.personality?.surface ?? '—' }}</span></div>
-                <div class="s-row"><span class="s-key">{{ t('projectCanvas.fieldInner') }}</span><span class="s-val">{{ charBg?.personality?.inner ?? '—' }}</span></div>
-                <div class="s-row"><span class="s-key">{{ t('projectCanvas.fieldDesire') }}</span><span class="s-val">{{ charBg?.personality?.core_desire ?? '—' }}</span></div>
+                <div class="s-row"><span class="s-key">{{ t('projectCanvas.fieldRole') }}</span>
+                  <EditableText class="s-val" :model-value="charBg?.role ?? ''" :placeholder="'—'" @save="v => saveCharField('characterBackground.role', v)" /></div>
+                <div class="s-row"><span class="s-key">{{ t('projectCanvas.fieldAge') }}</span>
+                  <EditableText class="s-val" :model-value="charBg?.age ?? ''" :placeholder="'—'" @save="v => saveCharField('characterBackground.age', v)" /></div>
+                <div class="s-row s-row-top"><span class="s-key">{{ t('projectCanvas.fieldBackstory') }}</span>
+                  <EditableText class="s-val" multiline :model-value="charBg?.backstory ?? ''" :placeholder="'—'" @save="v => saveCharField('characterBackground.backstory', v)" /></div>
+                <div class="s-row s-row-top"><span class="s-key">{{ t('projectCanvas.fieldSurface') }}</span>
+                  <EditableText class="s-val" multiline :model-value="charBg?.personality?.surface ?? ''" :placeholder="'—'" @save="v => saveCharField('characterBackground.personality.surface', v)" /></div>
+                <div class="s-row s-row-top"><span class="s-key">{{ t('projectCanvas.fieldInner') }}</span>
+                  <EditableText class="s-val" multiline :model-value="charBg?.personality?.inner ?? ''" :placeholder="'—'" @save="v => saveCharField('characterBackground.personality.inner', v)" /></div>
+                <div class="s-row s-row-top"><span class="s-key">{{ t('projectCanvas.fieldDesire') }}</span>
+                  <EditableText class="s-val" multiline :model-value="charBg?.personality?.core_desire ?? ''" :placeholder="'—'" @save="v => saveCharField('characterBackground.personality.core_desire', v)" /></div>
 
                 <template v-if="visualSpecFields.length">
                   <div class="cp-sub">{{ t('projectCanvas.sectionAppearance') }}</div>
@@ -741,6 +748,7 @@ import {
 import type { Component } from 'vue'
 import TripodIcon from '~/components/equip-icons/TripodIcon.vue'
 import AvatarEditor from '~/components/AvatarEditor.vue'
+import EditableText from '~/components/EditableText.vue'
 
 // 设备分类 → 图标(线描,跟随主题色)。support 用用户提供的三脚架矢量,其余 Lucide。
 const EQUIP_ICONS: Record<string, Component> = {
@@ -860,6 +868,35 @@ function onAvatarSaved(url: string) {
 }
 
 const charBg = computed(() => selectedChar.value?.character_data?.characterBackground ?? null)
+
+// ── User edits to the (AI-frozen) 设定 fields ────────────────────────────────
+// Click-to-edit text fields in 人物设定 / 背景设定. On commit we mutate the loaded
+// object at the given path and coarse-save the whole file back. visual_spec
+// (appearance) is intentionally NOT editable here — it's multilingual and feeds
+// image generation, so editing zh alone would silently not affect output.
+function _setPath(obj: any, path: string, value: string) {
+  const keys = path.split('.')
+  let o = obj
+  for (let i = 0; i < keys.length - 1; i++) {
+    if (o[keys[i]] == null || typeof o[keys[i]] !== 'object') o[keys[i]] = {}
+    o = o[keys[i]]
+  }
+  o[keys[keys.length - 1]] = value
+}
+function saveWorldField(path: string, value: string) {
+  const world = projectData.value?.world
+  if (!world) return
+  _setPath(world, path, value)
+  api.saveWorld(projectId.value, world).catch(e => console.error('Failed to save world', e))
+}
+function saveCharField(path: string, value: string) {
+  const cd = selectedChar.value?.character_data
+  if (!cd) return
+  _setPath(cd, path, value)
+  // keep the top-level projectData.character_data (used elsewhere) in sync
+  if (projectData.value) projectData.value.character_data = cd
+  api.saveCharacterData(projectId.value, cd).catch(e => console.error('Failed to save character', e))
+}
 
 // 人物关系: [{ name, relationship, importance }]
 const relations = computed<any[]>(() => {
