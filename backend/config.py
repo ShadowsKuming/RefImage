@@ -45,6 +45,12 @@ SKETCH_MODEL = os.getenv("SKETCH_MODEL", "gpt-image-2")
 # ── Lightweight LLM ───────────────────────────────────────────────────────────
 # Used by: fast/cheap tasks (project metadata generation, simple completions)
 FAST_LLM_MODEL = os.getenv("FAST_LLM_MODEL", "claude-haiku-4-5-20251001")
+# Fast model per text provider — used for tiny bounded tasks like the shot
+# assistant's quick-reply chips (forced-tool call, low latency, cheap).
+FAST_LLM_MODEL_BY_PROVIDER = {
+    "openai": os.getenv("FAST_LLM_MODEL_OPENAI", "gpt-4.1-mini"),
+    "claude": os.getenv("FAST_LLM_MODEL_CLAUDE", "claude-haiku-4-5-20251001"),
+}
 
 # ── Per-user project limit ─────────────────────────────────────────────────────
 # Set to 0 to disable the limit.

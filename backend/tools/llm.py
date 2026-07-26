@@ -31,15 +31,21 @@ def call_with_tools(
     system: str,
     tools: list[dict],  # Anthropic tool format as canonical
     max_tokens: int = 1500,
+    force_tool: str | None = None,  # force the model to call this specific tool
+    model: str | None = None,       # override the provider's default model
 ) -> dict:
     """
     Single-turn call with optional tools.
     Returns: { text: str, tool_calls: [{ name: str, input: dict }] }
+
+    force_tool guarantees structured output: the model MUST call that tool this
+    turn (used for reliable chip/JSON generation). model overrides the default
+    (e.g. a cheap fast model for tiny bounded tasks).
     """
     fn = {"claude": _call_claude, "openai": _call_openai, "gemini": _call_gemini}.get(PROVIDER)
     if not fn:
         raise ValueError(f"Unknown LLM_PROVIDER: '{PROVIDER}'. Choose from: claude, openai, gemini")
-    return fn(messages, system, tools, max_tokens)
+    return fn(messages, system, tools, max_tokens, force_tool=force_tool, model=model)
 
 
 def call_agent(
@@ -72,17 +78,19 @@ def call_agent(
 
 # ── Claude ────────────────────────────────────────────────────────────────────
 
-def _call_claude(messages, system, tools, max_tokens):
+def _call_claude(messages, system, tools, max_tokens, force_tool=None, model=None):
     import anthropic
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     kwargs = dict(
-        model=TEXT_MODEL["claude"],
+        model=model or TEXT_MODEL["claude"],
         max_tokens=max_tokens,
         system=system,
         messages=messages,
     )
     if tools:
         kwargs["tools"] = tools
+    if force_tool:
+        kwargs["tool_choice"] = {"type": "tool", "name": force_tool}
     response = client.messages.create(**kwargs)
 
     text = ""
@@ -151,13 +159,15 @@ def _anthropic_tool_to_openai(tool: dict) -> dict:
     }
 
 
-def _call_openai(messages, system, tools, max_tokens):
+def _call_openai(messages, system, tools, max_tokens, force_tool=None, model=None):
     from openai import OpenAI
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     full_messages = [{"role": "system", "content": system}] + messages
-    kwargs = dict(model=TEXT_MODEL["openai"], max_completion_tokens=max_tokens, messages=full_messages)
+    kwargs = dict(model=model or TEXT_MODEL["openai"], max_completion_tokens=max_tokens, messages=full_messages)
     if tools:
         kwargs["tools"] = [_anthropic_tool_to_openai(t) for t in tools]
+        if force_tool:
+            kwargs["tool_choice"] = {"type": "function", "function": {"name": force_tool}}
     response = client.chat.completions.create(**kwargs)
 
     msg = response.choices[0].message
@@ -215,5 +225,5 @@ def _agent_openai(messages, system, tools, tool_executor, max_turns, max_tokens)
 
 # ── Gemini ────────────────────────────────────────────────────────────────────
 
-def _call_gemini(messages, system, tools, max_tokens):
+def _call_gemini(messages, system, tools, max_tokens, force_tool=None, model=None):
     raise NotImplementedError("Gemini provider not yet implemented")

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from api.auth import get_current_user
-from services import project_service, guide_service, export_service, wardrobe_service, cover_service, avatar_service, moments_service
+from services import project_service, guide_service, export_service, wardrobe_service, cover_service, avatar_service, moments_service, questionnaire_service
 
 router = APIRouter()
 
@@ -298,6 +298,25 @@ def auto_avatar_crop(project_id: str, cid: str, user_id: str = Depends(get_curre
 
 class MomentsSaveRequest(BaseModel):
     moments: list[dict]
+
+
+@router.get("/{project_id}/characters/{cid}/questionnaire")
+def get_questionnaire(project_id: str, cid: str, user_id: str = Depends(get_current_user)):
+    """Cached shot 破冰问卷 for a character (empty groups if never generated)."""
+    _check_owner(project_id, user_id)
+    return questionnaire_service.load_questionnaire(project_id, cid)
+
+
+@router.post("/{project_id}/characters/{cid}/questionnaire/generate")
+def generate_questionnaire(project_id: str, cid: str, user_id: str = Depends(get_current_user)):
+    """LLM-generate the character-specific shot questionnaire (三层漏斗树)."""
+    _check_owner(project_id, user_id)
+    try:
+        return questionnaire_service.generate_questionnaire(project_id, cid)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 @router.post("/{project_id}/characters/{cid}/moments/generate")

@@ -226,7 +226,9 @@ def shot_chat(
         )
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Project or shot not found")
-    return {"reply": result["reply"], "generating": result["generating"]}
+    return {"reply": result["reply"], "generating": result["generating"],
+            "options": result.get("options", []),
+            "stage": result.get("stage", "chat"), "camera": result.get("camera")}
 
 
 # ── Version tree ──────────────────────────────────────────────

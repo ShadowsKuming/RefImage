@@ -22,8 +22,11 @@ def shot_chat(
     Run one turn of the per-shot AI assistant.
 
     Returns:
-        { reply: str, generating: bool }
+        { reply, generating, options, stage, camera }
         generating is True when the AI decided to generate an image this turn.
+        options are the quick-reply chips for the user's next turn (may be empty).
+        stage == "camera" → frontend shows the direct-control camera panel instead
+        of chips; camera = { shot, aspect, angle } suggested defaults for it.
 
     Raises:
         FileNotFoundError if project or shot not found.
@@ -67,4 +70,6 @@ def shot_chat(
             parent_version_ids or [],
         )
 
-    return {"reply": result["reply"], "generating": result["generating"]}
+    return {"reply": result["reply"], "generating": result["generating"],
+            "options": result.get("options", []),
+            "stage": result.get("stage", "chat"), "camera": result.get("camera")}

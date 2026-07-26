@@ -6,8 +6,120 @@ When the vision is clear it calls generate_image with a composed prompt —
 the caller captures this via closure and returns it to the frontend,
 which then triggers the actual image generation API call.
 """
-from tools.llm import call_agent
+from tools.llm import call_agent, call_with_tools
 from tools.search import web_search as _web_search
+from config import LLM_PROVIDER, FAST_LLM_MODEL_BY_PROVIDER
+
+
+_SUBMIT_OPTIONS_TOOL = {
+    "name": "submit_options",
+    "description": "提交用户此刻最可能点的快捷回答。",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "options": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "2-6 个快捷回答，第一人称、简短（≤14字）；助手在问句里列了几个候选就给全这几个，别漏",
+            },
+        },
+        "required": ["options"],
+    },
+}
+
+
+def _canon_brief(project: dict) -> str:
+    """A compact character summary for the (fast-model) options generator."""
+    char_data = project.get("character_data", {}) or {}
+    cb = char_data.get("characterBackground", {})
+    if not isinstance(cb, dict):
+        cb = {}
+    ws = project.get("world", {}).get("worldSetting", {})
+    if not isinstance(ws, dict):
+        ws = {}
+    name = char_data.get("character", "") or project.get("character", "")
+    series = project.get("series", "")
+    parts = [f"角色：{name}（{series}）"]
+    p = cb.get("personality", {})
+    if p.get("surface") or p.get("inner"):
+        parts.append(f"气质：{p.get('surface','')}；{p.get('inner','')}")
+    if cb.get("iconic_moments"):
+        parts.append(f"标志瞬间：{'、'.join(cb['iconic_moments'])}")
+    if ws.get("iconic_settings"):
+        parts.append(f"经典场景：{'、'.join(ws['iconic_settings'])}")
+    return "\n".join(parts)
+
+
+# The photography step is a DIRECT-CONTROL phase, not chat: once the assistant
+# reaches it, the frontend renders a compact camera panel (景别/画幅/机位 buttons
+# with the current pick highlighted) instead of chat chips, and tapping a control
+# is local state — no LLM call, no paragraph per click. Only 生成 hits the backend.
+_SHOTS  = ("特写", "近景", "半身", "全身")
+_ANGLES = ("平视", "俯视", "仰视")
+_FRAMING_CONCRETE = _SHOTS + ("竖图", "横图", "竖版", "横版")
+_FRAMING_ABSTRACT = ("景别", "机位", "画幅", "镜头", "构图")
+
+
+def _is_camera_phase(reply: str) -> bool:
+    """True once the assistant has reached the photography step — proposing the
+    shot's framing. The frontend then shows the camera panel (see above)."""
+    r = reply.replace(" ", "")
+    if any(t in r for t in _FRAMING_CONCRETE):
+        return True
+    if any(t in r for t in _FRAMING_ABSTRACT):
+        return ("生成" in r) or ("建议" in r) or ("调" in r)
+    return False
+
+
+def _extract_camera_suggestion(reply: str) -> dict:
+    """Parse the assistant's proposal for suggested framing so the panel opens
+    pre-selected on what the AI just recommended. Falls back to sensible defaults."""
+    r = reply.replace(" ", "")
+    shot = next((s for s in _SHOTS if s in r), "半身")
+    if "横图" in r or "横版" in r:
+        aspect = "横图"
+    elif "竖图" in r or "竖版" in r:
+        aspect = "竖图"
+    else:
+        aspect = "竖图"
+    angle = next((a for a in _ANGLES if a in r), "平视")
+    return {"shot": shot, "aspect": aspect, "angle": angle}
+
+
+def _suggest_options(project: dict, messages: list[dict]) -> list[str]:
+    """Generate 2-4 context-consistent quick-reply chips for the user's next turn.
+
+    Runs as a dedicated cheap fast-model call with a FORCED tool_choice, so the
+    output is always structured (no verbalizing) and — because it sees the whole
+    conversation — always consistent with what the user already said (say 合练 →
+    every option involves teammates, never 独自一人)."""
+    system = (
+        f"{_canon_brief(project)}\n\n"
+        "你的唯一任务：给用户几个能【一键回答助手最后那条消息】的快捷选项（2-4 个，第一人称、短，≤14字）。\n"
+        "规则：\n"
+        "1. 选项必须是对『助手最后那个问题』的直接回答，和问题同一层级、同一主题——"
+        "助手问大方向就给大方向，问具体动作才给动作，别跨层。\n"
+        "2. 如果助手的消息里已经列了候选（如「舞台演出、校园日常、社团活动」），"
+        "就把它列的【每一个】都做成选项、逐字照用、一个都别漏，也别自己另编。\n"
+        "3. 选项之间要有区分度，别都往一个主题挤（别每个都「和队友一起…」）。\n"
+        "4. 和用户已经说过的一致，绝不矛盾（用户说了独自，就别出现和队友；说了合练，就别出现独自）。\n"
+        "5. 扎在这个角色的设定里，不要通用模板。\n"
+        "6. 除非助手最后那句在明确问『要不要生成/这样行吗』，否则绝不能出现「生成」类选项——"
+        "还在聊大方向/情节/场景/表演/镜头的任何一步，都只给该步的回答选项。\n"
+        "整理好调用 submit_options。"
+    )
+    fast_model = FAST_LLM_MODEL_BY_PROVIDER.get(LLM_PROVIDER)
+    try:
+        res = call_with_tools(
+            messages=messages, system=system, tools=[_SUBMIT_OPTIONS_TOOL],
+            max_tokens=300, force_tool="submit_options", model=fast_model,
+        )
+    except Exception:
+        return []
+    call = next((c for c in res.get("tool_calls", []) if c.get("name") == "submit_options"), None)
+    if not call:
+        return []
+    return [str(o).strip() for o in (call.get("input", {}).get("options") or []) if str(o).strip()][:6]
 
 
 TOOLS = [
@@ -155,28 +267,37 @@ def _build_system(project: dict, shot: dict, shot_refs: list[dict] | None = None
     vs_text     = visual_spec.get("zh", "") if isinstance(visual_spec, dict) else str(visual_spec)
 
     lines = [
-        "你是一个懂拍摄策划的动漫cos创意搭档，帮用户设计单张cos拍摄参考图。",
+        "你是一个懂拍摄策划的动漫创意搭档，和用户一起把这张参考图【一起构思出来】——"
+        "不是拿一张问卷让他逐项填，而是像一个有想法的策划在陪他聊。",
         "",
-        "【对话风格】",
-        "- 像创意导演，不像客服。你来主导方向，用户来拍板。",
-        "- 禁止列多个问题让用户做选择题。每次回复最多提一个问题，或者直接给方案。",
-        "- 禁止解释型长句（「这种风格会让xxx更突出，也贴合xxx」）。说结论，不说理由。",
-        "- 语气短，直接，像在和朋友讨论拍摄策划。",
+        "【每一轮怎么说话 · 三段式，但要短】",
+        "每轮回复【总共 2-3 句话、不超过 70 字】，自然连成一段，不要写成 1/2/3 列表，也不要长篇铺陈：",
+        "① 接住：一句接住用户刚才的选择（别无视它直接问下一个）。",
+        "② 想象：半句到一句，用角色性格点出这个选择的画面感或表现了她哪一面（让人觉得你在一起想，不是收集信息）。",
+        "③ 引导：一句用【建议/邀请】语气把话题带到下一层，不要审问。",
+        "  反例（审问，禁止）：「那她在干嘛？凝视窗外 / 喝茶 / 写歌词，你想要哪种？」",
+        "  正例（简短构思）：「安静独处很像澪内向的一面。先别急着定镜头——这一刻是排练后她独自留下，还是趁没人悄悄写歌词？」",
+        "- 宁可短、别啰嗦；一次只推进一层；用户也可以随时直接打字，顺着他写的接。",
         "",
-        "【推进逻辑】",
-        "- 用户给出大概方向 → 你立刻定一个具体方案，让用户说「可以」或「换一下xxx」。",
-        "  示例：「我先走赛博楼顶+双刀前冲这个方向，背景粉紫霓虹，低角度仰拍压迫感。你觉得呢？」",
-        "- 用户说「没思路」「你来定」「给个例子」→ 给 2-3 个简短风格选项，用户选一个。",
-        "  示例：「三个方向你选一个：① 楼顶突袭（霓虹背景，冲刺姿态）② 巷战瞬间（雨夜，刀光特写）③ 虚拟空间（星光碎片环绕，像宣传图）」",
-        "- 方案细节足够后（有场景/姿势/构图/氛围）→ 先问用户「横图还是竖图？」（如果对话中还没确认过画幅）。",
-        "  示例：「方案定了，最后确认一下——横图还是竖图？」",
-        "- 用户确认画幅后 → 调用 generate_image，不再需要额外确认。",
-        "- 如果用户在方案讨论中已经明确提到画幅（如「竖图」「横版」「16:9」），跳过画幅提问直接等确认生成。",
-        "- 用户确认（「可以」「好的」「生成」「就这样」等）且画幅已知 → 调用 generate_image。",
-        "- 禁止在未经用户确认的情况下调用 generate_image。",
-        "- 【重要】用户提出修改请求（「可以吗」「能改成xxx吗」「想要xxx」「换成xxx」）≠ 确认生成。",
-        "  收到修改请求后：一句话确认新方案，然后等用户说「可以」再生成。",
-        "  示例：用户说「能换成竖图全身吗」→ 你回「好，改竖图全身，构图调整为xxx，帮你生成？」→ 等用户确认。",
+        "【构思漏斗 · 五层，逐层收窄，别跳层也别过早定死细节】",
+        "1. 大方向：想表现角色的哪一类内容/哪一面（如 舞台演出 / 校园日常 / 社团排练 / 安静独处）。",
+        "2. 具体情节 narrative：这张具体【发生了什么】、她正处在事件的哪个时刻——是一个可想象的微型情节，"
+        "不是单纯动作。如「排练结束后其他人都走了，她独自留下」而不是「弹贝斯」。",
+        "3. 场景设定 setting：这个情节在【哪里、什么时间、环境什么状态、有哪些关键物件】。"
+        "如「放学后的部室，夕阳照进来，同伴暂时离开」。这一层【只定环境，不要定姿势/表情/景别】。",
+        "4. 人物表演 performance：到这里才定她此刻的【状态/动作/表情/情绪】——"
+        "如「短暂走神、若有所思」还是「带一点不愿被发现的失落」。也可以顺带问这张更想突出人物、氛围还是互动。",
+        "5. 摄影表达 photography：最后才是【景别/画幅】。这一层【绝对不要开放式一问一答】——"
+        "你根据前面直接给【一个】具体建议（如 突出人物→近景·竖图；突出氛围→全身·横图；机位默认平视），"
+        "一句话说完就停，等用户操作。系统会在你下面自动显示控件按钮（就这样生成 / 特写 / 近景 / 半身 / 全身 / 横图 / 竖图），"
+        "所以你【不要在正文里写这些选项文字，也不要问『你想怎么调/还有别的机位想法吗』这类开放问题】。",
+        "- 【关键】第 3 层只定场景，动作/表情留到第 4 层，景别/画幅留到第 5 层——别在场景那步就把姿势表情锁死。",
+        "- 用户在摄影阶段点了某个景别/画幅（如「特写」「横图」）→ 只回【一句】这样改会怎样，其余不变，然后停，等他继续调或生成。别再抛新问题。",
+        "- 用户确认生成（「可以」「就这样」「生成」等）→ 调用 generate_image。",
+        "  外貌服装由项目数据自动带入，你只填 atmosphere/scene/pose/composition/orientation（画幅按第5层）。",
+        "- 用户中途已经把画面说得很清楚，可以跳层，别机械走满五层。",
+        "- 禁止在用户确认前调用 generate_image；用户提修改请求（「能改成xxx吗」）≠ 确认，先复述新方案再等确认。",
+        "- 【通用】任何时候都不要把快捷选项的文字写进你的回复正文（选项由系统单独展示成按钮）。",
         "",
         "你熟悉这个角色的性格、标志性瞬间和经典场景，主动把它们融入方案。",
         "提场景时必须匹配用户要求的氛围——用户要「战斗/帅气」就选战斗场景，不要推荐日常或学校场景。",
@@ -323,12 +444,33 @@ def chat(
         tools=TOOLS,
         tool_executor=tool_executor,
         max_turns=6,
-        max_tokens=800,
+        max_tokens=400,
     )
+
+    generating = captured.get("prompt_parts") is not None
+
+    # Quick-reply chips: a dedicated forced-tool fast-model call, given the full
+    # conversation + the assistant's just-produced reply. Skipped while generating
+    # an image or handling a ref-classification (no chips needed those turns).
+    options: list[str] = []
+    camera: dict | None = None
+    stage = "chat"
+    if not generating and not captured.get("classify_ref") and result["text"].strip():
+        if _is_camera_phase(result["text"]):
+            # Photography step → frontend shows a direct-control camera panel
+            # (景别/画幅/机位) instead of chat chips; no chips, structured suggestion.
+            stage = "camera"
+            camera = _extract_camera_suggestion(result["text"])
+        else:
+            convo = messages + [{"role": "assistant", "content": result["text"]}]
+            options = _suggest_options(project, convo)
 
     return {
         "reply":        result["text"],
-        "generating":   captured.get("prompt_parts") is not None,
+        "options":      options,
+        "stage":        stage,
+        "camera":       camera,
+        "generating":   generating,
         "prompt_parts": captured.get("prompt_parts"),
         "classify_ref": captured.get("classify_ref"),
     }

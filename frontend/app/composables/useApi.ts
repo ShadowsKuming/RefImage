@@ -273,8 +273,8 @@ export const useApi = () => {
     message: string,
     selectedVersionIds: string[] = [],
     selectedRefIds: string[] = [],
-  ): Promise<{ reply: string; generating: boolean }> {
-    return api<{ reply: string; generating: boolean }>(
+  ): Promise<{ reply: string; generating: boolean; options: string[]; stage: string; camera: { shot: string; aspect: string; angle: string } | null }> {
+    return api<{ reply: string; generating: boolean; options: string[]; stage: string; camera: { shot: string; aspect: string; angle: string } | null }>(
       `/projects/${projectId}/shots/${shotId}/chat`,
       {
         method: 'POST',

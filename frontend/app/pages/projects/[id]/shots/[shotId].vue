@@ -62,6 +62,36 @@
             <div class="ai-avatar">AI</div>
             <div class="ai-bubble typing"><span /><span /><span /></div>
           </div>
+
+          <div v-if="lastAgentOptions.length && !cameraPanel" class="ai-chips">
+            <button
+              v-for="(op, oi) in lastAgentOptions"
+              :key="oi"
+              class="ai-chip"
+              :class="{ primary: op.includes('生成') }"
+              @click="pickOption(op)"
+            >{{ op }}</button>
+          </div>
+
+          <!-- Photography step: direct-control panel, not chat -->
+          <div v-if="cameraPanel && !generating && !isRefined" class="cam-panel">
+            <div class="cam-row">
+              <span class="cam-label">景别</span>
+              <button v-for="s in SHOT_OPTS" :key="s" class="cam-btn"
+                      :class="{ on: cameraPanel.shot === s }" @click="cameraPanel.shot = s">{{ s }}</button>
+            </div>
+            <div class="cam-row">
+              <span class="cam-label">画幅</span>
+              <button v-for="a in ASPECT_OPTS" :key="a" class="cam-btn"
+                      :class="{ on: cameraPanel.aspect === a }" @click="cameraPanel.aspect = a">{{ a }}</button>
+            </div>
+            <div class="cam-row">
+              <span class="cam-label">机位</span>
+              <button v-for="a in ANGLE_OPTS" :key="a" class="cam-btn"
+                      :class="{ on: cameraPanel.angle === a }" @click="cameraPanel.angle = a">{{ a }}</button>
+            </div>
+            <button class="cam-gen" :disabled="chatLoading" @click="generateFromPanel">👍 就这样，生成 →</button>
+          </div>
         </div>
 
         <div v-if="selectedVersionIds.length > 0 || selectedRefIds.length > 0" class="selection-hint">
@@ -74,7 +104,7 @@
 
         <div class="ai-input-row">
           <input v-model="chatInput" class="ai-input"
-                 :placeholder="isRefined ? '已完善，解锁后可继续编辑' : '调整例图或提问…'"
+                 :placeholder="isRefined ? '已完善，解锁后可继续编辑' : '点上面的选项，或直接打字…'"
                  :disabled="generating || chatLoading || isRefined"
                  @keydown.enter.exact="onChatInputEnter" />
           <button class="ai-send" :disabled="generating || chatLoading || isRefined" @click="sendChat">↑</button>
@@ -1264,11 +1294,80 @@ async function pollUntilDone() {
 const aiMsgContainer = ref<HTMLElement | null>(null)
 const chatInput      = ref('')
 const chatLoading    = ref(false)
-const aiMessages     = ref<{ role: string; text: string; retryText?: string }[]>([])
+const aiMessages     = ref<{ role: string; text: string; retryText?: string; options?: string[] }[]>([])
+
+// Hidden opener that kicks off the interview when a shot has no chat yet.
+// It's sent as a user turn to the assistant but never shown as a user bubble
+// (filtered on load) — the user only sees the assistant's first question + chips.
+const KICKOFF_MSG = '（帮我开始构思这张，先问我第一个问题）'
+
+// Legacy shots were seeded with a static welcome line before the interview
+// existed; treat it as "no conversation yet" so they also kick off the funnel.
+const LEGACY_SEED = '描述想要的效果，我来生成参考例图'
+
+function stripKickoff(msgs: { role: string; text: string }[]) {
+  return msgs.filter(m =>
+    !(m.role === 'user' && m.text === KICKOFF_MSG) &&
+    !(m.role === 'agent' && m.text.includes(LEGACY_SEED)),
+  )
+}
+
+// Quick-reply chips belong to the latest assistant message only; once the user
+// answers (chip or typing) they're consumed and the next turn brings fresh ones.
+const lastAgentOptions = computed<string[]>(() => {
+  if (chatLoading.value || generating.value || isRefined.value) return []
+  const last = aiMessages.value[aiMessages.value.length - 1]
+  if (last && last.role === 'agent' && Array.isArray(last.options)) return last.options
+  return []
+})
+
+function pickOption(op: string) {
+  if (chatLoading.value || generating.value || isRefined.value) return
+  chatInput.value = op
+  sendChat()
+}
+
+// ── Camera panel (photography step = direct controls, not chat) ──
+const SHOT_OPTS  = ['特写', '近景', '半身', '全身']
+const ANGLE_OPTS = ['平视', '俯视', '仰视']
+const ASPECT_OPTS = ['竖图', '横图']
+const cameraPanel = ref<{ shot: string; aspect: string; angle: string } | null>(null)
+
+function openCameraPanel(c: { shot: string; aspect: string; angle: string } | null) {
+  cameraPanel.value = {
+    shot:   c?.shot   && SHOT_OPTS.includes(c.shot)   ? c.shot   : '半身',
+    aspect: c?.aspect && ASPECT_OPTS.includes(c.aspect) ? c.aspect : '竖图',
+    angle:  c?.angle  && ANGLE_OPTS.includes(c.angle)  ? c.angle  : '平视',
+  }
+}
+function generateFromPanel() {
+  if (!cameraPanel.value || chatLoading.value || generating.value) return
+  const { shot, aspect, angle } = cameraPanel.value
+  cameraPanel.value = null
+  chatInput.value = `就按这个生成：${shot}、${aspect}、${angle}`
+  sendChat()
+}
+
+async function kickoff() {
+  if (chatLoading.value) return
+  chatLoading.value = true
+  await nextTick()
+  try {
+    const { reply, options, stage, camera } = await api.shotChat(projectId.value, shotId.value, KICKOFF_MSG, [], [])
+    if (reply) aiMessages.value.push({ role: 'agent', text: reply, options })
+    if (stage === 'camera') openCameraPanel(camera); else cameraPanel.value = null
+  } catch {
+    // silent — user can still type to start
+  } finally {
+    chatLoading.value = false
+  }
+  await nextTick()
+  if (aiMsgContainer.value) aiMsgContainer.value.scrollTop = aiMsgContainer.value.scrollHeight
+}
 
 async function refreshHistory() {
   const s = await api.getShot(projectId.value, shotId.value)
-  aiMessages.value = s.chat_history ?? []
+  aiMessages.value = stripKickoff(s.chat_history ?? [])
   await nextTick()
   if (aiMsgContainer.value) aiMsgContainer.value.scrollTop = aiMsgContainer.value.scrollHeight
 }
@@ -1299,10 +1398,11 @@ async function sendChat(retryText?: string) {
   await nextTick()
   if (aiMsgContainer.value) aiMsgContainer.value.scrollTop = aiMsgContainer.value.scrollHeight
   try {
-    const { reply, generating: gen } = await withRetry(() => api.shotChat(
+    const { reply, generating: gen, options, stage, camera } = await withRetry(() => api.shotChat(
       projectId.value, shotId.value, text, selectedVersionIds.value, selectedRefIds.value,
     ))
-    if (reply) aiMessages.value.push({ role: 'agent', text: reply })
+    if (reply) aiMessages.value.push({ role: 'agent', text: reply, options })
+    if (stage === 'camera') openCameraPanel(camera); else cameraPanel.value = null
     if (gen) { generating.value = true; pollUntilDone() }
   } catch {
     aiMessages.value.push({ role: 'agent', text: '出了点问题，请稍后重试。', retryText: text })
@@ -1326,11 +1426,15 @@ onMounted(async () => {
   try {
     projectData.value = await api.getProject(projectId.value)
     shotData.value    = await api.getShot(projectId.value, shotId.value)
-    aiMessages.value  = shotData.value?.chat_history ?? []
+    aiMessages.value  = stripKickoff(shotData.value?.chat_history ?? [])
     if (shotData.value?.status === 'generating') { generating.value = true; pollUntilDone() }
     await loadVersions()
     await loadRefs()
     nextTick(fitToView)
+    // Blank shot → assistant greets with the first funnel question + chips.
+    if (aiMessages.value.length === 0 && shotData.value?.status !== 'generating' && !isRefined.value) {
+      kickoff()
+    }
   } catch (e) { console.error('mount error', e) }
 })
 
@@ -1563,6 +1667,26 @@ onUnmounted(() => {
 .typing span:nth-child(2) { animation-delay: .2s; }
 .typing span:nth-child(3) { animation-delay: .4s; }
 @keyframes dot { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-5px)} }
+
+.ai-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 2px 4px 32px; }
+.ai-chip {
+  background: var(--surface-2); border: 1px solid var(--border-md); border-radius: 999px;
+  color: var(--text-hi); font-size: 11px; line-height: 1.3; padding: 6px 11px;
+  cursor: pointer; font-family: inherit; transition: all .13s ease;
+}
+.ai-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--surface-raised); }
+.ai-chip.primary { background: var(--accent-dim); border-color: var(--accent); color: #fff; font-weight: 600; }
+.ai-chip.primary:hover { background: var(--accent); color: #fff; }
+
+.cam-panel { margin: 4px 2px 4px 32px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 8px; }
+.cam-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cam-label { font-size: 11px; color: var(--text-sub); width: 28px; flex-shrink: 0; }
+.cam-btn { background: var(--bg); border: 1px solid var(--border-md); border-radius: 7px; color: var(--text-hi); font-size: 11px; padding: 5px 11px; cursor: pointer; font-family: inherit; transition: all .12s ease; }
+.cam-btn:hover { border-color: var(--accent); color: var(--accent); }
+.cam-btn.on { background: var(--accent-dim); border-color: var(--accent); color: #fff; font-weight: 600; }
+.cam-gen { margin-top: 2px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 12px; font-weight: 600; padding: 8px; cursor: pointer; font-family: inherit; transition: opacity .12s; }
+.cam-gen:hover:not(:disabled) { opacity: .9; }
+.cam-gen:disabled { opacity: .5; cursor: not-allowed; }
 
 .selection-hint { margin: 0 14px 4px; padding: 5px 10px; background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 6px; font-size: 11px; color: var(--accent); text-align: center; flex-shrink: 0; }
 

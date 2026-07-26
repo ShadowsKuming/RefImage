@@ -352,10 +352,9 @@ def create_shot(project_id: str, title: str, mood: str, description: str = "",
     }
     (shot_dir / "shot.json").write_text(json.dumps(shot, ensure_ascii=False, indent=2))
 
-    # Seed chat history with welcome message
-    (shot_dir / "chat_history.json").write_text(json.dumps([
-        {"role": "agent", "text": f"为「{title}」规划中。描述想要的效果，我来生成参考例图。"},
-    ], ensure_ascii=False, indent=2))
+    # Empty chat history: the shot assistant greets by asking its first funnel
+    # question (with quick-reply chips) on first open — see shot page kickoff.
+    (shot_dir / "chat_history.json").write_text(json.dumps([], ensure_ascii=False, indent=2))
 
     return shot
 
