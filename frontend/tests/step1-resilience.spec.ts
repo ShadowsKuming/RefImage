@@ -225,7 +225,7 @@ test('create project: a backend failure reads as a server error and re-enables t
 
   // Profile built on the first chat turn → the create CTA appears (no separate
   // review step). Clicking it creates the project directly.
-  const createBtn = page.getByRole('button', { name: '开始规划 →' })
+  const createBtn = page.getByRole('button', { name: '咱们开始吧！' })
   await expect(createBtn).toBeVisible({ timeout: 15_000 })
   await createBtn.click()
 
