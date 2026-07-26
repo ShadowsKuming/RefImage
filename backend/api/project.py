@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from api.auth import get_current_user
-from services import project_service, guide_service, export_service, wardrobe_service, cover_service, avatar_service
+from services import project_service, guide_service, export_service, wardrobe_service, cover_service, avatar_service, moments_service
 
 router = APIRouter()
 
@@ -233,6 +233,34 @@ def auto_avatar_crop(project_id: str, cid: str, user_id: str = Depends(get_curre
         return avatar_service.auto_crop_guess(project_id, cid)
     except FileNotFoundError:
         raise HTTPException(status_code=400, detail="No avatar source uploaded")
+
+
+class MomentsSaveRequest(BaseModel):
+    moments: list[dict]
+
+
+@router.post("/{project_id}/characters/{cid}/moments/generate")
+def generate_moments(project_id: str, cid: str, user_id: str = Depends(get_current_user)):
+    """Research + generate the character's 名场面 (LLM + web_search). Replaces list."""
+    _check_owner(project_id, user_id)
+    try:
+        return moments_service.generate_moments(project_id, cid)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.put("/{project_id}/characters/{cid}/moments")
+def save_moments(
+    project_id: str,
+    cid: str,
+    req: MomentsSaveRequest,
+    user_id: str = Depends(get_current_user),
+):
+    """Coarse save of edited/added/deleted 名场面."""
+    _check_owner(project_id, user_id)
+    return moments_service.save_moments(project_id, cid, req.moments)
 
 
 @router.get("/{project_id}/characters/{cid}/avatar")

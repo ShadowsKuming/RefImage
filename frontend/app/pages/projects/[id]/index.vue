@@ -578,14 +578,45 @@
                 </button>
               </div>
 
-              <!-- ③ 名场面 -->
-              <div v-else class="char-panel">
-                <div v-if="charBg?.iconic_moments?.length" class="moments">
-                  <div v-for="(m, i) in charBg.iconic_moments" :key="i" class="moment-item">
-                    <Star class="mi-ico" /><span class="mi-text">{{ m }}</span>
+              <!-- ③ 名场面:标题 + 大概出处 + 详细描述(设定参考,非拍摄指令) -->
+              <div v-else class="char-panel mo">
+                <div v-if="momentsList.length" class="mo-list">
+                  <div v-for="(m, i) in momentsList" :key="m.id || i" class="mo-card">
+                    <div class="mo-head">
+                      <span class="mo-num">{{ i + 1 }}</span>
+                      <span class="mo-title">{{ m.title }}</span>
+                      <button
+                        class="ei-del" :class="{ armed: pendingDelete === m }"
+                        :title="pendingDelete === m ? t('projectCanvas.confirmDelete') : t('projectCanvas.delete')"
+                        @click="armDelete(m, () => removeMoment(m))"
+                      >
+                        <template v-if="pendingDelete === m">{{ t('projectCanvas.delete') }}</template>
+                        <X v-else />
+                      </button>
+                    </div>
+                    <span v-if="m.source" class="mo-source">{{ m.source }}</span>
+                    <p v-if="m.description" class="mo-desc">{{ m.description }}</p>
                   </div>
                 </div>
-                <p v-else class="detail-empty">{{ t('projectCanvas.emptyMoments') }}</p>
+                <p v-else-if="!momentsLoading" class="detail-empty">{{ t('projectCanvas.emptyMoments') }}</p>
+
+                <button class="mo-gen" :disabled="momentsLoading" @click="doGenerateMoments">
+                  <Sparkles :class="{ spin: momentsLoading }" />
+                  {{ momentsLoading ? t('projectCanvas.momentsGenerating') : (momentsList.length ? t('projectCanvas.momentsRegenerate') : t('projectCanvas.momentsGenerate')) }}
+                </button>
+
+                <div v-if="showAddMoment" class="equip-form">
+                  <input v-model="newMoment.title" class="ef-input" :placeholder="t('projectCanvas.momentTitlePlaceholder')" @keydown.enter="submitAddMoment" />
+                  <input v-model="newMoment.source" class="ef-input" :placeholder="t('projectCanvas.momentSourcePlaceholder')" @keydown.enter="submitAddMoment" />
+                  <textarea v-model="newMoment.description" class="ef-input mo-ta" :placeholder="t('projectCanvas.momentDescPlaceholder')" rows="3" />
+                  <div class="ef-actions">
+                    <button class="ef-cancel" @click="showAddMoment = false">{{ t('projectCanvas.cancel') }}</button>
+                    <button class="ef-submit" :disabled="!newMoment.title.trim()" @click="submitAddMoment">{{ t('projectCanvas.add') }}</button>
+                  </div>
+                </div>
+                <button v-else class="wd-add-card single" @click="showAddMoment = true">
+                  <span class="wd-add-ico"><Plus /></span><span>{{ t('projectCanvas.addMoment') }}</span>
+                </button>
               </div>
             </div>
 
@@ -819,6 +850,53 @@ function onAvatarSaved(url: string) {
 }
 
 const charBg = computed(() => selectedChar.value?.character_data?.characterBackground ?? null)
+
+// ── 名场面 (signature scenes) — character canon, LLM-generated + editable ──────
+// { title, source (rough), description } — reference for shots + the user, no
+// shoot tips (this is 设定). Stored per character; regeneratable.
+interface MomentItem { id?: string; title: string; source?: string; description?: string }
+const momentsList = ref<MomentItem[]>([])
+const momentsLoading = ref(false)
+function loadMoments() {
+  momentsList.value = (selectedChar.value?.moments ?? []).map((m: any) => ({ ...m }))
+}
+watch(selectedCharId, loadMoments)
+function persistMoments() {
+  if (selectedChar.value) selectedChar.value.moments = momentsList.value.map(m => ({ ...m }))
+  api.saveMoments(projectId.value, selectedCharId.value, momentsList.value)
+    .catch(e => console.error('Failed to save moments', e))
+}
+async function doGenerateMoments() {
+  if (momentsLoading.value) return
+  momentsLoading.value = true
+  try {
+    const { moments } = await api.generateMoments(projectId.value, selectedCharId.value)
+    if (selectedChar.value) selectedChar.value.moments = moments
+    momentsList.value = moments.map((m: any) => ({ ...m }))
+  } catch (e) {
+    console.error('Failed to generate moments', e)
+  } finally {
+    momentsLoading.value = false
+  }
+}
+function removeMoment(item: MomentItem) {
+  const i = momentsList.value.indexOf(item)
+  if (i >= 0) momentsList.value.splice(i, 1)
+  persistMoments()
+}
+const showAddMoment = ref(false)
+const newMoment = reactive({ title: '', source: '', description: '' })
+function submitAddMoment() {
+  if (!newMoment.title.trim()) return
+  momentsList.value.push({
+    title: newMoment.title.trim(),
+    source: newMoment.source.trim() || undefined,
+    description: newMoment.description.trim() || undefined,
+  })
+  newMoment.title = ''; newMoment.source = ''; newMoment.description = ''
+  showAddMoment.value = false
+  persistMoments()
+}
 
 // 背景设定 folds collapsed by default (常态) — it's tall; expand to see detail.
 const bgOpen = ref(false)
@@ -1453,6 +1531,7 @@ onMounted(async () => {
     }
     syncPlanFromData()
     loadWardrobe()
+    loadMoments()
     autoGrabCoverIfMissing()   // one-time: grab a cover if the project has none
   } catch (e) {
     console.error('Failed to load project', e)
@@ -2020,15 +2099,40 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 }
 .cp-sub:first-child { margin-top: 2px; }
 
-/* 名场面 */
-.moments { display: flex; flex-direction: column; gap: 7px; }
-.moment-item {
-  display: flex; align-items: flex-start; gap: 8px;
-  padding: 9px 11px; border-radius: 9px;
+/* 名场面 (signature scenes) — detailed cards */
+.mo { display: flex; flex-direction: column; gap: 10px; }
+.mo-list { display: flex; flex-direction: column; gap: 9px; }
+.mo-card {
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 11px 12px; border-radius: 11px;
   background: var(--surface-inset); border: 1px solid var(--border);
 }
-.mi-ico { width: 14px; height: 14px; color: var(--accent); flex-shrink: 0; margin-top: 1px; }
-.mi-text { font-size: 12px; color: var(--text-hi); line-height: 1.55; }
+.mo-head { display: flex; align-items: center; gap: 8px; }
+.mo-num {
+  flex-shrink: 0; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--accent); color: #fff; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.mo-title { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 700; color: var(--text-hi); line-height: 1.4; }
+.mo-source {
+  align-self: flex-start; font-size: 10px; font-weight: 600; color: var(--text-2);
+  padding: 2px 8px; border-radius: 6px; background: var(--surface-raised); margin-left: 26px;
+}
+.mo-desc { font-size: 11.5px; color: var(--text-quiet); line-height: 1.6; margin-left: 26px; }
+
+/* generate button */
+.mo-gen {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: 100%;
+  padding: 10px; border-radius: 11px; cursor: pointer;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid var(--accent-dim); color: var(--accent);
+  font-size: 12.5px; font-weight: 600; transition: background 0.15s;
+}
+.mo-gen:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+.mo-gen:disabled { opacity: 0.7; cursor: default; }
+.mo-gen :deep(svg) { width: 15px; height: 15px; }
+.mo-gen :deep(svg.spin) { animation: spin 0.8s linear infinite; }
+.mo-ta { resize: vertical; font-family: inherit; line-height: 1.5; }
 
 /* transient toast (bottom-center) */
 .toast {

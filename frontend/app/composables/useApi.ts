@@ -153,6 +153,18 @@ export const useApi = () => {
     return api<{ x: number; y: number; size: number }>(`/projects/${projectId}/characters/${cid}/avatar/auto`, { method: 'POST' })
   }
 
+  function generateMoments(projectId: string, cid: string) {
+    return api<{ moments: any[] }>(`/projects/${projectId}/characters/${cid}/moments/generate`, { method: 'POST' })
+  }
+
+  function saveMoments(projectId: string, cid: string, moments: any[]) {
+    return api<{ moments: any[] }>(`/projects/${projectId}/characters/${cid}/moments`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ moments }),
+    })
+  }
+
   function uploadWardrobeImage(projectId: string, itemId: string, file: File) {
     const fd = new FormData()
     fd.append('image', file, file.name)
@@ -389,6 +401,8 @@ export const useApi = () => {
     cropAvatar,
     autoAvatarCrop,
     uploadWardrobeImage,
+    generateMoments,
+    saveMoments,
     exportProject,
     importProject,
     projectChat,

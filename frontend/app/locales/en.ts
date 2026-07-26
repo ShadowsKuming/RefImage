@@ -134,6 +134,8 @@ export default {
     sectionCharacter: 'Character', addCharacter: '＋ Add Character', addCharacterTitle: 'Add character',
     charTabSetting: 'Profile', charTabWardrobe: 'Wardrobe', charTabMoments: 'Moments',
     subBaseInfo: 'Basic Info', addCharacterShort: 'Add', emptyMoments: 'No signature moments yet.',
+    momentsGenerate: 'Generate Moments', momentsRegenerate: 'Regenerate', momentsGenerating: 'Generating…', addMoment: 'Add moment',
+    momentTitlePlaceholder: 'Moment title', momentSourcePlaceholder: 'Rough source (e.g. S1 Ep6)', momentDescPlaceholder: 'Describe this moment: event, timing, context…',
     avatarEditorTitle: 'Edit Avatar', avatarUpload: 'Upload Image', avatarAuto: 'Auto Detect', avatarSize: 'Size',
     avatarDragHint: 'Drag the frame, slide to resize', avatarNoImage: 'Upload an image to use as the avatar', avatarSave: 'Save',
     wdBadge: '{c} items · {p} props', wdEssential: 'Essential', wdBackup: 'Backup', wdTotal: '{n} items',

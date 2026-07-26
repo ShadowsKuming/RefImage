@@ -269,6 +269,7 @@ def get_project(project_id: str) -> dict:
         "avatar":         avatar_service.avatar_url(project_id, primary_id),
         "avatar_src":     avatar_service.source_url(project_id, primary_id),
         "avatar_crop":    avatar_service.crop_rect(project_id, primary_id),
+        "moments":        moments_service.load_moments(project_id, primary_id)["moments"],
     }]
 
     # ── shots/ ────────────────────────────────────────────────────────────────
@@ -541,6 +542,7 @@ from services.plan_service import load_plan_data, save_plan_data  # noqa: E402
 from services import wardrobe_service  # noqa: E402
 from services import cover_service  # noqa: E402
 from services import avatar_service  # noqa: E402
+from services import moments_service  # noqa: E402
 
 
 def save_chat_history(project_id: str, history: list[dict]) -> None:

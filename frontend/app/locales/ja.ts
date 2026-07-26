@@ -134,6 +134,8 @@ export default {
     sectionCharacter: 'キャラ設定', addCharacter: '＋ キャラ追加', addCharacterTitle: 'キャラ追加',
     charTabSetting: '設定', charTabWardrobe: '衣装', charTabMoments: '名場面',
     subBaseInfo: '基本情報', addCharacterShort: '追加', emptyMoments: 'まだ名場面がありません。',
+    momentsGenerate: '名場面を生成', momentsRegenerate: '再生成', momentsGenerating: '生成中…', addMoment: '名場面を追加',
+    momentTitlePlaceholder: '名場面タイトル', momentSourcePlaceholder: 'おおよその出典（例：1期 第6話）', momentDescPlaceholder: 'この名場面の説明：出来事・時期・背景…',
     avatarEditorTitle: 'アバターを編集', avatarUpload: '画像をアップロード', avatarAuto: '自動認識', avatarSize: 'サイズ',
     avatarDragHint: '枠をドラッグ、スライダーでサイズ調整', avatarNoImage: '画像をアップロードしてアバターに', avatarSave: '保存',
     wdBadge: '{c} 点 · 小道具 {p} 点', wdEssential: '必須', wdBackup: '予備', wdTotal: '計 {n} 点',
