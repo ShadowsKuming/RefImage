@@ -207,13 +207,14 @@ test('mid-session 401 redirects to login with an explanation, not a silent bounc
   await expect(page.getByText('登录已失效，请重新输入 Token 登录。')).toBeVisible()
 })
 
-// ── Step 2: project creation ────────────────────────────────────────────────
+// ── Project creation ────────────────────────────────────────────────────────
+// (Step 2 review page was removed — the CTA that appears once the profile is
+//  built creates the project directly and navigates into the workspace.)
 
 test('create project: a backend failure reads as a server error and re-enables the button', async ({ page }) => {
-  // Drive the whole way to Step 2 with a built profile, then fail /create with a
-  // 500. The status line must use the server-flavoured copy (not the network
-  // one, and never raw backend text), and the create button must become
-  // clickable again so the user can retry.
+  // Build a profile, then fail /create with a 500. The status line must use the
+  // server-flavoured copy (not the network one, and never raw backend text), and
+  // the create button must become clickable again so the user can retry.
   await gotoStep1(page)
   await page.route('**/new-project/analyze-image', route => route.fulfill({ json: analyzeDoneBody() }))
   await page.route('**/new-project/chat', route => route.fulfill({ json: profileReplyBody() }))
@@ -222,13 +223,10 @@ test('create project: a backend failure reads as a server error and re-enables t
 
   await uploadImage(page)
 
-  // Profile built on the first chat turn → the "next step" chip appears.
-  const nextBtn = page.getByRole('button', { name: '好嘞，去看看' })
-  await expect(nextBtn).toBeVisible({ timeout: 15_000 })
-  await nextBtn.click()
-
-  const createBtn = page.locator('.finish-btn')
-  await expect(createBtn).toBeVisible()
+  // Profile built on the first chat turn → the create CTA appears (no separate
+  // review step). Clicking it creates the project directly.
+  const createBtn = page.getByRole('button', { name: '开始规划 →' })
+  await expect(createBtn).toBeVisible({ timeout: 15_000 })
   await createBtn.click()
 
   // Wait for the status to flip from "saving…" to the server-error copy

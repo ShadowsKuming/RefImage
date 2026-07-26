@@ -3,23 +3,15 @@
 
     <!-- Top bar -->
     <div class="top-bar">
-      <button class="back-btn" @click="step === 1 ? navigateTo('/') : (step = 1)">
+      <button class="back-btn" @click="navigateTo('/')">
         <span class="back-chevron">‹</span>{{ t('common.back') }}
       </button>
       <span class="top-bar-title">{{ t('newProject.pageTitle') }}</span>
-      <div class="step-indicator">
-        <div class="step-dot" :class="{ active: step >= 1, done: step > 1 }">
-          <span>{{ step > 1 ? '✓' : '1' }}</span>
-        </div>
-        <div class="step-line" :class="{ active: step > 1 }" />
-        <div class="step-dot" :class="{ active: step >= 2 }">
-          <span>2</span>
-        </div>
-      </div>
     </div>
 
-    <!-- ══ STEP 1 — build: upload + extract + confirm-with-AI ══ -->
-    <template v-if="step === 1">
+    <!-- Upload + extract + confirm-with-AI. Profile review/edit now happens in
+         the workspace 设定 panel, so there's no separate review step. -->
+    <template>
       <div class="step1-body">
 
         <div class="step-header">
@@ -197,12 +189,15 @@
           </div>
         </div>
 
-        <!-- Profile's built — the next step lives right under the message
-             that announced it, not as a separate page-wide footer button.
-             Same chip layout as the confirm row above, not a new style. -->
+        <!-- Profile's built — go straight into the workspace (review/edit lives
+             there now). Sits right under the message that announced it. -->
         <div v-if="showNextStepCta" class="assistant-quick-row">
-          <button class="quick-confirm-btn" @click="step = 2">{{ t('newProject.nextStep') }}</button>
+          <button class="quick-confirm-btn" :disabled="projectCreating" @click="createProject">
+            <span v-if="projectCreating" class="btn-spinner" />
+            {{ projectCreating ? t('newProject.planning') : t('newProject.startPlanning') }}
+          </button>
         </div>
+        <p v-if="projectStatus" class="assistant-quick-row project-status">{{ projectStatus }}</p>
 
         <button
           class="assistant-avatar"
@@ -211,34 +206,6 @@
         >
           <span>AI</span>
         </button>
-      </div>
-    </template>
-
-    <!-- ══ STEP 2 — review: full-width character profile ══ -->
-    <template v-if="step === 2">
-      <div class="step2-body">
-
-        <div class="step-header">
-          <h2 class="step-title">{{ t('newProject.step2Title') }}</h2>
-          <p class="step-desc">{{ t('newProject.step2Desc') }}</p>
-        </div>
-
-        <ProfileViewer
-          v-if="personality"
-          v-model="personality"
-          :ref-image-url="images[0]?.url"
-          class="profile-full"
-        />
-
-        <!-- Bottom center button -->
-        <div class="step2-footer">
-          <p v-if="projectStatus" class="project-status">{{ projectStatus }}</p>
-          <button class="finish-btn" :disabled="!personality || projectCreating" @click="createProject">
-            <span v-if="projectCreating" class="btn-spinner" />
-            {{ projectCreating ? t('newProject.planning') : t('newProject.startPlanning') }}
-          </button>
-        </div>
-
       </div>
     </template>
 
@@ -255,7 +222,6 @@ const api = useApi()
 const { t } = useLocale()
 const { fieldLabel } = useFieldLabels()
 
-const step      = ref(1)
 const images    = ref<{ file: File; url: string }[]>([])
 const dragging  = ref(false)
 const loading   = ref(false)
@@ -649,17 +615,6 @@ onUnmounted(() => {
 .back-btn:hover { opacity: 0.65; }
 .back-chevron { font-size: 21px; line-height: 1; margin-top: -1px; }
 .top-bar-title { font-size: 13px; font-weight: 600; color: var(--text); flex: 1; }
-.step-indicator { display: flex; align-items: center; }
-.step-dot {
-  width: 24px; height: 24px; border-radius: 50%;
-  border: 1.5px solid var(--border-focus);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 600; color: var(--text-sub); transition: all 0.2s;
-}
-.step-dot.active { border-color: var(--accent); color: var(--accent); }
-.step-dot.done   { background: var(--accent); border-color: var(--accent); color: white; }
-.step-line { width: 24px; height: 1.5px; background: var(--border-focus); transition: background 0.2s; }
-.step-line.active { background: var(--accent); }
 
 /* ══ STEP 1 ══ */
 .step1-body {
@@ -841,18 +796,7 @@ onUnmounted(() => {
 .upload-tips ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 .upload-tips li { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
 
-/* Bottom footer */
-.finish-btn {
-  padding: 13px 48px;
-  background: var(--accent); border: none; border-radius: 8px;
-  color: white; font-size: 15px; font-weight: 600;
-  cursor: pointer; transition: background 0.2s, transform 0.1s;
-}
-.finish-btn:hover:not(:disabled) { background: var(--accent-hover); }
-.finish-btn:active:not(:disabled) { transform: scale(0.98); }
-.finish-btn:disabled { background: var(--border-md); color: var(--text-quiet); cursor: not-allowed; }
-
-/* ══ Floating assistant widget (Step 1) ══ */
+/* ══ Floating assistant widget ══ */
 .assistant-widget {
   position: fixed;
   right: 28px;
@@ -964,21 +908,6 @@ onUnmounted(() => {
 .retry-btn:hover:not(:disabled) { background: var(--surface-raised); }
 .retry-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* ══ STEP 2 — full-width profile review ══ */
-.step2-body {
-  flex: 1; display: flex; flex-direction: column;
-  max-width: 720px; width: 100%; margin: 0 auto;
-  padding: 36px 32px 0; gap: 20px;
-  min-height: 0; overflow-y: auto; scrollbar-width: none;
-}
-.step2-body::-webkit-scrollbar { display: none; }
-
-.profile-full { flex: 1; min-height: 0; }
-
-.step2-footer {
-  display: flex; flex-direction: column; align-items: center; gap: 10px;
-  padding: 24px 0 40px; flex-shrink: 0;
-}
 .project-status { font-size: 12px; color: var(--accent); margin: 0; }
 
 .btn-spinner {

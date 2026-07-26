@@ -571,6 +571,51 @@
                   <EditableText class="s-val" multiline :model-value="charBg?.personality?.inner ?? ''" :placeholder="'—'" @save="v => saveCharField('characterBackground.personality.inner', v)" /></div>
                 <div class="s-row s-row-top"><span class="s-key">{{ t('projectCanvas.fieldDesire') }}</span>
                   <EditableText class="s-val" multiline :model-value="charBg?.personality?.core_desire ?? ''" :placeholder="'—'" @save="v => saveCharField('characterBackground.personality.core_desire', v)" /></div>
+                <div class="s-row s-row-top"><span class="s-key">{{ t('fields.strength') }}</span>
+                  <EditableText class="s-val" multiline :model-value="charBg?.personality?.strength ?? ''" :placeholder="'—'" @save="v => saveCharField('characterBackground.personality.strength', v)" /></div>
+                <div class="s-row s-row-top"><span class="s-key">{{ t('fields.weakness') }}</span>
+                  <EditableText class="s-val" multiline :model-value="charBg?.personality?.weakness ?? ''" :placeholder="'—'" @save="v => saveCharField('characterBackground.personality.weakness', v)" /></div>
+                <div class="s-row s-row-top"><span class="s-key">{{ t('fields.fear') }}</span>
+                  <EditableText class="s-val" multiline :model-value="charBg?.personality?.fear ?? ''" :placeholder="'—'" @save="v => saveCharField('characterBackground.personality.fear', v)" /></div>
+
+                <!-- 情绪光谱(可折叠) -->
+                <!-- 详情总开关:贴基本信息右下角,无框文字按钮 -->
+                <div class="char-detail-row">
+                  <button class="char-detail-toggle" @click="charDetailOpen = !charDetailOpen">
+                    {{ charDetailOpen ? t('projectCanvas.detailHide') : t('projectCanvas.detailMore') }}
+                    <ChevronDown class="cp-chev" :class="{ open: charDetailOpen }" />
+                  </button>
+                </div>
+
+                <template v-if="charDetailOpen">
+                  <!-- 情绪范围 -->
+                  <div class="cp-sub">{{ t('fields.emotional_range') }}</div>
+                  <div v-for="er in ['baseline','stress','breaking_point','recovery']" :key="er" class="s-row s-row-top">
+                    <span class="s-key">{{ t('fields.' + er) }}</span>
+                    <EditableText class="s-val" multiline :model-value="charBg?.emotional_range?.[er] ?? ''" :placeholder="'—'" @save="v => saveCharField('characterBackground.emotional_range.' + er, v)" />
+                  </div>
+
+                  <!-- 行为模式 -->
+                  <div class="cp-sub">{{ t('fields.behavior') }}</div>
+                  <div v-for="sp in ['tone','volume','humor','vocabulary']" :key="sp" class="s-row">
+                    <span class="s-key">{{ t('fields.' + (sp === 'tone' ? 'tone_speech' : sp)) }}</span>
+                    <EditableText class="s-val" :model-value="charBg?.behavior?.speech_style?.[sp] ?? ''" :placeholder="'—'" @save="v => saveCharField('characterBackground.behavior.speech_style.' + sp, v)" />
+                  </div>
+                  <div v-for="ar in ['habits','values','likes','dislikes']" :key="ar" class="s-row s-row-top">
+                    <span class="s-key">{{ t('fields.' + ar) }}</span>
+                    <EditableList class="s-val" :items="charBg?.behavior?.[ar] || []" @change="v => saveCharArray('characterBackground.behavior.' + ar, v)" />
+                  </div>
+
+                  <!-- 关键事件:每事件一行 -->
+                  <div class="cp-sub cp-sub-row">
+                    <span>{{ t('fields.key_events') }}</span>
+                    <button class="cp-add" :title="'添加事件'" @click="addKeyEvent"><Plus /></button>
+                  </div>
+                  <div v-for="(ev, i) in keyEvents" :key="i" class="s-row s-row-top">
+                    <span class="s-key">{{ t('projectCanvas.kevItem', { n: i + 1 }) }}</span>
+                    <EditableText class="s-val" multiline :model-value="ev" :placeholder="'—'" @save="v => saveKeyEvent(i, v)" />
+                  </div>
+                </template>
 
                 <template v-if="visualSpecFields.length">
                   <div class="cp-sub">{{ t('projectCanvas.sectionAppearance') }}</div>
@@ -983,6 +1028,28 @@ function saveCharField(path: string, value: string) {
   if (projectData.value) projectData.value.character_data = cd
   api.saveCharacterData(projectId.value, cd).catch(e => console.error('Failed to save character', e))
 }
+function saveCharArray(path: string, items: string[]) {
+  const cd = selectedChar.value?.character_data
+  if (!cd) return
+  _setPath(cd, path, items as any)
+  if (projectData.value) projectData.value.character_data = cd
+  api.saveCharacterData(projectId.value, cd).catch(e => console.error('Failed to save character', e))
+}
+// 「详情」总开关:情绪/行为/关键事件这些深层字段默认整体隐藏,点开才显示
+const charDetailOpen = ref(false)
+
+// 关键事件:行式编辑(每行 事件N + 内容)。本地列表 → 空行不落盘(误加自愈)。
+const keyEvents = ref<string[]>([])
+function syncKeyEvents() { keyEvents.value = [...(charBg.value?.key_events ?? [])] }
+function persistKeyEvents() {
+  const clean = keyEvents.value.map(e => e.trim()).filter(Boolean)
+  saveCharArray('characterBackground.key_events', clean)
+}
+function saveKeyEvent(i: number, value: string) {
+  if (keyEvents.value[i] !== undefined) keyEvents.value[i] = value
+  persistKeyEvents()
+}
+function addKeyEvent() { keyEvents.value.push('') }   // local only until filled
 
 // 人物关系: [{ name, relationship, importance }] — editable rows.
 // A local list is the editing source so a freshly-added (still empty) row can be
@@ -1057,7 +1124,7 @@ async function autoGenerateMomentsIfMissing() {
     momentsLoading.value = false
   }
 }
-watch(selectedCharId, () => { loadMoments(); autoGenerateMomentsIfMissing(); syncRelations() })
+watch(selectedCharId, () => { loadMoments(); autoGenerateMomentsIfMissing(); syncRelations(); syncKeyEvents() })
 function removeMoment(item: MomentItem) {
   const i = momentsList.value.indexOf(item)
   if (i >= 0) momentsList.value.splice(i, 1)
@@ -1735,6 +1802,7 @@ onMounted(async () => {
     loadWardrobe()
     loadMoments()
     syncRelations()
+    syncKeyEvents()
     seedMockShots()               // TEMP MOCK — remove with SHOTS_MOCK
     autoGrabCoverIfMissing()      // one-time: grab a cover if the project has none
     autoGenerateMomentsIfMissing()  // one-time: silently generate 名场面 in the background
@@ -2478,6 +2546,17 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
   margin: 14px 0 8px; letter-spacing: 0.02em;
 }
 .cp-sub:first-child { margin-top: 2px; }
+/* 详情 total toggle — bare text button, aligned to the right under 基本信息 */
+.char-detail-row { display: flex; justify-content: flex-end; margin: 4px 0 2px; }
+.char-detail-toggle {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 0; cursor: pointer; background: none; border: none;
+  color: var(--accent); font-size: 11.5px; font-weight: 600;
+  transition: color 0.15s;
+}
+.char-detail-toggle:hover { color: var(--accent-hover); }
+.cp-chev { width: 14px; height: 14px; color: var(--text-quiet); transition: transform 0.2s; transform: rotate(-90deg); }
+.cp-chev.open { transform: rotate(0deg); }
 
 /* 名场面 (signature scenes) — detailed cards */
 .mo { display: flex; flex-direction: column; gap: 10px; }
