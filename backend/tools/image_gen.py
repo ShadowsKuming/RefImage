@@ -107,12 +107,19 @@ def _openai(project_id: str, parts: dict, extra_images: list[bytes] | None = Non
 
     prompt = _build_prompt_openai(parts, num_refs=len(char_refs), num_extra=len(extra_images or []))
     from config import IMAGE_GEN_MODEL, IMAGE_GEN_PROVIDER
+    # moderation="low" relaxes gpt-image-2's safety filter. It's a probabilistic
+    # false-positive machine on anime-girl content: the exact same prompt passes or
+    # blocks at random under the default "auto" — verified empirically (see memory/
+    # image_generation_findings.md). The SDK 2.43 images.edit() signature doesn't
+    # expose `moderation` (only images.generate does), so we send it via extra_body,
+    # which the API does accept and honor for the edit endpoint.
     result = client.images.edit(
         model=IMAGE_GEN_MODEL[IMAGE_GEN_PROVIDER],
         image=[(f"img{i+1}.png", b, "image/png") for i, b in enumerate(all_images)],
         prompt=prompt,
         size=size,
         quality="low",
+        extra_body={"moderation": "low"},
     )
     return base64.b64decode(result.data[0].b64_json)
 
