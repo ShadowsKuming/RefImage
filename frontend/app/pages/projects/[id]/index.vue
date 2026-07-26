@@ -436,13 +436,13 @@
                 <div class="ws-irow"><Clock class="ws-ii" /><span class="ws-ik">{{ t('projectCanvas.fieldEraPlace') }}</span>
                   <EditableText class="ws-iv" :model-value="worldSetting.timeline || worldSetting.era || ''" :placeholder="'—'" @save="v => saveWorldField('worldSetting.timeline', v)" /></div>
                 <div class="ws-irow"><Sparkles class="ws-ii" /><span class="ws-ik">{{ t('projectCanvas.fieldAtmosphere') }}</span><span class="ws-iv">{{ [worldSetting.tone?.visual, worldSetting.tone?.emotion].filter(Boolean).join(' · ') || '—' }}</span></div>
-                <div v-if="worldSetting.themes?.length" class="ws-irow">
+                <div class="ws-irow">
                   <Star class="ws-ii" /><span class="ws-ik">{{ t('projectCanvas.fieldThemes') }}</span>
-                  <span class="ws-iv">{{ worldSetting.themes.join(' · ') }}</span>
+                  <EditableList class="ws-iv" :items="worldSetting.themes || []" @change="v => saveWorldArray('worldSetting.themes', v)" />
                 </div>
-                <div v-if="worldSetting.iconic_settings?.length" class="ws-irow">
+                <div class="ws-irow">
                   <MapPin class="ws-ii" /><span class="ws-ik">{{ t('projectCanvas.fieldIconic') }}</span>
-                  <span class="ws-iv">{{ worldSetting.iconic_settings.join(' · ') }}</span>
+                  <EditableList class="ws-iv" :items="worldSetting.iconic_settings || []" @change="v => saveWorldArray('worldSetting.iconic_settings', v)" />
                 </div>
               </div>
             </div>
@@ -512,12 +512,14 @@
                   </div>
                 </template>
 
-                <template v-if="relations.length">
+                <template v-if="charBg">
                   <div class="cp-sub">{{ t('projectCanvas.secRelations') }}</div>
-                  <div v-for="(r, i) in relations" :key="i" class="s-row s-row-top">
-                    <span class="s-key">{{ r.name }}</span>
-                    <span class="s-val">{{ r.relationship }}</span>
+                  <div v-for="(r, i) in relations" :key="i" class="s-row s-row-top rel-row">
+                    <EditableText class="s-key rel-name" :model-value="r.name || ''" :placeholder="'姓名'" @save="v => saveRelationField(i, 'name', v)" />
+                    <EditableText class="s-val" :model-value="r.relationship || ''" :placeholder="'关系'" @save="v => saveRelationField(i, 'relationship', v)" />
+                    <button class="rel-del" title="删除" @click="removeRelation(i)"><X /></button>
                   </div>
+                  <button class="rel-add" @click="addRelation"><Plus />添加关系</button>
                 </template>
 
                 <div class="cp-sub">{{ t('projectCanvas.sectionRefs') }}</div>
@@ -750,6 +752,7 @@ import type { Component } from 'vue'
 import TripodIcon from '~/components/equip-icons/TripodIcon.vue'
 import AvatarEditor from '~/components/AvatarEditor.vue'
 import EditableText from '~/components/EditableText.vue'
+import EditableList from '~/components/EditableList.vue'
 
 // 设备分类 → 图标(线描,跟随主题色)。support 用用户提供的三脚架矢量,其余 Lucide。
 const EQUIP_ICONS: Record<string, Component> = {
@@ -890,6 +893,12 @@ function saveWorldField(path: string, value: string) {
   _setPath(world, path, value)
   api.saveWorld(projectId.value, world).catch(e => console.error('Failed to save world', e))
 }
+function saveWorldArray(path: string, items: string[]) {
+  const world = projectData.value?.world
+  if (!world) return
+  _setPath(world, path, items as any)
+  api.saveWorld(projectId.value, world).catch(e => console.error('Failed to save world', e))
+}
 function saveCharField(path: string, value: string) {
   const cd = selectedChar.value?.character_data
   if (!cd) return
@@ -899,11 +908,29 @@ function saveCharField(path: string, value: string) {
   api.saveCharacterData(projectId.value, cd).catch(e => console.error('Failed to save character', e))
 }
 
-// 人物关系: [{ name, relationship, importance }]
+// 人物关系: [{ name, relationship, importance }] — editable rows (add/remove/edit)
 const relations = computed<any[]>(() => {
   const r = charBg.value?.relations
-  return Array.isArray(r) ? r.filter(x => x?.name) : []
+  return Array.isArray(r) ? r : []
 })
+function _saveRelations(list: any[]) {
+  const cd = selectedChar.value?.character_data
+  if (!cd) return
+  if (!cd.characterBackground) cd.characterBackground = {}
+  cd.characterBackground.relations = list
+  if (projectData.value) projectData.value.character_data = cd
+  api.saveCharacterData(projectId.value, cd).catch(e => console.error('Failed to save relations', e))
+}
+function saveRelationField(i: number, key: 'name' | 'relationship', value: string) {
+  const list = relations.value.map((r, idx) => idx === i ? { ...r, [key]: value } : r)
+  _saveRelations(list)
+}
+function addRelation() {
+  _saveRelations([...relations.value, { name: '', relationship: '', importance: '' }])
+}
+function removeRelation(i: number) {
+  _saveRelations(relations.value.filter((_, idx) => idx !== i))
+}
 
 // 配色 field → color swatches. Parses "名称（#HEX）、名称（#HEX）" into { name, hex }.
 function parseColors(v?: string): { name: string; hex: string }[] {
@@ -2247,6 +2274,25 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
   opacity: 0; transition: opacity 0.12s;
 }
 .swatch-wrap:hover .swatch-tip { opacity: 1; }
+
+/* 人物关系 editable rows */
+.rel-row { align-items: center; }
+.rel-name { font-weight: 700; color: var(--text-hi); }
+.rel-del {
+  flex-shrink: 0; width: 18px; height: 18px; padding: 0; border: none; background: none;
+  cursor: pointer; color: var(--text-ghost); border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+}
+.rel-del:hover { color: var(--error); background: var(--surface-inset); }
+.rel-del :deep(svg) { width: 12px; height: 12px; }
+.rel-add {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 4px;
+  padding: 5px 10px; border-radius: 8px; cursor: pointer;
+  background: none; border: 1px dashed var(--border-focus);
+  color: var(--accent); font-size: 11.5px; font-weight: 600;
+}
+.rel-add:hover { background: var(--surface-inset); border-color: var(--accent-dim); }
+.rel-add :deep(svg) { width: 12px; height: 12px; }
 
 /* transient toast (bottom-center) */
 .toast {
