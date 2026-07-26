@@ -316,6 +316,21 @@ def _primary_cid(project: dict) -> str:
     return chars[0]["id"] if chars else "c1"
 
 
+def make_dedup(seen: set):
+    """Wrap a mutation executor so an identical (tool, args) call runs at most once
+    per turn — the model sometimes emits the same mutation several times, which
+    would create duplicate items. `seen` accumulates keys across all wrapped tools."""
+    def wrap(name: str, fn):
+        def wrapped(inp: dict) -> str:
+            key = (name, json.dumps(inp, ensure_ascii=False, sort_keys=True))
+            if key in seen:
+                return "（这一步刚才已经处理过了，无需重复。）"
+            seen.add(key)
+            return fn(inp)
+        return wrapped
+    return wrap
+
+
 def _format_wardrobe(w: dict) -> list[str]:
     """Render 服装/道具 (with ids) so the AI can add/remove by id."""
     lines = ["", "═══ 服装 / 道具（可用工具增删）═══"]
@@ -366,22 +381,25 @@ def _build_system(project: dict, project_id: str) -> str:
         "你拥有项目的完整信息：角色资料、已规划的所有 shots 及其 guide 数据。",
         "",
         "工作方式：",
-        "- 每次回复前先在脑子里过一遍整个项目，主动发现问题和缺口，不等用户问",
-        "- 直接给出可执行的具体建议，不说'我建议你可以考虑'这类软话",
-        "- 需要查资料时（地点/设备/参考图）直接使用 web_search，不需要告知用户",
-        "- 随时调用 update_brief 更新拍摄总结——只要你认为当前信息足够写某个字段就写，不需要等用户确认",
-        "- 用户说'帮我总结'或'更新总结'时，立即根据现有 shot 数据生成并提交总结",
-        "- 你可以直接编辑右侧的拍摄计划：设备用 add_equipment/remove_equipment，"
-        "注意事项用 add_note/remove_note，拍摄日程用 add_schedule_segment/remove_schedule_segment，"
-        "总览用 update_overview。用户要你加/删/改这些内容时直接调用对应工具",
-        "- 这些工具只能增或删，不能整段重写。要修改一项就先按 id 删掉再重新添加"
-        "（id 见「拍摄计划总表」，形如 eq_/nt_/sg_）。一次只改需要动的那几项，别把用户已有的内容重建一遍",
-        "- 场地卡片和室内外标签是根据日程自动生成的，不用单独维护；改日程即可。"
-        "地点的实际地址只有用户知道，你不要编造",
-        "- 你也可以编辑角色的服装/道具（add_costume/add_prop/remove_wardrobe_item，id 形如 cs_/pr_）"
-        "和名场面（add_moment/remove_moment，id 形如 mo_）。同样只增删、按 id、先删后加，"
-        "只在用户明确要求时改动，别主动大改用户已有的内容",
-        "- 如果话题跑偏，自然引导回拍摄规划",
+        "你有两种模式，务必分清：",
+        "【聊天/建议】——这里尽管主动。回复前先过一遍整个项目，主动发现问题和缺口、"
+        "直接给出可执行的具体建议（不说'我建议你可以考虑'这类软话），需要查资料就直接用 web_search。"
+        "想到用户没提的补充（比如'还缺个补光灯''要不要加一段黄昏日程'），就在文字回复里问/提，不要直接动手改。",
+        "",
+        "【编辑数据】——调用增删工具（add_/remove_ 等）时必须克制，严格遵守：",
+        "1. 只做用户这一条消息里明确点名要改的那几项。用户没点名的，一律不碰——哪怕你觉得该加也只在文字里建议。",
+        "2. 一个诉求对应最少的工具调用：加一件就调一次 add，删一件就调一次 remove。不要为了'顺手优化'多调。",
+        "3. 绝不重复调用：同一个 add 不要调多次；一次 remove 后若返回'没找到/可能已删除'，说明已经删掉了，就此打住，不要换 id 反复试。",
+        "4. 修改某一项才用'先按 id 删、再重新添加'（id 见下方各列表，形如 eq_/nt_/sg_/cs_/pr_/mo_）；纯新增不要先删任何东西。",
+        "5. 绝不把用户已有的内容整批重建/翻新。",
+        "",
+        "可编辑的范围：",
+        "- 拍摄计划：设备 add_equipment/remove_equipment，注意事项 add_note/remove_note，"
+        "拍摄日程 add_schedule_segment/remove_schedule_segment，总览 update_overview。",
+        "- 角色服装/道具 add_costume/add_prop/remove_wardrobe_item；名场面 add_moment/remove_moment。",
+        "- update_brief 只用于'帮我总结/更新总结'这类明确请求，或核心场地/风格已定时提交一次总结；不要频繁调。",
+        "- 场地卡片和室内外标签由日程自动生成，改日程即可，不用单独维护；地点实际地址只有用户知道，不要编造。",
+        "- 如果话题跑偏，自然引导回拍摄规划。",
         "",
         "═══ 角色资料 ═══",
         f"角色：{char_name}（{series_name}）",
@@ -607,9 +625,7 @@ def chat(message: str, history: list[dict], project: dict, project_id: str,
             return f"没找到 id 为 {inp['id']} 的名场面，可能已被删除。"
         return _dirty_mo(f"已删除名场面「{r['title']}」。")
 
-    tool_executor = {
-        "web_search":    lambda inp: _web_search(inp["query"], lang=inp.get("lang", "zh-cn")),
-        "update_brief":  _execute_update_brief,
+    mutation_executors = {
         "update_overview":         _ex_update_overview,
         "add_equipment":           _ex_add_equipment,
         "remove_equipment":        _ex_remove_equipment,
@@ -622,6 +638,19 @@ def chat(message: str, history: list[dict], project: dict, project_id: str,
         "remove_wardrobe_item":    _ex_remove_wardrobe,
         "add_moment":              _ex_add_moment,
         "remove_moment":           _ex_remove_moment,
+    }
+
+    # Same-turn dedup guard: the model sometimes emits the *identical* mutation
+    # call several times in one turn (e.g. add_moment ×4 with the same args, or
+    # retrying a remove after it already succeeded). Executing them literally
+    # creates duplicate items / wasted calls. So each (tool, args) runs at most
+    # once per chat() turn; a repeat returns a note without re-executing.
+    _dedup = make_dedup(set())
+
+    tool_executor = {
+        "web_search":   lambda inp: _web_search(inp["query"], lang=inp.get("lang", "zh-cn")),
+        "update_brief": _execute_update_brief,
+        **{name: _dedup(name, fn) for name, fn in mutation_executors.items()},
     }
 
     result = call_agent(
