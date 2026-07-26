@@ -153,6 +153,12 @@ export const useApi = () => {
     return api<{ x: number; y: number; size: number }>(`/projects/${projectId}/characters/${cid}/avatar/auto`, { method: 'POST' })
   }
 
+  function uploadWardrobeImage(projectId: string, itemId: string, file: File) {
+    const fd = new FormData()
+    fd.append('image', file, file.name)
+    return api<{ url: string }>(`/projects/${projectId}/wardrobe/items/${itemId}/image`, { method: 'POST', body: fd })
+  }
+
   function listProjects() {
     return api<any[]>('/home/')
   }
@@ -382,6 +388,7 @@ export const useApi = () => {
     uploadAvatarSource,
     cropAvatar,
     autoAvatarCrop,
+    uploadWardrobeImage,
     exportProject,
     importProject,
     projectChat,

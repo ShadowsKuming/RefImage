@@ -127,6 +127,31 @@ def save_wardrobe(
     return {"ok": True}
 
 
+@router.post("/{project_id}/wardrobe/items/{item_id}/image")
+async def upload_wardrobe_image(
+    project_id: str,
+    item_id: str,
+    image: UploadFile = File(...),
+    user_id: str = Depends(get_current_user),
+):
+    """Upload a thumbnail for one wardrobe item. Returns { url }."""
+    _check_owner(project_id, user_id)
+    data = await image.read()
+    url = wardrobe_service.save_item_image(project_id, item_id, data,
+                                           image.filename or "item.png", image.content_type or "")
+    return {"url": url}
+
+
+@router.get("/{project_id}/wardrobe/items/{item_id}/image")
+def get_wardrobe_image(project_id: str, item_id: str):
+    """Serve a wardrobe item thumbnail — no auth (used via <img>)."""
+    path = wardrobe_service.item_image_path(project_id, item_id)
+    if not path:
+        raise HTTPException(status_code=404, detail="No image")
+    media_type = mimetypes.guess_type(str(path))[0] or "image/png"
+    return FileResponse(path, media_type=media_type)
+
+
 @router.post("/{project_id}/cover/grab")
 def grab_cover(project_id: str, user_id: str = Depends(get_current_user)):
     """Auto-grab a work cover: image search → vision-pick → save locally.

@@ -134,6 +134,8 @@ const zh = {
     subBaseInfo: '基本信息', addCharacterShort: '添加', emptyMoments: '还没有代表场景。',
     avatarEditorTitle: '编辑头像', avatarUpload: '上传图片', avatarAuto: '智能识别', avatarSize: '大小',
     avatarDragHint: '拖动选框，滑动调整大小', avatarNoImage: '上传一张图片作为头像', avatarSave: '保存',
+    wdBadge: '{c} 项 · 道具 {p} 项', wdEssential: '必备', wdBackup: '备用',
+    wdMenuUpload: '上传图片', wdMenuSetEssential: '设为必备', wdMenuSetBackup: '设为备用',
     addCharacterComingSoon: '添加角色功能开发中，敬请期待 ✨',
     fieldCharacter: '角色', fieldRole: '定位', fieldAge: '年龄', fieldBackstory: '身世',
     fieldSurface: '外在', fieldInner: '内心', fieldDesire: '渴望', fieldMoments: '瞬间',

@@ -516,70 +516,100 @@
               </div>
 
               <!-- ② 服装 · 道具 -->
-              <div v-else-if="charTab === 'wardrobe'" class="char-panel">
-                <div class="equip">
-                  <div class="wd-sub"><Shirt class="wd-si" /><span>{{ t('projectCanvas.subCostume') }}</span></div>
-                  <div v-for="g in costumeGroups" :key="g.key" class="equip-group">
-                    <div class="equip-group-head"><span>{{ g.label }}</span><span class="egh-count">{{ g.items.length }}</span></div>
-                    <div v-for="c in g.items" :key="c.id" class="equip-item">
-                      <div class="ei-body">
-                        <span class="ei-name">{{ c.name }}</span>
-                        <span v-if="c.note" class="ei-desc">{{ c.note }}</span>
-                      </div>
-                      <button
-                        class="ei-del" :class="{ armed: pendingDelete === c }"
-                        :title="pendingDelete === c ? t('projectCanvas.confirmDelete') : t('projectCanvas.delete')"
-                        @click="armDelete(c, () => removeCostume(c))"
-                      >
-                        <template v-if="pendingDelete === c">{{ t('projectCanvas.delete') }}</template>
-                        <X v-else />
-                      </button>
-                    </div>
-                  </div>
-                  <p v-if="!costumeList.length" class="detail-empty">{{ t('projectCanvas.emptyCostume') }}</p>
-
-                  <div v-if="showAddCostume" class="equip-form">
-                    <select v-model="newCostume.category" class="ef-select">
-                      <option v-for="c in COSTUME_CATEGORIES" :key="c.key" :value="c.key">{{ c.label }}</option>
-                    </select>
-                    <input v-model="newCostume.name" class="ef-input" :placeholder="t('projectCanvas.costumeNamePlaceholder')" @keydown.enter="submitAddCostume" />
-                    <input v-model="newCostume.note" class="ef-input" :placeholder="t('projectCanvas.notePlaceholder')" @keydown.enter="submitAddCostume" />
-                    <div class="ef-actions">
-                      <button class="ef-cancel" @click="showAddCostume = false">{{ t('projectCanvas.cancel') }}</button>
-                      <button class="ef-submit" @click="submitAddCostume">{{ t('projectCanvas.add') }}</button>
-                    </div>
-                  </div>
-                  <button v-else class="equip-add-btn" @click="showAddCostume = true">{{ t('projectCanvas.addCostume') }}</button>
-
-                  <div class="wd-sub"><Package class="wd-si" /><span>{{ t('projectCanvas.subProps') }}</span></div>
-                  <div v-if="propsList.length" class="equip-group">
-                    <div v-for="pr in propsList" :key="pr.id" class="equip-item">
-                      <div class="ei-body">
-                        <span class="ei-name">{{ pr.name }}</span>
-                        <span v-if="pr.note" class="ei-desc">{{ pr.note }}</span>
-                      </div>
-                      <button
-                        class="ei-del" :class="{ armed: pendingDelete === pr }"
-                        :title="pendingDelete === pr ? t('projectCanvas.confirmDelete') : t('projectCanvas.delete')"
-                        @click="armDelete(pr, () => removeProp(pr))"
-                      >
-                        <template v-if="pendingDelete === pr">{{ t('projectCanvas.delete') }}</template>
-                        <X v-else />
-                      </button>
-                    </div>
-                  </div>
-                  <p v-else class="detail-empty">{{ t('projectCanvas.emptyProps') }}</p>
-
-                  <div v-if="showAddProp" class="equip-form">
-                    <input v-model="newProp.name" class="ef-input" :placeholder="t('projectCanvas.propNamePlaceholder')" @keydown.enter="submitAddProp" />
-                    <input v-model="newProp.note" class="ef-input" :placeholder="t('projectCanvas.notePlaceholder')" @keydown.enter="submitAddProp" />
-                    <div class="ef-actions">
-                      <button class="ef-cancel" @click="showAddProp = false">{{ t('projectCanvas.cancel') }}</button>
-                      <button class="ef-submit" @click="submitAddProp">{{ t('projectCanvas.add') }}</button>
-                    </div>
-                  </div>
-                  <button v-else class="equip-add-btn" @click="showAddProp = true">{{ t('projectCanvas.addProp') }}</button>
+              <div v-else-if="charTab === 'wardrobe'" class="char-panel wd">
+                <!-- 服装 -->
+                <div class="wd-head">
+                  <span class="wd-h-title"><Shirt class="wd-si" />{{ t('projectCanvas.subCostume') }}</span>
+                  <span class="wd-badge">{{ t('projectCanvas.wdBadge', { c: costumeCount, p: propsCount }) }}</span>
                 </div>
+
+                <div v-for="g in costumeGroups" :key="g.key" class="wd-group">
+                  <div class="wd-group-head"><span class="wd-gh-dot" />{{ g.label }} <span class="wd-gh-count">{{ g.items.length }}</span></div>
+                  <div v-for="c in g.items" :key="c.id" class="wd-card">
+                    <span class="wd-thumb">
+                      <img v-if="itemImg(c)" :src="itemImg(c)" :alt="c.name" />
+                      <Shirt v-else class="wd-thumb-ph" />
+                    </span>
+                    <div class="wd-body">
+                      <span class="wd-name">{{ c.name }}</span>
+                      <span v-if="c.note" class="wd-note">{{ c.note }}</span>
+                    </div>
+                    <span class="wd-pill" :class="c.essential === false ? 'backup' : 'ess'">
+                      {{ c.essential === false ? t('projectCanvas.wdBackup') : t('projectCanvas.wdEssential') }}
+                    </span>
+                    <div class="wd-menu-wrap">
+                      <button class="wd-kebab" @click.stop="toggleItemMenu(c.id)"><MoreVertical /></button>
+                      <div v-if="openItemMenu === c.id" class="wd-menu" @click.stop>
+                        <label class="wd-mi">
+                          <input type="file" accept="image/*" hidden @change="e => onUploadItemImage(e, c)" />
+                          <Upload /><span>{{ t('projectCanvas.wdMenuUpload') }}</span>
+                        </label>
+                        <button class="wd-mi" @click="toggleEssential(c)">
+                          <Star /><span>{{ c.essential === false ? t('projectCanvas.wdMenuSetEssential') : t('projectCanvas.wdMenuSetBackup') }}</span>
+                        </button>
+                        <button class="wd-mi danger" @click="removeCostume(c); openItemMenu = null"><X /><span>{{ t('projectCanvas.delete') }}</span></button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <p v-if="!costumeList.length" class="detail-empty">{{ t('projectCanvas.emptyCostume') }}</p>
+
+                <div v-if="showAddCostume" class="equip-form">
+                  <select v-model="newCostume.category" class="ef-select">
+                    <option v-for="c in COSTUME_CATEGORIES" :key="c.key" :value="c.key">{{ c.label }}</option>
+                  </select>
+                  <input v-model="newCostume.name" class="ef-input" :placeholder="t('projectCanvas.costumeNamePlaceholder')" @keydown.enter="submitAddCostume" />
+                  <input v-model="newCostume.note" class="ef-input" :placeholder="t('projectCanvas.notePlaceholder')" @keydown.enter="submitAddCostume" />
+                  <div class="ef-actions">
+                    <button class="ef-cancel" @click="showAddCostume = false">{{ t('projectCanvas.cancel') }}</button>
+                    <button class="ef-submit" @click="submitAddCostume">{{ t('projectCanvas.add') }}</button>
+                  </div>
+                </div>
+                <button v-else class="equip-add-btn" @click="showAddCostume = true">{{ t('projectCanvas.addCostume') }}</button>
+
+                <!-- 道具 -->
+                <div class="wd-head props">
+                  <span class="wd-h-title"><Package class="wd-si" />{{ t('projectCanvas.subProps') }}</span>
+                </div>
+                <div v-if="propsList.length" class="wd-group">
+                  <div v-for="pr in propsList" :key="pr.id" class="wd-card">
+                    <span class="wd-thumb">
+                      <img v-if="itemImg(pr)" :src="itemImg(pr)" :alt="pr.name" />
+                      <Package v-else class="wd-thumb-ph" />
+                    </span>
+                    <div class="wd-body">
+                      <span class="wd-name">{{ pr.name }}</span>
+                      <span v-if="pr.note" class="wd-note">{{ pr.note }}</span>
+                    </div>
+                    <span class="wd-pill" :class="pr.essential === false ? 'backup' : 'ess'">
+                      {{ pr.essential === false ? t('projectCanvas.wdBackup') : t('projectCanvas.wdEssential') }}
+                    </span>
+                    <div class="wd-menu-wrap">
+                      <button class="wd-kebab" @click.stop="toggleItemMenu(pr.id)"><MoreVertical /></button>
+                      <div v-if="openItemMenu === pr.id" class="wd-menu" @click.stop>
+                        <label class="wd-mi">
+                          <input type="file" accept="image/*" hidden @change="e => onUploadItemImage(e, pr)" />
+                          <Upload /><span>{{ t('projectCanvas.wdMenuUpload') }}</span>
+                        </label>
+                        <button class="wd-mi" @click="toggleEssential(pr)">
+                          <Star /><span>{{ pr.essential === false ? t('projectCanvas.wdMenuSetEssential') : t('projectCanvas.wdMenuSetBackup') }}</span>
+                        </button>
+                        <button class="wd-mi danger" @click="removeProp(pr); openItemMenu = null"><X /><span>{{ t('projectCanvas.delete') }}</span></button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <p v-else class="detail-empty">{{ t('projectCanvas.emptyProps') }}</p>
+
+                <div v-if="showAddProp" class="equip-form">
+                  <input v-model="newProp.name" class="ef-input" :placeholder="t('projectCanvas.propNamePlaceholder')" @keydown.enter="submitAddProp" />
+                  <input v-model="newProp.note" class="ef-input" :placeholder="t('projectCanvas.notePlaceholder')" @keydown.enter="submitAddProp" />
+                  <div class="ef-actions">
+                    <button class="ef-cancel" @click="showAddProp = false">{{ t('projectCanvas.cancel') }}</button>
+                    <button class="ef-submit" @click="submitAddProp">{{ t('projectCanvas.add') }}</button>
+                  </div>
+                </div>
+                <button v-else class="equip-add-btn" @click="showAddProp = true">{{ t('projectCanvas.addProp') }}</button>
               </div>
 
               <!-- ③ 名场面 -->
@@ -698,7 +728,7 @@ import { useRoute } from 'vue-router'
 import {
   MapPin, Clock, TriangleAlert, Package, Check, CircleCheck, X, Sun, Clapperboard, FileText,
   Camera, Aperture, Lightbulb, Disc, BatteryFull, Plug, Mic, Image as ImageIcon, Wrench, Shirt,
-  Tag, Sparkles, Star, RefreshCw, Upload, ChevronDown, User, Plus, Pencil,
+  Tag, Sparkles, Star, RefreshCw, Upload, ChevronDown, User, Plus, Pencil, MoreVertical,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import TripodIcon from '~/components/equip-icons/TripodIcon.vue'
@@ -1291,8 +1321,8 @@ const planTiles = computed(() => {
 // plan/wardrobe.json (separate from plan.json; the step-1 context extraction
 // stays frozen). Editable list — add/remove only. No 已备/progress tracking:
 // that's execution state and lives on the right-side plan (设备), not 设定.
-interface CostumeItem { id?: string; name: string; category?: string; note?: string }
-interface PropItem { id?: string; name: string; note?: string }
+interface CostumeItem { id?: string; name: string; category?: string; note?: string; essential?: boolean; image?: string | null }
+interface PropItem { id?: string; name: string; note?: string; essential?: boolean; image?: string | null }
 
 const COSTUME_CATEGORIES = computed(() => [
   { key: 'wig',       label: t('projectCanvas.catWig') },
@@ -1302,6 +1332,8 @@ const COSTUME_CATEGORIES = computed(() => [
   { key: 'accessory', label: t('projectCanvas.catAccessory') },
   { key: 'misc',      label: t('projectCanvas.catOther') },
 ])
+// full URL for an item's thumbnail (backend returns a relative, cache-busted path)
+const itemImg = (it: { image?: string | null }) => (it.image ? BASE_URL + it.image : '')
 const costumeList = ref<CostumeItem[]>([])
 const propsList   = ref<PropItem[]>([])
 
@@ -1312,17 +1344,19 @@ function loadWardrobe() {
 }
 
 function buildWardrobe() {
+  // `image` is derived on the backend (not persisted here); essential is stored.
   return {
-    costume: costumeList.value.map(c => ({ id: c.id, name: c.name, category: c.category, note: c.note })),
-    props:   propsList.value.map(p => ({ id: p.id, name: p.name, note: p.note })),
+    costume: costumeList.value.map(c => ({ id: c.id, name: c.name, category: c.category, note: c.note, essential: c.essential !== false })),
+    props:   propsList.value.map(p => ({ id: p.id, name: p.name, note: p.note, essential: p.essential !== false })),
   }
 }
 
 let wardrobeSaveTimer: ReturnType<typeof setTimeout> | null = null
 function persistWardrobe() {
   if (!projectData.value) return
+  // costumeList/propsList are the reactive source for the template; we don't
+  // overwrite projectData.wardrobe here (it would drop the derived image URLs).
   const data = buildWardrobe()
-  projectData.value.wardrobe = data   // optimistic
   if (wardrobeSaveTimer) clearTimeout(wardrobeSaveTimer)
   wardrobeSaveTimer = setTimeout(() => {
     api.saveWardrobe(projectId.value, data).catch(e => console.error('Failed to save wardrobe', e))
@@ -1351,7 +1385,7 @@ const showAddCostume = ref(false)
 const newCostume = reactive({ category: 'top', name: '', note: '' })
 function submitAddCostume() {
   if (!newCostume.name.trim()) return
-  costumeList.value.push({ category: newCostume.category, name: newCostume.name.trim(), note: newCostume.note.trim() || undefined })
+  costumeList.value.push({ category: newCostume.category, name: newCostume.name.trim(), note: newCostume.note.trim() || undefined, essential: true })
   newCostume.name = ''; newCostume.note = ''
   showAddCostume.value = false
   persistWardrobe()
@@ -1360,10 +1394,43 @@ const showAddProp = ref(false)
 const newProp = reactive({ name: '', note: '' })
 function submitAddProp() {
   if (!newProp.name.trim()) return
-  propsList.value.push({ name: newProp.name.trim(), note: newProp.note.trim() || undefined })
+  propsList.value.push({ name: newProp.name.trim(), note: newProp.note.trim() || undefined, essential: true })
   newProp.name = ''; newProp.note = ''
   showAddProp.value = false
   persistWardrobe()
+}
+
+// header summary badge counts
+const costumeCount = computed(() => costumeList.value.length)
+const propsCount = computed(() => propsList.value.length)
+
+// per-item kebab menu (one open at a time); close on any outside click
+const openItemMenu = ref<string | null>(null)
+if (typeof window !== 'undefined') {
+  window.addEventListener('click', () => { openItemMenu.value = null })
+}
+function toggleItemMenu(id?: string) {
+  if (!id) return
+  openItemMenu.value = openItemMenu.value === id ? null : id
+}
+function toggleEssential(item: { essential?: boolean }) {
+  item.essential = item.essential === false ? true : false
+  openItemMenu.value = null
+  persistWardrobe()
+}
+async function onUploadItemImage(e: Event, item: { id?: string; image?: string | null }) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file || !item.id) return
+  try {
+    const { url } = await api.uploadWardrobeImage(projectId.value, item.id, file)
+    item.image = url   // cache-busted URL from backend → thumbnail updates
+  } catch (err) {
+    console.error('wardrobe image upload failed', err)
+  } finally {
+    input.value = ''
+    openItemMenu.value = null
+  }
 }
 
 const exporting = ref(false)
@@ -1980,6 +2047,71 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
   font-size: 11.5px; font-weight: 700; color: var(--text-2);
 }
 .wd-si { width: 14px; height: 14px; color: var(--accent); flex-shrink: 0; }
+
+/* ── Wardrobe card list ─────────────────────────────────── */
+.wd { display: flex; flex-direction: column; gap: 10px; }
+.wd-head { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
+.wd-head.props { margin-top: 12px; }
+.wd-h-title {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 700; color: var(--text-2);
+}
+.wd-badge {
+  font-size: 11px; font-weight: 600; color: var(--text-2);
+  padding: 3px 10px; border-radius: 999px;
+  background: var(--surface-inset); border: 1px solid var(--border-md);
+}
+.wd-group { display: flex; flex-direction: column; gap: 8px; }
+.wd-group-head {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 600; color: var(--text-quiet); margin-top: 2px;
+}
+.wd-gh-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+.wd-gh-count { color: var(--text-quiet); font-weight: 500; }
+
+.wd-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px; border-radius: 11px;
+  background: var(--surface-inset); border: 1px solid var(--border);
+}
+.wd-thumb {
+  width: 48px; height: 48px; flex-shrink: 0; border-radius: 9px; overflow: hidden;
+  background: var(--surface-raised); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+}
+.wd-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.wd-thumb-ph { width: 20px; height: 20px; color: var(--text-ghost); }
+.wd-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wd-name { font-size: 12.5px; font-weight: 600; color: var(--text-hi); line-height: 1.35; }
+.wd-note { font-size: 10.5px; color: var(--text-quiet); line-height: 1.4; }
+.wd-pill {
+  flex-shrink: 0; font-size: 10px; font-weight: 700;
+  padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+}
+.wd-pill.ess { color: var(--accent); background: var(--accent-soft, var(--surface-raised)); border: 1px solid var(--accent-dim); }
+.wd-pill.backup { color: #fff; background: var(--accent-dim); border: 1px solid var(--accent-dim); }
+
+.wd-menu-wrap { position: relative; flex-shrink: 0; }
+.wd-kebab {
+  width: 24px; height: 24px; padding: 0; border: none; background: none; cursor: pointer;
+  color: var(--text-quiet); border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+}
+.wd-kebab:hover { background: var(--surface-raised); color: var(--text-2); }
+.wd-kebab :deep(svg) { width: 15px; height: 15px; }
+.wd-menu {
+  position: absolute; right: 0; top: 28px; z-index: 20; min-width: 130px;
+  background: var(--surface); border: 1px solid var(--border-md); border-radius: 10px;
+  box-shadow: 0 8px 24px var(--shadow); padding: 4px; display: flex; flex-direction: column; gap: 1px;
+}
+.wd-mi {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 10px; border: none; background: none; cursor: pointer;
+  font-size: 12px; color: var(--text-hi); border-radius: 7px; text-align: left;
+}
+.wd-mi:hover { background: var(--surface-inset); }
+.wd-mi.danger { color: var(--error); }
+.wd-mi :deep(svg) { width: 14px; height: 14px; flex-shrink: 0; }
 
 /* Equipment detail — summary line + 准备进度 + 必要/可选 grouped cards */
 .equip { display: flex; flex-direction: column; gap: 14px; }

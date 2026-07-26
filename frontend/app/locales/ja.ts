@@ -136,6 +136,8 @@ export default {
     subBaseInfo: '基本情報', addCharacterShort: '追加', emptyMoments: 'まだ名場面がありません。',
     avatarEditorTitle: 'アバターを編集', avatarUpload: '画像をアップロード', avatarAuto: '自動認識', avatarSize: 'サイズ',
     avatarDragHint: '枠をドラッグ、スライダーでサイズ調整', avatarNoImage: '画像をアップロードしてアバターに', avatarSave: '保存',
+    wdBadge: '{c} 点 · 小道具 {p} 点', wdEssential: '必須', wdBackup: '予備',
+    wdMenuUpload: '画像をアップロード', wdMenuSetEssential: '必須にする', wdMenuSetBackup: '予備にする',
     addCharacterComingSoon: 'キャラ追加機能は開発中です。お楽しみに ✨',
     fieldCharacter: 'キャラ', fieldRole: '役割', fieldAge: '年齢', fieldBackstory: '生い立ち',
     fieldSurface: '外面', fieldInner: '内面', fieldDesire: '願望', fieldMoments: '名場面',

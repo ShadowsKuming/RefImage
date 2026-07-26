@@ -26,10 +26,46 @@ COSTUME_CATEGORIES = ("wig", "top", "bottom", "shoes", "accessory", "misc")
 def _default_wardrobe() -> dict:
     # Pure reference (what the character wears / carries) — no prepared/progress
     # tracking; that belongs to the right-side plan (execution), not 设定.
+    # essential: 必备(true) vs 备用(false). image: user-uploaded thumbnail URL.
     return {
-        "costume": [],   # [ { id, name, category, note } ]
-        "props": [],     # [ { id, name, note } ]
+        "costume": [],   # [ { id, name, category, note, essential, image? } ]
+        "props": [],     # [ { id, name, note, essential, image? } ]
     }
+
+
+def _item_image_url(project_id: str, item_id: str) -> str | None:
+    d = STORAGE_ROOT / project_id / "plan" / "wardrobe_images"
+    for ext in ("png", "jpg", "webp"):
+        p = d / f"{item_id}.{ext}"
+        if p.exists():
+            return f"/projects/{project_id}/wardrobe/items/{item_id}/image?v={int(p.stat().st_mtime)}"
+    return None
+
+
+def item_image_path(project_id: str, item_id: str) -> Path | None:
+    d = STORAGE_ROOT / project_id / "plan" / "wardrobe_images"
+    for ext in ("png", "jpg", "webp"):
+        p = d / f"{item_id}.{ext}"
+        if p.exists():
+            return p
+    return None
+
+
+_IMG_EXT = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
+
+
+def save_item_image(project_id: str, item_id: str, data: bytes, filename: str, content_type: str = "") -> str:
+    """Store a thumbnail for one wardrobe item. Returns its serving URL."""
+    ext = _IMG_EXT.get(content_type.split(";")[0].strip())
+    if not ext:
+        tail = filename.rsplit(".", 1)[-1].lower() if "." in filename else "png"
+        ext = tail if tail in _IMG_EXT.values() else "png"
+    d = STORAGE_ROOT / project_id / "plan" / "wardrobe_images"
+    d.mkdir(parents=True, exist_ok=True)
+    for old in d.glob(f"{item_id}.*"):
+        old.unlink(missing_ok=True)
+    (d / f"{item_id}.{ext}").write_bytes(data)
+    return _item_image_url(project_id, item_id) or ""
 
 
 def _new_id(prefix: str) -> str:
@@ -67,6 +103,14 @@ def load_wardrobe(project_id: str) -> dict:
             pass
     if _ensure_ids(data) and path.exists():
         _write(project_id, data)
+    # decorate each item with its stored image URL (not persisted in the json —
+    # derived from the wardrobe_images/ dir) + default essential=True
+    for coll in _ID_COLLECTIONS:
+        for item in data.get(coll, []):
+            if not isinstance(item, dict):
+                continue
+            item.setdefault("essential", True)
+            item["image"] = _item_image_url(project_id, item.get("id", ""))
     return data
 
 
@@ -77,6 +121,11 @@ def save_wardrobe(project_id: str, data: dict) -> dict:
     for k in merged:
         if k in data:
             merged[k] = data[k]
+    # `image` is derived from wardrobe_images/, not stored in the json
+    for coll in _ID_COLLECTIONS:
+        for item in merged.get(coll, []):
+            if isinstance(item, dict):
+                item.pop("image", None)
     _ensure_ids(merged)
     _write(project_id, merged)
-    return merged
+    return load_wardrobe(project_id)
