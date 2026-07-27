@@ -54,6 +54,7 @@ class CreateShotRequest(BaseModel):
 
 class UpdateStatusRequest(BaseModel):
     status: str
+    final_version_id: str | None = None
 
 
 class RenameShotRequest(BaseModel):
@@ -205,8 +206,10 @@ def update_shot_status_endpoint(
     if req.status not in {"refined", "done"}:
         raise HTTPException(status_code=400, detail="status must be 'refined' or 'done'")
     _check_owner(project_id, user_id)
+    # refined → record the chosen final version; done (unlock) → clear it.
+    final = (req.final_version_id or "") if req.status == "refined" else ""
     try:
-        project_service.update_shot_status(project_id, shot_id, req.status)
+        project_service.update_shot_status(project_id, shot_id, req.status, final_version_id=final)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Shot not found")
     return {"ok": True}

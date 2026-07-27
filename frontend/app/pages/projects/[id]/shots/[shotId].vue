@@ -27,14 +27,9 @@
       <div class="tb-actions">
         <span v-if="generating" class="tb-generating">✦ 生成中…</span>
         <template v-else-if="isRefined">
-          <span class="tb-refined-badge">✓ 已完善</span>
-          <button class="tb-btn" @click="unlockShot">解锁编辑</button>
+          <span class="tb-refined-badge">✓ 已选为最终版本</span>
+          <button class="tb-btn" @click="unlockShot">继续调整</button>
         </template>
-        <button
-          v-else-if="shot.status === 'done'"
-          class="tb-btn primary"
-          @click="guardAction(refineShot)"
-        >标记完善</button>
       </div>
     </div>
 
@@ -94,11 +89,8 @@
           </div>
         </div>
 
-        <div v-if="selectedVersionIds.length > 0 || selectedRefIds.length > 0" class="selection-hint">
-          <template v-if="selectedVersionIds.length > 0">已选 {{ selectedVersionIds.length }} 张版本</template>
-          <template v-if="selectedVersionIds.length > 0 && selectedRefIds.length > 0"> · </template>
-          <template v-if="selectedRefIds.length > 0">{{ selectedRefIds.length }} 张参考图</template>
-          · 框选内容将告知 AI 助手
+        <div v-if="selectedRefIds.length > 0" class="selection-hint">
+          已选 {{ selectedRefIds.length }} 张参考图 · 将告知 AI 助手
         </div>
         <input ref="refFileInput" type="file" accept="image/*" style="display:none" @change="onRefFileInputChange" />
 
@@ -156,14 +148,13 @@
               <div
                 v-if="node.id === activeVersionId"
                 class="version-card active-card"
-                :class="{ 'in-crop': editMode === 'crop', 'is-selected': selectedVersionIds.includes(node.id) }"
+                :class="{ 'in-crop': editMode === 'crop' }"
                 :style="cardStyle(node)"
                 @mousedown.stop="startVersionCardDrag(node.id, $event)"
-                @click.stop="toggleSelectVersion(node.id)"
               >
                 <!-- Image -->
                 <div class="img-clip">
-                  <img :src="currentDisplayUrl" class="gen-img" draggable="false" />
+                  <img :src="currentDisplayUrl" class="gen-img" draggable="false" @load="onVersionImgLoad(node.id, $event)" />
 
                   <!-- Crop layer -->
                   <template v-if="editMode === 'crop'">
@@ -184,21 +175,24 @@
                   </template>
                 </div>
 
-                <!-- Toolbar below the image: crop + adjust-params -->
+                <!-- Toolbar below the image: crop + adjust-params + select-final -->
                 <template v-if="editMode !== 'crop'">
-                  <button class="crop-btn" @click.stop="toggleRatioPanel" :class="{ active: showRatioPanel }"
-                          :style="!isRefined ? { transform: 'translateX(calc(-50% - 19px))' } : undefined" title="裁剪">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                      <path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>
-                    </svg>
-                  </button>
-                  <button v-if="!isRefined" class="crop-btn tune-btn"
-                          :class="{ active: refinePanel?.versionId === node.id }"
-                          title="调参数，生成新版本" @click.stop="openRefinePanel(node)">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                      <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>
-                    </svg>
-                  </button>
+                  <div class="img-toolbar">
+                    <button class="tb-icon" @click.stop="toggleRatioPanel" :class="{ active: showRatioPanel }" title="裁剪">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>
+                      </svg>
+                    </button>
+                    <button v-if="!isRefined" class="tb-icon"
+                            :class="{ active: refinePanel?.versionId === node.id }"
+                            title="调参数，生成新版本" @click.stop="openRefinePanel(node)">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>
+                      </svg>
+                    </button>
+                    <button v-if="!isRefined" class="final-btn"
+                            title="选为最终版本 · 之后仍可继续调整" @click.stop="guardAction(selectFinal)">✓ 选为最终</button>
+                  </div>
                   <div v-if="showRatioPanel" class="ratio-panel" @click.stop @mousedown.stop>
                     <button v-for="r in RATIOS" :key="r.label" class="ratio-chip" @click.stop="selectRatio(r.value)">{{ r.label }}</button>
                   </div>
@@ -219,20 +213,18 @@
                 </template>
               </div>
 
-              <!-- Thumbnail cards -->
+              <!-- Thumbnail cards — click to make current (tools follow the current one) -->
               <div
                 v-else
                 class="version-card thumb-card"
-                :class="{ 'is-selected': selectedVersionIds.includes(node.id) }"
                 :style="cardStyle(node)"
                 @mousedown.stop="startVersionCardDrag(node.id, $event)"
-                @click.stop="toggleSelectVersion(node.id)"
-                @dblclick.stop="activateVersionCard(node.id)"
+                @click.stop="activateVersionCard(node.id)"
               >
-                <img v-if="node.imageUrl" :src="node.imageUrl" class="gen-img" draggable="false" />
+                <img v-if="node.imageUrl" :src="node.imageUrl" class="gen-img" draggable="false" @load="onVersionImgLoad(node.id, $event)" />
                 <div class="card-label">v{{ node.index + 1 }}</div>
                 <button class="card-delete" @click.stop="deleteVersionCard(node.id)" title="删除此版本">×</button>
-                <div class="card-dblclick-hint">双击切换当前</div>
+                <div class="card-dblclick-hint">点击切换当前</div>
 
                 <!-- Resize handles -->
                 <div class="rh tl" @mousedown.stop="startVersionCardResize(node.id, 'tl', $event)" />
@@ -360,6 +352,11 @@
            satisfying example image. Guides appear only after 选定/完善 (refined). -->
       <div v-if="isRefined" class="detail-col" :style="{ width: rightWidth + 'px' }">
         <div class="col-header">拍摄指南</div>
+
+        <div class="stage3-banner">
+          <span class="s3-check">✓</span>
+          <span>已选为最终版本。点下面的标注点，整理这张的动作 / 表情 / 构图 / 背景信息。想换？顶部「继续调整」即可。</span>
+        </div>
 
         <div class="hs-tabs">
           <button
@@ -581,11 +578,32 @@ interface LayoutNode extends VersionNode {
 
 const versions           = ref<VersionNode[]>([])
 const activeVersionId    = ref<string | null>(null)
-const selectedVersionIds = ref<string[]>([])
 
 // Per-card positions and sizes (user-draggable/resizable, override tree layout)
 const cardPositions = ref<Record<string, { x: number; y: number }>>({})
 const cardSizes     = ref<Record<string, { w: number; h: number }>>({})
+const imgAspect     = ref<Record<string, number>>({})  // version id → naturalW/naturalH
+
+// The card frame is portrait by default; snap it to the image's real aspect once
+// loaded so a landscape (横图) image isn't center-cropped to look vertical. Fits
+// the image WITHIN the default box (never exceeds either dimension → no overlap).
+// Only auto-fits a card still at a default size — never clobbers a manual resize.
+function onVersionImgLoad(id: string, e: Event) {
+  const img = e.target as HTMLImageElement
+  if (!img.naturalWidth || !img.naturalHeight) return
+  const aspect = img.naturalWidth / img.naturalHeight
+  imgAspect.value[id] = aspect
+  const cur = cardSizes.value[id]
+  if (!cur) return
+  const atDefault =
+    (cur.w === CARD_W_ACTIVE && cur.h === CARD_H_ACTIVE) ||
+    (cur.w === CARD_W_THUMB  && cur.h === CARD_H_THUMB)
+  if (!atDefault) return  // respect a manual resize
+  const boxW = cur.w, boxH = cur.h
+  let w = boxW, h = Math.round(boxW / aspect)
+  if (h > boxH) { h = boxH; w = Math.round(boxH * aspect) }
+  cardSizes.value[id] = { w, h }
+}
 
 // ── Blank placeholder nodes ───────────────────────────────
 interface BlankNode { id: string; x: number; y: number; w: number; h: number; isDragOver: boolean; isInitial?: boolean }
@@ -925,16 +943,10 @@ async function loadVersions() {
   } catch (e) { console.error('loadVersions', e) }
 }
 
-function toggleSelectVersion(id: string) {
-  const idx = selectedVersionIds.value.indexOf(id)
-  if (idx >= 0) selectedVersionIds.value.splice(idx, 1)
-  else           selectedVersionIds.value.push(id)
-}
-
 async function activateVersionCard(id: string) {
+  if (id === activeVersionId.value) return
   await api.activateVersion(projectId.value, shotId.value, id)
   activeVersionId.value = id
-  selectedVersionIds.value = []
   closePopup()
   versions.value = versions.value.map(v => ({ ...v, _ts: Date.now() } as any))
 }
@@ -944,7 +956,6 @@ async function deleteVersionCard(id: string) {
     await api.deleteVersion(projectId.value, shotId.value, id)
     delete cardPositions.value[id]
     delete cardSizes.value[id]
-    selectedVersionIds.value = selectedVersionIds.value.filter(s => s !== id)
     if (id === activeVersionId.value) {
       editHistory.value  = []
       historyIndex.value = -1
@@ -1495,13 +1506,18 @@ async function refreshHistory() {
   if (aiMsgContainer.value) aiMsgContainer.value.scrollTop = aiMsgContainer.value.scrollHeight
 }
 
-async function refineShot() {
-  await api.updateShotStatus(projectId.value, shotId.value, 'refined')
-  if (shotData.value) shotData.value.status = 'refined'
+// Stage 2 → 3: mark the current version as the final reference. Soft framing —
+// still branchable afterward (解锁 reverts). Records which version was chosen.
+async function selectFinal() {
+  const vid = activeVersionId.value
+  if (!vid) return
+  refinePanel.value = null
+  await api.updateShotStatus(projectId.value, shotId.value, 'refined', vid)
+  if (shotData.value) { shotData.value.status = 'refined'; shotData.value.final_version_id = vid }
 }
 async function unlockShot() {
   await api.updateShotStatus(projectId.value, shotId.value, 'done')
-  if (shotData.value) shotData.value.status = 'done'
+  if (shotData.value) { shotData.value.status = 'done'; shotData.value.final_version_id = null }
 }
 
 function onChatInputEnter(e: KeyboardEvent) {
@@ -1522,7 +1538,7 @@ async function sendChat(retryText?: string) {
   if (aiMsgContainer.value) aiMsgContainer.value.scrollTop = aiMsgContainer.value.scrollHeight
   try {
     const { reply, generating: gen, options, stage, camera } = await withRetry(() => api.shotChat(
-      projectId.value, shotId.value, text, selectedVersionIds.value, selectedRefIds.value,
+      projectId.value, shotId.value, text, [], selectedRefIds.value,
     ))
     if (reply) aiMessages.value.push({ role: 'agent', text: reply, options })
     if (stage === 'camera') openCameraPanel(camera); else cameraPanel.value = null
@@ -1738,10 +1754,16 @@ onUnmounted(() => {
 .ch.bl { bottom: -5px; left: -5px; cursor: sw-resize; }
 .ch.br { bottom: -5px; right: -5px; cursor: se-resize; }
 
-.crop-btn { position: absolute; top: calc(100% + 10px); left: 50%; transform: translateX(-50%); width: 28px; height: 28px; padding: 5px; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; cursor: pointer; color: var(--text-muted); box-shadow: 0 2px 8px var(--shadow); display: flex; align-items: center; justify-content: center; transition: background .12s, color .12s; z-index: 20; pointer-events: all; }
-.crop-btn:hover { background: var(--surface-2); color: var(--text); }
-.crop-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
-.crop-btn svg { width: 100%; height: 100%; }
+.img-toolbar { position: absolute; top: calc(100% + 10px); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; z-index: 20; pointer-events: none; }
+.img-toolbar > button { pointer-events: all; }
+.tb-icon { width: 28px; height: 28px; padding: 5px; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; cursor: pointer; color: var(--text-muted); box-shadow: 0 2px 8px var(--shadow); display: flex; align-items: center; justify-content: center; transition: background .12s, color .12s; flex-shrink: 0; }
+.tb-icon:hover { background: var(--surface-2); color: var(--text); }
+.tb-icon.active { background: var(--accent); color: white; border-color: var(--accent); }
+.tb-icon svg { width: 100%; height: 100%; }
+.final-btn { height: 28px; padding: 0 12px; background: var(--accent); color: #fff; border: none; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; box-shadow: 0 2px 8px var(--shadow); white-space: nowrap; transition: opacity .12s; }
+.final-btn:hover { opacity: .9; }
+.stage3-banner { margin: 0 12px 8px; padding: 8px 11px; display: flex; gap: 7px; align-items: flex-start; background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent); border-radius: 8px; font-size: 11px; line-height: 1.5; color: var(--text-muted); }
+.s3-check { color: var(--accent); font-weight: 700; flex-shrink: 0; }
 
 .ratio-panel { position: absolute; top: calc(100% + 48px); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 5px; white-space: nowrap; z-index: 20; pointer-events: all; }
 .ratio-chip { padding: 3px 8px; border: 1px solid var(--border-md); border-radius: 5px; background: var(--bg); color: var(--text-muted); font-size: 11px; cursor: pointer; transition: background .1s, color .1s; }
@@ -1811,9 +1833,6 @@ onUnmounted(() => {
 .cam-gen:hover:not(:disabled) { opacity: .9; }
 .cam-gen:disabled { opacity: .5; cursor: not-allowed; }
 
-/* Adjust-params button — icon button beside crop, below the image */
-.crop-btn.tune-btn { transform: translateX(calc(-50% + 19px)); }
-.crop-btn.tune-btn svg { width: 100%; height: 100%; }
 
 /* Refine panel (right column) */
 .refine-col { width: 300px; }

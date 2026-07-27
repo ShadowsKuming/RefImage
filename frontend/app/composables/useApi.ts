@@ -352,11 +352,11 @@ export const useApi = () => {
     })
   }
 
-  function updateShotStatus(projectId: string, shotId: string, status: string) {
+  function updateShotStatus(projectId: string, shotId: string, status: string, finalVersionId?: string) {
     return api<{ ok: boolean }>(`/projects/${projectId}/shots/${shotId}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, final_version_id: finalVersionId ?? null }),
     })
   }
 

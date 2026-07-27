@@ -378,14 +378,22 @@ def delete_shot(project_id: str, shot_id: str) -> None:
     shutil.rmtree(shot_dir)
 
 
+_UNSET = object()
+
+
 def update_shot_status(
     project_id: str,
     shot_id: str,
     status: str,
     image_url: str | None = None,
     error_type: str | None = None,
+    final_version_id=_UNSET,
 ) -> None:
-    """Update shot.json status (and optionally image_url or error_type)."""
+    """Update shot.json status (and optionally image_url or error_type).
+
+    final_version_id: pass a version id to record which version was chosen as the
+    final reference (stage 3 entry), or "" to clear it (unlock). Left untouched by
+    generate's status updates — only the 选为最终/解锁 flow sets it."""
     shot_file = STORAGE_ROOT / project_id / "shots" / shot_id / "shot.json"
     if not shot_file.exists():
         raise FileNotFoundError(f"Shot {shot_id!r} not found")
@@ -397,6 +405,11 @@ def update_shot_status(
         shot["error_type"] = error_type
     elif status != "error":
         shot.pop("error_type", None)
+    if final_version_id is not _UNSET:
+        if final_version_id:
+            shot["final_version_id"] = final_version_id
+        else:
+            shot.pop("final_version_id", None)
     shot_file.write_text(json.dumps(shot, ensure_ascii=False, indent=2))
 
 
