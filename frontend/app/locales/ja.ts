@@ -97,6 +97,7 @@ export default {
     addShot: 'カット追加', newShotName: '新規カット {n}',
     scMood: '表現', scStatus: 'ステータス', scScene: 'シーン',
     stPending: '計画中', stRefined: '計画完了', stDone: '計画完了', stError: '生成エラー',
+    stIdeating: '構想中', stExploring: '探索中', stSelected: '選定済み', stCompleted: '完了',
     scPrioHigh: '必撮', scPrioMid: '希望', scPrioLow: '任意',
     overview: 'プロジェクト概要', theme: '撮影テーマ', themePlaceholder: 'テーマを入力',
     shootDate: '撮影日', shootDatePlaceholder: '例：2026/08/15',

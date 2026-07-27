@@ -283,6 +283,11 @@ def get_project(project_id: str) -> dict:
                 shot.setdefault("character_id", primary_id)   # legacy shots → primary
                 shot.setdefault("priority", "mid")
                 shot.setdefault("essential", True)
+                # lifecycle helpers for the workspace card status (构思/探索/选定/完成)
+                shot["version_count"] = len(shot.get("versions") or [])
+                gdir = shot_dir / "guides"
+                shot["guides_done"] = all((gdir / f"{t}.json").exists()
+                                          for t in ("action", "expression", "camera", "background"))
                 shots.append(shot)
 
     return {

@@ -1857,15 +1857,15 @@ const shotNum = (shot: any) => shots.value.findIndex(s => s.shot_id === shot.sho
 
 const _groupKey = (s: any): string =>
   groupMode.value === 'scene'    ? (s.scene || '—')
-  : groupMode.value === 'status'   ? (s.status || 'pending')
+  : groupMode.value === 'status'   ? shotPhase(s)
   : /* priority */                   (s.priority || 'mid')
 const _groupLabel = (key: string): string =>
-  groupMode.value === 'status'   ? shotStatusMeta({ status: key }).label
+  groupMode.value === 'status'   ? phaseLabel(key)
   : groupMode.value === 'priority' ? shotPrioLabel(key)
   : key
 // canonical order for status/priority groups
 const _GROUP_ORDER: Record<string, string[]> = {
-  status:   ['pending', 'refined', 'done', 'error'],
+  status:   ['ideating', 'exploring', 'selected', 'completed', 'error'],
   priority: ['high', 'mid', 'low'],
 }
 const shotGroups = computed(() => {
@@ -1915,17 +1915,30 @@ async function removeShot(shotId: string) {
 }
 
 // ── Shot card: status dot + priority pill + ⋯ menu ───────────────────────────
-const shotStatusMeta = (s: any) => {
+// The shot's lifecycle phase, derived from real data (the outward-facing status):
+//   构思中 — interviewing, no image yet
+//   探索中 — has generated image(s), trying variations, not yet selected
+//   已选定 — a final version chosen, shooting info not yet extracted
+//   已完成 — final chosen AND all 4 guides generated
+function shotPhase(s: any): string {
   const st = s.status || 'pending'
-  const map: Record<string, { cls: string; key: string }> = {
-    pending:  { cls: 'st-pending', key: 'stPending' },
-    refined:  { cls: 'st-refined', key: 'stRefined' },
-    done:     { cls: 'st-done',    key: 'stDone' },
-    error:    { cls: 'st-error',   key: 'stError' },
-  }
-  const m = map[st] || map.pending
+  if (st === 'error') return 'error'
+  if (st === 'refined') return s.guides_done ? 'completed' : 'selected'
+  const hasImage = (s.version_count ?? 0) > 0 || !!s.image_url
+  return hasImage ? 'exploring' : 'ideating'
+}
+const PHASE_META: Record<string, { cls: string; key: string }> = {
+  ideating:  { cls: 'st-pending', key: 'stIdeating' },
+  exploring: { cls: 'st-explore', key: 'stExploring' },
+  selected:  { cls: 'st-refined', key: 'stSelected' },
+  completed: { cls: 'st-done',    key: 'stCompleted' },
+  error:     { cls: 'st-error',   key: 'stError' },
+}
+const shotStatusMeta = (s: any) => {
+  const m = PHASE_META[shotPhase(s)] || PHASE_META.ideating
   return { cls: m.cls, label: t(`projectCanvas.${m.key}`) }
 }
+const phaseLabel = (key: string) => t(`projectCanvas.${(PHASE_META[key] || PHASE_META.ideating).key}`)
 const shotPrioLabel = (p?: string) =>
   p === 'high' ? t('projectCanvas.scPrioHigh') : p === 'low' ? t('projectCanvas.scPrioLow') : t('projectCanvas.scPrioMid')
 
@@ -2295,11 +2308,13 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sc-status { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; }
 .sc-dot { width: 6px; height: 6px; border-radius: 50%; }
-.sc-status.st-pending { color: var(--accent); }
+.sc-status.st-pending { color: var(--accent); }           /* 构思中 */
 .sc-status.st-pending .sc-dot { background: var(--accent); }
-.sc-status.st-refined { color: var(--badge-done-text); }
-.sc-status.st-refined .sc-dot { background: var(--badge-done-text); }
-.sc-status.st-done { color: var(--badge-done-text); }
+.sc-status.st-explore { color: #c98a2e; }                  /* 探索中 */
+.sc-status.st-explore .sc-dot { background: #c98a2e; }
+.sc-status.st-refined { color: #3b82c4; }                  /* 已选定 */
+.sc-status.st-refined .sc-dot { background: #3b82c4; }
+.sc-status.st-done { color: var(--badge-done-text); }      /* 已完成 */
 .sc-status.st-done .sc-dot { background: var(--badge-done-text); }
 .sc-status.st-error { color: var(--error); }
 .sc-status.st-error .sc-dot { background: var(--error); }

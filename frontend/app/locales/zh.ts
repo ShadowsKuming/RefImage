@@ -95,6 +95,7 @@ const zh = {
     addShot: '新增拍摄', newShotName: '新分镜 {n}',
     scMood: '表现', scStatus: '状态', scScene: '场景',
     stPending: '计划中', stRefined: '完成计划', stDone: '完成计划', stError: '生成出错',
+    stIdeating: '构思中', stExploring: '探索中', stSelected: '已选定', stCompleted: '已完成',
     scPrioHigh: '必拍', scPrioMid: '想拍', scPrioLow: '可选',
     overview: '项目概览', theme: '拍摄主题', themePlaceholder: '填写拍摄主题',
     shootDate: '拍摄日期', shootDatePlaceholder: '如 2026/08/15',

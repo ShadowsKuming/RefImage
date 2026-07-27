@@ -97,6 +97,7 @@ export default {
     addShot: 'New Shot', newShotName: 'Shot {n}',
     scMood: 'Expression', scStatus: 'Status', scScene: 'Scene',
     stPending: 'Planning', stRefined: 'Planned', stDone: 'Planned', stError: 'Error',
+    stIdeating: 'Ideating', stExploring: 'Exploring', stSelected: 'Selected', stCompleted: 'Completed',
     scPrioHigh: 'Must', scPrioMid: 'Want', scPrioLow: 'Optional',
     overview: 'Overview', theme: 'Theme', themePlaceholder: 'Enter a theme',
     shootDate: 'Date', shootDatePlaceholder: 'e.g. 2026/08/15',
