@@ -101,3 +101,26 @@ def translate_fields_to_en_ja(fields_zh: dict) -> dict:
         return {"en": en, "ja": ja}
     except Exception:
         return {"en": dict(to_translate), "ja": dict(to_translate)}
+
+
+_ZH2EN_PROMPT_SYSTEM = (
+    "你把简短的中文拍摄描述（姿势/表情/氛围）翻译成自然的英文图像提示词短语。"
+    "只翻译，不加解释，保持简短。返回 JSON：字段名不变，值为英文。"
+)
+
+
+def translate_texts_to_en(texts: dict) -> dict:
+    """Generic short zh→en for image-prompt phrases (custom pose/expr/mood the user
+    typed). Returns { field: english }, falling back to the original on failure."""
+    items = {k: str(v).strip() for k, v in texts.items() if str(v or "").strip()}
+    if not items:
+        return {}
+    body = "\n".join(f'  "{k}": "{v}"' for k, v in items.items())
+    user_msg = f"翻译成英文：\n{{\n{body}\n}}\n返回 JSON：{{\"field\": \"English\", ...}}"
+    try:
+        raw = call([{"role": "user", "content": user_msg}], _ZH2EN_PROMPT_SYSTEM, max_tokens=500)
+        s, e = raw.find("{"), raw.rfind("}") + 1
+        out = json.loads(raw if s == -1 else raw[s:e])
+        return {k: (out.get(k) or items[k]) for k in items}
+    except Exception:
+        return dict(items)

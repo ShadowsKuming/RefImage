@@ -68,8 +68,28 @@ def shot_chat(
             generate_service.generate_shot_image,
             project_id, shot_id, result["prompt_parts"],
             parent_version_ids or [],
+            result.get("params") or {},
         )
 
     return {"reply": result["reply"], "generating": result["generating"],
             "options": result.get("options", []),
             "stage": result.get("stage", "chat"), "camera": result.get("camera")}
+
+
+def refine_version(
+    project_id: str,
+    shot_id: str,
+    parent_version_id: str,
+    params: dict,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """Regenerate from the refine panel: same content as the parent version, new
+    visual params. Schedules generation as a background task (frontend polls),
+    branching a new version off parent_version_id."""
+    prompt_parts = generate_service.build_refine_parts(project_id, shot_id, parent_version_id, params)
+    background_tasks.add_task(
+        generate_service.generate_shot_image,
+        project_id, shot_id, prompt_parts,
+        [parent_version_id], params,
+    )
+    return {"generating": True}

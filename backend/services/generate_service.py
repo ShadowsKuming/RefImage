@@ -29,6 +29,7 @@ def generate_shot_image(
     shot_id: str,
     prompt_parts: dict,
     parent_version_ids: list[str] | None = None,
+    params: dict | None = None,
 ) -> None:
     """
     Generate a reference image for a shot and persist it as a new version node.
@@ -39,24 +40,31 @@ def generate_shot_image(
     Fixed fields (style, character) are read from project context here.
     Optional field ref_ids: list of r-node IDs whose processed assets are included.
 
+    params — the structured semantic settings behind this image (景别/冷暖…), stored
+    on the version so the refine panel opens pre-filled. The version also keeps its
+    full prose (prompt_parts) so a later refine can reuse this content.
+
     parent_version_ids records which version(s) the user was viewing when they
     requested this generation (for DAG lineage tracking).
     """
     project_service.update_shot_status(project_id, shot_id, "generating")
     try:
         ref_ids = prompt_parts.pop("ref_ids", None) or []
+        content_parts = dict(prompt_parts)  # prose kept for future refines (pre-assembly)
         extra_ref_images, extra_ref_texts = _collect_ref_assets(project_id, shot_id, ref_ids)
 
         full_parts = _assemble_prompt_parts(project_id, prompt_parts, extra_ref_texts)
         image_bytes = image_gen.generate(project_id, full_parts, extra_images=extra_ref_images)
 
         version_id = uuid.uuid4().hex[:8]
-        prompt_summary = prompt_parts.get("atmosphere") or prompt_parts.get("pose") or ""
+        prompt_summary = content_parts.get("atmosphere") or content_parts.get("pose") or ""
         project_service.add_version(
             project_id, shot_id, version_id,
             parent_version_ids or [],
             prompt_summary,
             image_bytes,
+            params=params or {},
+            prompt_parts=content_parts,
         )
 
         image_url = f"/projects/{project_id}/shots/{shot_id}/image"
@@ -170,3 +178,37 @@ def _assemble_prompt_parts(project_id: str, variable_parts: dict, extra_texts: d
         if text.strip():
             parts[field] = (parts.get(field, "") + "\n" + text.strip()).strip()
     return parts
+
+
+def build_refine_parts(project_id: str, shot_id: str, parent_version_id: str, params: dict) -> dict:
+    """Build prompt_parts for a refine: keep the parent version's CONTENT (scene),
+    override the VISUAL fields (atmosphere/pose/composition/orientation) from the
+    panel's structured params. Custom zh pose/expr/mood text is translated to en."""
+    from services import shot_params
+    from tools.translate import translate_texts_to_en
+
+    shot_file = STORAGE_ROOT / project_id / "shots" / shot_id / "shot.json"
+    shot = json.loads(shot_file.read_text())
+    parent = next((v for v in shot.get("versions", []) if v["id"] == parent_version_id), None)
+    if parent is None:
+        raise FileNotFoundError(f"version {parent_version_id!r} not found")
+    scene = (parent.get("prompt_parts") or {}).get("scene", "")
+
+    # translate any custom (non-preset) zh text the user typed for pose/expr/mood
+    p = dict(shot_params.normalize(params))
+    custom = {}
+    for k in ("pose", "expr", "mood"):
+        v = str(p.get(k) or "")
+        if v and v not in shot_params.PARAM_SCHEMA[k]["values"] and any("一" <= c <= "鿿" for c in v):
+            custom[k] = v
+    if custom:
+        p.update(translate_texts_to_en(custom))
+
+    v = shot_params.translate_params(p)
+    return {
+        "scene":       scene,
+        "atmosphere":  v["atmosphere"],
+        "pose":        v["pose"],
+        "composition": v["composition"],
+        "orientation": v["orientation"],
+    }

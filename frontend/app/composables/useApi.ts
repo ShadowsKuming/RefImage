@@ -314,7 +314,15 @@ export const useApi = () => {
   function listVersions(projectId: string, shotId: string) {
     return api<Array<{
       id: string; parent_ids: string[]; prompt: string; created_at: string; image_url: string | null
+      params?: Record<string, string>
     }>>(`/projects/${projectId}/shots/${shotId}/versions`)
+  }
+
+  function refineVersion(projectId: string, shotId: string, versionId: string, params: Record<string, string>) {
+    return api<{ generating: boolean }>(
+      `/projects/${projectId}/shots/${shotId}/versions/${versionId}/refine`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ params }) },
+    )
   }
 
   function deleteVersion(projectId: string, shotId: string, versionId: string) {
@@ -453,6 +461,7 @@ export const useApi = () => {
     updateShotTitle,
     shotChat,
     listVersions,
+    refineVersion,
     deleteVersion,
     activateVersion,
     getShot,

@@ -473,8 +473,16 @@ def add_version(
     parent_ids: list[str],
     prompt: str,
     image_bytes: bytes,
+    params: dict | None = None,
+    prompt_parts: dict | None = None,
 ) -> dict:
-    """Persist a new version image and update shot.json. Auto-activates the new version."""
+    """Persist a new version image and update shot.json. Auto-activates the new version.
+
+    params — structured semantic settings (景别/冷暖…) so the refine panel opens
+             pre-filled on this version's actual values.
+    prompt_parts — the full prose sent to image_gen (scene/atmosphere/pose/…), kept
+             so a refine can reuse this version's CONTENT and only override visuals.
+    """
     shot_dir = STORAGE_ROOT / project_id / "shots" / shot_id
     if not shot_dir.exists():
         raise FileNotFoundError(f"Shot {shot_id!r} not found")
@@ -489,6 +497,8 @@ def add_version(
         "id":         version_id,
         "parent_ids": parent_ids,
         "prompt":     prompt,
+        "params":       params or {},
+        "prompt_parts": prompt_parts or {},
         "created_at": datetime.utcnow().isoformat() + "Z",
     }
     shot.setdefault("versions", []).append(entry)

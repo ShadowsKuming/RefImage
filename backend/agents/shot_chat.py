@@ -247,6 +247,22 @@ TOOLS = [
                         "加进生成输入，文字类型（lighting/expression）注入对应字段。"
                     ),
                 },
+                "params": {
+                    "type": "object",
+                    "description": (
+                        "本张图对应的结构化参数（供生成后调整面板预填）。按对话里已确定的填，"
+                        "拿不准的留空、系统会补默认值。只用下列中文值：\n"
+                        "shot 景别: 特写/近景/半身/全身/远景；angle 机位: 俯视/平视/仰视；"
+                        "facing 朝向: 正面/侧前/侧面/背面；aspect 画幅: 竖图/横图/方图；"
+                        "pos 人物位置: 靠左/居中/靠右；scale 主体大小: 占满/适中/留白多；"
+                        "bg 背景: 清晰/适中/虚化；expr 表情(可自定义)；gaze 视线: 看镜头/看别处/低垂；"
+                        "pose 姿势(自定义文字)；temp 冷暖: 冷/偏冷/中性/偏暖/暖；mood 氛围(可自定义)。"
+                    ),
+                    "properties": {
+                        k: {"type": "string"} for k in
+                        ("shot", "angle", "facing", "aspect", "pos", "scale", "bg", "expr", "gaze", "pose", "temp", "mood")
+                    },
+                },
             },
             "required": ["atmosphere", "scene", "pose", "composition", "orientation"],
         },
@@ -421,6 +437,8 @@ def chat(
             **({"orientation": inp["orientation"]} if inp.get("orientation") else {}),
             **({"ref_ids":     inp["ref_ids"]}     if inp.get("ref_ids")     else {}),
         }
+        from services.shot_params import normalize as _norm_params
+        captured["params"] = _norm_params(inp.get("params") or {})
         return "生成指令已收到，正在生成参考例图，请在回复中告知用户稍等片刻。"
 
     def _execute_classify_ref(inp: dict) -> str:
@@ -472,5 +490,6 @@ def chat(
         "camera":       camera,
         "generating":   generating,
         "prompt_parts": captured.get("prompt_parts"),
+        "params":       captured.get("params"),
         "classify_ref": captured.get("classify_ref"),
     }

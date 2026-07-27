@@ -184,11 +184,19 @@
                   </template>
                 </div>
 
-                <!-- Crop button (normal mode only) -->
+                <!-- Toolbar below the image: crop + adjust-params -->
                 <template v-if="editMode !== 'crop'">
-                  <button class="crop-btn" @click.stop="toggleRatioPanel" :class="{ active: showRatioPanel }">
+                  <button class="crop-btn" @click.stop="toggleRatioPanel" :class="{ active: showRatioPanel }"
+                          :style="!isRefined ? { transform: 'translateX(calc(-50% - 19px))' } : undefined" title="裁剪">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                       <path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>
+                    </svg>
+                  </button>
+                  <button v-if="!isRefined" class="crop-btn tune-btn"
+                          :class="{ active: refinePanel?.versionId === node.id }"
+                          title="调参数，生成新版本" @click.stop="openRefinePanel(node)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                      <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>
                     </svg>
                   </button>
                   <div v-if="showRatioPanel" class="ratio-panel" @click.stop @mousedown.stop>
@@ -344,11 +352,13 @@
         </div>
       </div>
 
-      <!-- Resizer: canvas | right -->
-      <div class="resizer" @mousedown.prevent="startResize2('right', $event)" />
+      <!-- Resizer: canvas | right — only when guides are shown (after 完善) -->
+      <div v-if="isRefined" class="resizer" @mousedown.prevent="startResize2('right', $event)" />
 
-      <!-- ── Right: Guide detail panel ── -->
-      <div class="detail-col" :style="{ width: rightWidth + 'px' }">
+      <!-- ── Right: Guide detail panel ──
+           Hidden during exploration: the shot's only job then is landing a
+           satisfying example image. Guides appear only after 选定/完善 (refined). -->
+      <div v-if="isRefined" class="detail-col" :style="{ width: rightWidth + 'px' }">
         <div class="col-header">拍摄指南</div>
 
         <div class="hs-tabs">
@@ -380,6 +390,54 @@
             <ExpressionGuide v-if="activeHs!.guideType === 'expression'" :guide="guide" :color="activeHs!.color" />
             <CameraGuide     v-if="activeHs!.guideType === 'camera'"     :guide="guide" :color="activeHs!.color" />
           </div>
+        </div>
+      </div>
+
+      <!-- ── Right: Refine panel (click a version → adjust params → new branch) ── -->
+      <div v-if="refinePanel && !generating" class="detail-col refine-col">
+        <div class="col-header refine-head">
+          调整这一版
+          <button class="refine-close" @click="refinePanel = null" title="关闭">×</button>
+        </div>
+        <div class="refine-body">
+          <div v-for="g in REFINE_GROUPS" :key="g.title" class="rf-grp">
+            <div class="rf-grp-title">{{ g.title }}</div>
+            <div v-for="c in g.ctrls" :key="c.key" class="rf-ctrl"
+                 :class="{ changed: (refinePanel.params[c.key]||'') !== (refinePanel.base[c.key]||'') }">
+              <div class="rf-label"><span class="rf-dot" />{{ c.label }}</div>
+
+              <input v-if="c.type === 'text'" class="rf-text"
+                     :value="refinePanel.params[c.key]" :placeholder="c.placeholder"
+                     @input="setRefine(c.key, ($event.target as HTMLInputElement).value)" />
+
+              <div v-else-if="c.type === 'swatch'" class="rf-swatches">
+                <div v-for="s in TEMP_SWATCHES" :key="s.v" class="rf-sw"
+                     :class="{ on: refinePanel.params[c.key] === s.v }"
+                     :style="{ background: s.c }" :title="s.v" @click="setRefine(c.key, s.v)" />
+              </div>
+
+              <div v-else-if="c.type === 'segcustom'" class="rf-seg">
+                <button v-for="o in c.opts" :key="o" class="rf-btn"
+                        :class="{ on: refinePanel.params[c.key] === o }"
+                        @click="setRefine(c.key, o); moodCustomOpen = false">{{ o }}</button>
+                <button class="rf-btn" :class="{ on: moodCustomOpen }" @click="moodCustomOpen = !moodCustomOpen">✏️ 自定义</button>
+                <input v-if="moodCustomOpen" class="rf-text" style="margin-top:6px" placeholder="自己描述氛围…"
+                       :value="refinePanel.params[c.key]" @input="setRefine(c.key, ($event.target as HTMLInputElement).value)" />
+              </div>
+
+              <div v-else class="rf-seg">
+                <button v-for="o in c.opts" :key="o" class="rf-btn"
+                        :class="{ on: refinePanel.params[c.key] === o }"
+                        @click="setRefine(c.key, o)">{{ o }}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="refine-foot">
+          <span class="rf-count">{{ refineChangeCount === 0 ? '未改动' : `已改 ${refineChangeCount} 处` }}</span>
+          <button class="rf-gen" :disabled="refineChangeCount === 0" @click="generateRefine">
+            {{ refineChangeCount === 0 ? '生成新版本' : `生成新版本 · ${refineChangeCount} 处 →` }}
+          </button>
         </div>
       </div>
 
@@ -515,6 +573,7 @@ const COL_GAP = 100, ROW_GAP = 36
 
 interface VersionNode {
   id: string; parent_ids: string[]; prompt: string; created_at: string; image_url: string | null
+  params?: Record<string, string>
 }
 interface LayoutNode extends VersionNode {
   index: number; x: number; y: number; w: number; h: number; imageUrl: string | null
@@ -1348,6 +1407,70 @@ function generateFromPanel() {
   sendChat()
 }
 
+// ── Refine panel (click a version → adjust its params → new branch) ──
+// Mirrors backend PARAM_SCHEMA. type: seg (default) | swatch | text | segcustom
+const REFINE_GROUPS = [
+  { title: '镜头', ctrls: [
+    { key: 'shot',   label: '景别', opts: ['特写','近景','半身','全身','远景'] },
+    { key: 'angle',  label: '机位', opts: ['俯视','平视','仰视'] },
+    { key: 'facing', label: '朝向', opts: ['正面','侧前','侧面','背面'] },
+    { key: 'aspect', label: '画幅', opts: ['竖图','横图','方图'] },
+  ]},
+  { title: '构图', ctrls: [
+    { key: 'pos',   label: '人物位置', opts: ['靠左','居中','靠右'] },
+    { key: 'scale', label: '主体大小', opts: ['占满','适中','留白多'] },
+    { key: 'bg',    label: '背景', opts: ['清晰','适中','虚化'] },
+  ]},
+  { title: '人物', ctrls: [
+    { key: 'expr', label: '表情', opts: ['害羞','微笑','认真','失落','俏皮'] },
+    { key: 'gaze', label: '视线', opts: ['看镜头','看别处','低垂'] },
+    { key: 'pose', label: '姿势', type: 'text', placeholder: '自己描述姿势…（如：双手托腮）' },
+  ]},
+  { title: '色调 · 氛围', ctrls: [
+    { key: 'temp', label: '冷暖', type: 'swatch' },
+    { key: 'mood', label: '氛围', type: 'segcustom', opts: ['平淡','适中','戏剧化','温暖治愈','孤独疏离'] },
+  ]},
+] as const
+const TEMP_SWATCHES = [
+  { v: '冷', c: '#5b8bd0' }, { v: '偏冷', c: '#8fb3d9' }, { v: '中性', c: '#cfc8c2' },
+  { v: '偏暖', c: '#e0a878' }, { v: '暖', c: '#d4823f' },
+]
+const REFINE_DEFAULTS: Record<string, string> = {
+  shot: '半身', angle: '平视', facing: '侧前', aspect: '竖图', pos: '居中', scale: '适中',
+  bg: '适中', expr: '害羞', gaze: '看别处', pose: '', temp: '中性', mood: '适中',
+}
+
+const refinePanel = ref<{ versionId: string; base: Record<string,string>; params: Record<string,string> } | null>(null)
+const moodCustomOpen = ref(false)
+
+function openRefinePanel(node: LayoutNode) {
+  const src = node.params || {}
+  const params: Record<string,string> = {}
+  for (const k of Object.keys(REFINE_DEFAULTS)) params[k] = src[k] || REFINE_DEFAULTS[k]
+  refinePanel.value = { versionId: node.id, base: { ...params }, params }
+  moodCustomOpen.value = !['平淡','适中','戏剧化','温暖治愈','孤独疏离'].includes(params.mood)
+}
+function setRefine(key: string, val: string) {
+  if (refinePanel.value) refinePanel.value.params[key] = val
+}
+const refineChangeCount = computed(() => {
+  const rp = refinePanel.value
+  if (!rp) return 0
+  return Object.keys(REFINE_DEFAULTS).filter(k => (rp.params[k] || '') !== (rp.base[k] || '')).length
+})
+async function generateRefine() {
+  const rp = refinePanel.value
+  if (!rp || refineChangeCount.value === 0 || generating.value) return
+  const { versionId, params } = rp
+  refinePanel.value = null
+  try {
+    const { generating: gen } = await api.refineVersion(projectId.value, shotId.value, versionId, params)
+    if (gen) { generating.value = true; pollUntilDone() }
+  } catch {
+    aiMessages.value.push({ role: 'agent', text: '调整生成失败，请重试。' })
+  }
+}
+
 async function kickoff() {
   if (chatLoading.value) return
   chatLoading.value = true
@@ -1554,7 +1677,7 @@ onUnmounted(() => {
 
 /* Active badge */
 .card-active-badge {
-  position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+  position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%);
   background: color-mix(in srgb, var(--accent) 90%, black);
   color: white; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 20px;
   pointer-events: none; white-space: nowrap; z-index: 5;
@@ -1687,6 +1810,41 @@ onUnmounted(() => {
 .cam-gen { margin-top: 2px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 12px; font-weight: 600; padding: 8px; cursor: pointer; font-family: inherit; transition: opacity .12s; }
 .cam-gen:hover:not(:disabled) { opacity: .9; }
 .cam-gen:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Adjust-params button — icon button beside crop, below the image */
+.crop-btn.tune-btn { transform: translateX(calc(-50% + 19px)); }
+.crop-btn.tune-btn svg { width: 100%; height: 100%; }
+
+/* Refine panel (right column) */
+.refine-col { width: 300px; }
+.refine-head { display: flex; align-items: center; justify-content: space-between; }
+.refine-close { background: none; border: none; color: var(--text-sub); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.refine-close:hover { color: var(--accent); }
+.refine-body { flex: 1; overflow-y: auto; padding: 4px 14px 8px; }
+.rf-grp { padding: 10px 0 2px; border-bottom: 1px solid var(--border); }
+.rf-grp:last-child { border-bottom: none; }
+.rf-grp-title { font-size: 10.5px; font-weight: 700; letter-spacing: .5px; color: var(--accent); text-transform: uppercase; margin: 0 0 7px; }
+.rf-ctrl { margin-bottom: 10px; }
+.rf-label { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-sub); margin-bottom: 5px; }
+.rf-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); opacity: 0; transition: opacity .15s; }
+.rf-ctrl.changed .rf-dot { opacity: 1; }
+.rf-ctrl.changed .rf-label { color: var(--accent); font-weight: 600; }
+.rf-seg { display: flex; flex-wrap: wrap; gap: 5px; }
+.rf-btn { border: 1px solid var(--border-md); background: var(--bg); color: var(--text-hi); border-radius: 6px; padding: 4px 9px; font-size: 11px; cursor: pointer; font-family: inherit; transition: all .12s; }
+.rf-btn:hover { border-color: var(--accent); color: var(--accent); }
+.rf-btn.on { background: var(--accent-dim); border-color: var(--accent); color: #fff; font-weight: 600; }
+.rf-text { width: 100%; border: 1px solid var(--border-md); background: var(--bg); color: var(--text-hi); border-radius: 6px; padding: 6px 9px; font-size: 11px; font-family: inherit; outline: none; }
+.rf-text:focus { border-color: var(--accent); }
+.rf-text::placeholder { color: var(--text-ghost); }
+.rf-swatches { display: flex; gap: 5px; }
+.rf-sw { width: 30px; height: 22px; border-radius: 6px; cursor: pointer; border: 2px solid transparent; transition: transform .1s, border-color .12s; }
+.rf-sw:hover { transform: translateY(-1px); }
+.rf-sw.on { border-color: var(--text-hi); }
+.refine-foot { border-top: 1px solid var(--border); padding: 10px 14px; display: flex; flex-direction: column; gap: 7px; }
+.rf-count { font-size: 11px; color: var(--text-sub); }
+.rf-gen { background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 12px; font-weight: 600; padding: 9px; cursor: pointer; font-family: inherit; transition: opacity .12s; }
+.rf-gen:hover:not(:disabled) { opacity: .9; }
+.rf-gen:disabled { opacity: .45; cursor: not-allowed; }
 
 .selection-hint { margin: 0 14px 4px; padding: 5px 10px; background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 6px; font-size: 11px; color: var(--accent); text-align: center; flex-shrink: 0; }
 

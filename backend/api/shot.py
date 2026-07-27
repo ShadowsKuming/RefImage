@@ -41,6 +41,10 @@ class ChatRequest(BaseModel):
     selected_ref_ids: list[str] = []
 
 
+class RefineRequest(BaseModel):
+    params: dict = {}
+
+
 class CreateShotRequest(BaseModel):
     title: str
     mood: str = ""
@@ -229,6 +233,24 @@ def shot_chat(
     return {"reply": result["reply"], "generating": result["generating"],
             "options": result.get("options", []),
             "stage": result.get("stage", "chat"), "camera": result.get("camera")}
+
+
+@router.post("/{project_id}/shots/{shot_id}/versions/{version_id}/refine")
+def refine_version(
+    project_id: str,
+    shot_id: str,
+    version_id: str,
+    req: RefineRequest,
+    background_tasks: BackgroundTasks,
+    user_id: str = Depends(get_current_user),
+):
+    """Refine panel → regenerate: same content as this version, new visual params,
+    branched as a new version. Returns immediately; frontend polls for the result."""
+    _check_owner(project_id, user_id)
+    try:
+        return shot_service.refine_version(project_id, shot_id, version_id, req.params, background_tasks)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Shot or version not found")
 
 
 # ── Version tree ──────────────────────────────────────────────
