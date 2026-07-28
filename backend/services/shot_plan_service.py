@@ -41,12 +41,14 @@ def load_plan(project_id: str, shot_id: str) -> dict | None:
 _EDITABLE_PATHS = {
     # dotted path in plan.json → the value must be a string
     "overview.synopsis", "overview.goal",
+    # overview.constraints / overview.tags are lists (in _EDITABLE_LISTS below)
     "logistics.scene.place", "logistics.timing.best_time", "logistics.timing.weather",
     "logistics.crew.support",
     "technique.expression", "technique.composition", "technique.lighting",
 }
 _EDITABLE_LISTS = {
     # dotted path → the value is a list[str] (whole-list replace)
+    "overview.constraints", "overview.tags",
     "logistics.equipment",
     "logistics.props.character",
     "technique.pose_tips", "technique.risks",
@@ -102,7 +104,16 @@ _TOOL = {
     "description": "提交这张 shot 的拍摄方案（三大类）。",
     "input_schema": {"type": "object", "properties": {
         "synopsis":   {"type": "string", "description": "一句话内容梗概：这张在拍什么瞬间"},
-        "goal":       {"type": "string", "description": "拍摄目标/定位，如 主视觉 / 氛围补充 / 关系刻画"},
+        "goal":       {"type": "string", "description": (
+            "摄影目标：一两句【具体、面向摄影师】的话，说清这张要达成什么、观众先看到什么再感受到什么。"
+            "反例（禁止，太抽象像论文摘要）：『角色气质与内心情绪氛围补充』。"
+            "正例：『突出澪在人群之外短暂安静下来的瞬间，让观众先注意到人物，随后感受到夕阳和校园带来的治愈氛围』。")},
+        "constraints": {"type": "array", "items": {"type": "string"}, "description": (
+            "硬性限制（必须/不能/最好…），会影响排期与执行，跟风险不同——这是硬要求不是提醒。"
+            "如 必须有窗光 / 不能逆光 / 必须有贝斯出镜 / 最好没有路人经过。没有就空数组")},
+        "tags":       {"type": "array", "items": {"type": "string"}, "description": (
+            "3-6 个搜索标签，供项目里检索/筛选这张 shot，用简短词。"
+            "如 校园、夕阳、单人、治愈、日常、贝斯、室内。覆盖 场景/时段/人数/氛围/关键道具/室内外")},
         "scene_place":     {"type": "string", "description": "拍摄场景，如 轻音部部室（教室内景）"},
         "indoor_outdoor":  {"type": "string", "enum": ["室内", "室外", "均可"]},
         "matched_location": {"type": "string",
@@ -176,6 +187,9 @@ def extract_plan(project_id: str, shot_id: str) -> dict:
         "- 场景要判断室内/室外，并给真实可去/可租的取景地建议。\n"
         "- 布光是真实拍摄怎么打光的指令（光源方向/软硬/补光），跟色调（冷暖氛围）分开，别混。\n"
         "- 风险提示写这张实际拍摄要注意的点。\n"
+        "- 目标要具体、面向摄影师（观众先看什么再感受什么），别写抽象术语。\n"
+        "- 限制(constraints)是硬要求（必须/不能/最好），跟风险区分开。\n"
+        "- 标签(tags)给几个简短检索词，覆盖场景/时段/人数/氛围/道具/室内外。\n"
         "整理完调用 submit_shot_plan。\n\n"
         f"{ctx}"
     )
@@ -205,9 +219,11 @@ def extract_plan(project_id: str, shot_id: str) -> dict:
 
     plan = {
         "overview": {
-            "synopsis": result.get("synopsis", ""),
-            "goal":     result.get("goal", ""),
-            "priority": shot.get("priority", "mid"),   # known
+            "synopsis":    result.get("synopsis", ""),
+            "goal":        result.get("goal", ""),
+            "constraints": result.get("constraints", []),   # hard rules → drive planning
+            "tags":        result.get("tags", []),          # searchable atoms → workspace index
+            "priority":    shot.get("priority", "mid"),      # known
         },
         "logistics": {
             "scene":       {"place": result.get("scene_place", ""),

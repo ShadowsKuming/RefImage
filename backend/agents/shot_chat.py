@@ -54,7 +54,7 @@ def _canon_brief(project: dict) -> str:
 # reaches it, the frontend renders a compact camera panel (景别/画幅/机位 buttons
 # with the current pick highlighted) instead of chat chips, and tapping a control
 # is local state — no LLM call, no paragraph per click. Only 生成 hits the backend.
-_SHOTS  = ("特写", "近景", "半身", "全身")
+_SHOTS  = ("特写", "近景", "半身", "全身", "远景")
 _ANGLES = ("平视", "俯视", "仰视")
 _FRAMING_CONCRETE = _SHOTS + ("竖图", "横图", "竖版", "横版")
 _FRAMING_ABSTRACT = ("景别", "机位", "画幅", "镜头", "构图")
