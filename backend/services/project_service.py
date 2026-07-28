@@ -424,6 +424,16 @@ def get_handbook(project_id: str) -> dict:
     costumes = [c.get("name", "") for c in (wardrobe.get("costumes") or wardrobe.get("outfits") or []) if c.get("name")]
     palette = (palette_hex + palette_named) or _DEFAULT_PALETTE
 
+    # 拍摄日程：暂用项目级 planData.schedule（后续换成按场地/时长的 shot 聚合）
+    id_to_label = {s.get("shot_id"): f"S{i + 1:02d}" for i, s in enumerate(shots)}
+    schedule = []
+    for row in (plan_data.get("schedule") or []):
+        labels = [id_to_label.get(x, x) for x in (row.get("shot_ids") or [])]
+        shots_lbl = f"{labels[0]}–{labels[-1]}" if len(labels) > 1 else (labels[0] if labels else "")
+        schedule.append({"time": row.get("time", ""), "scene": row.get("scene", ""),
+                         "shots": shots_lbl, "content": row.get("content", ""),
+                         "duration": row.get("duration", "")})
+
     return {
         "project": {
             "title": f"{char_name}｜{theme}" if (char_name and theme) else (theme or char_name),
@@ -444,6 +454,7 @@ def get_handbook(project_id: str) -> dict:
         },
         "palette": palette[:6],
         "mood_images": mood_images[:6],
+        "schedule": schedule,
         "prep": {
             "costumes": costumes,
             "props": props_all,

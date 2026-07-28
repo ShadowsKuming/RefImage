@@ -38,9 +38,28 @@
         </div>
       </div></div>
 
-      <!-- 02 准备清单 -->
-      <div v-if="hasPrep" class="hb-page"><div class="doc">
-        <div class="doc-eyebrow">02 · {{ t('handbook.secPrep') }}</div>
+      <!-- 02 拍摄日程与准备清单 -->
+      <div v-if="hasPrep || data.schedule.length" class="hb-page"><div class="doc">
+        <div class="doc-eyebrow">02 · {{ t('handbook.secSchedulePrep') }}</div>
+        <div v-if="data.schedule.length" class="sched-block">
+          <div class="doc-h">{{ t('handbook.schedSuggested') }}</div>
+          <div class="sc-table">
+            <div class="sc-row sc-head">
+              <span class="sc-c sc-time">{{ t('handbook.colTime') }}</span>
+              <span class="sc-c sc-scene">{{ t('handbook.colScene') }}</span>
+              <span class="sc-c sc-shots">{{ t('handbook.colShots') }}</span>
+              <span class="sc-c sc-content">{{ t('handbook.colContent') }}</span>
+              <span class="sc-c sc-dur">{{ t('handbook.colDuration') }}</span>
+            </div>
+            <div v-for="(r, i) in data.schedule" :key="i" class="sc-row">
+              <span class="sc-c sc-time">{{ r.time || '—' }}</span>
+              <span class="sc-c sc-scene">{{ r.scene || '—' }}</span>
+              <span class="sc-c sc-shots">{{ r.shots || '—' }}</span>
+              <span class="sc-c sc-content">{{ r.content || '—' }}</span>
+              <span class="sc-c sc-dur">{{ r.duration || '—' }}</span>
+            </div>
+          </div>
+        </div>
         <div class="prep-cols">
           <div v-for="col in prepCols" :key="col.k" class="prep-col">
             <div class="prep-h">{{ col.k }}</div>
@@ -99,14 +118,14 @@ const { public: { apiBase: BASE_URL } } = useRuntimeConfig()
 const projectId = route.params.id as string
 const loading = ref(true)
 const data = ref<any>({
-  project: {}, summary: { tags: [] }, palette: [], mood_images: [],
+  project: {}, summary: { tags: [] }, palette: [], mood_images: [], schedule: [],
   prep: { costumes: [], props: [], equipment: [], locations: [] }, backups: [], pages: [],
 })
 
 const imgUrl = (u: string) => (u ? BASE_URL + u : '')
 const coverImg = computed(() => imgUrl(data.value.project.cover_url) || imgUrl(data.value.mood_images[0] || ''))
 const pageTotal = computed(() => data.value.pages.length +
-  1 /*cover*/ + (hasPrep.value ? 1 : 0) +
+  1 /*cover*/ + ((hasPrep.value || data.value.schedule.length) ? 1 : 0) +
   ((data.value.mood_images.length || data.value.palette.length) ? 1 : 0) +
   (data.value.backups.length ? 1 : 0))
 
@@ -190,6 +209,20 @@ onMounted(async () => {
 .cstat-v { font-size: .95em; color: #4a4350; }
 .kw-row { display: flex; flex-wrap: wrap; gap: .5em; }
 .kw { background: #efd6e5; color: #a2295c; border-radius: 999px; padding: .2em .8em; font-size: .8em; font-weight: 600; }
+
+/* schedule table */
+.sched-block { margin-bottom: 1em; }
+.sc-table { display: flex; flex-direction: column; border: 1px solid #e6c6da; border-radius: 6px; overflow: hidden; font-size: .9em; }
+.sc-row { display: flex; border-top: 1px solid #efdce8; }
+.sc-row:first-child { border-top: none; }
+.sc-head { background: #f3e3ee; font-weight: 700; color: #a2295c; }
+.sc-c { padding: .45em .7em; border-right: 1px solid #efdce8; }
+.sc-c:last-child { border-right: none; }
+.sc-time { flex: 0 0 18%; }
+.sc-scene { flex: 0 0 20%; }
+.sc-shots { flex: 0 0 16%; }
+.sc-content { flex: 1; }
+.sc-dur { flex: 0 0 16%; }
 
 /* prep checklist */
 .prep-cols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4%; flex: 1; }
