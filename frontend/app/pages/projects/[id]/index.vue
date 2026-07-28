@@ -1218,6 +1218,7 @@ const rollup = computed<{ locations: any[]; equipment: any[] }>(
   () => projectData.value?.logistics_rollup ?? { locations: [], equipment: [] })
 
 const plan = computed(() => {
+  const d = planData.value
   // 拍摄日程按场地聚合自 shots（source = shots），不再读项目级手填 schedule。
   const schedule = (projectData.value?.schedule_rollup ?? []).map((r: any): ScheduleRow => ({
     time: r.time ?? '', scene: r.scene ?? '', shotIds: r.shot_ids ?? [],
