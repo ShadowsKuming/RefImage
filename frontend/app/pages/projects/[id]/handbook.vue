@@ -5,13 +5,13 @@
       <button class="hb-back" @click="goBack"><span class="hb-chev">‹</span>{{ t('handbook.back') }}</button>
       <div class="hb-titlewrap">
         <span class="hb-title">{{ t('handbook.title') }}</span>
-        <span v-if="pageTotal" class="hb-count">{{ t('handbook.pageCount', { n: pageTotal }) }}</span>
+        <span v-if="hasPages" class="hb-count">{{ t('handbook.pageCount', { n: pageTotal }) }}</span>
       </div>
-      <button class="hb-print" :disabled="!pageTotal" @click="printNow"><Printer :size="16" /> {{ t('handbook.print') }}</button>
+      <button class="hb-print" :disabled="!hasPages" @click="printNow"><Printer :size="16" /> {{ t('handbook.print') }}</button>
     </div>
 
     <div v-if="loading" class="hb-state">{{ t('handbook.loading') }}</div>
-    <div v-else-if="!pageTotal" class="hb-state">{{ t('handbook.empty') }}</div>
+    <div v-else-if="!hasPages" class="hb-state">{{ t('handbook.empty') }}</div>
 
     <div v-else class="hb-pages">
       <!-- 01 封面与概览 -->
@@ -124,6 +124,10 @@ const data = ref<any>({
 
 const imgUrl = (u: string) => (u ? BASE_URL + u : '')
 const coverImg = computed(() => imgUrl(data.value.project.cover_url) || imgUrl(data.value.mood_images[0] || ''))
+// The handbook is the PDF of compiled shot sheets — without any compiled page
+// there's nothing to deliver, so that (not the always-present cover) gates the
+// empty/error state. A failed/empty fetch leaves pages empty → empty state.
+const hasPages = computed(() => data.value.pages.length > 0)
 const pageTotal = computed(() => data.value.pages.length +
   1 /*cover*/ + ((hasPrep.value || data.value.schedule.length) ? 1 : 0) +
   ((data.value.mood_images.length || data.value.palette.length) ? 1 : 0) +
