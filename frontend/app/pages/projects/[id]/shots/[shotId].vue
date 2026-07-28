@@ -351,43 +351,98 @@
            Hidden during exploration: the shot's only job then is landing a
            satisfying example image. Guides appear only after 选定/完善 (refined). -->
       <div v-if="isRefined" class="detail-col" :style="{ width: rightWidth + 'px' }">
-        <div class="col-header">拍摄指南</div>
+        <div class="col-header">拍摄方案</div>
 
-        <div class="stage3-banner">
-          <span class="s3-check">✓</span>
-          <span>已选为最终版本。点下面的标注点，整理这张的动作 / 表情 / 构图 / 背景信息。想换？顶部「继续调整」即可。</span>
-        </div>
+        <!-- Not yet extracted → prompt + extract button -->
+        <template v-if="!shotPlan">
+          <div class="stage3-banner">
+            <span class="s3-check">✓</span>
+            <span>已选为最终版本。整理这张的拍摄信息（场景 / 时间 / 道具 / 拍摄要点），供实际拍摄，并汇入项目计划。</span>
+          </div>
+          <button class="extract-btn" :disabled="extracting" @click="extractPlan">
+            <span v-if="extracting">整理中…（约 10 秒）</span>
+            <span v-else>📋 整理这张的拍摄信息</span>
+          </button>
+        </template>
 
-        <div class="hs-tabs">
-          <button
-            v-for="hs in hotspots"
-            :key="hs.id"
-            class="hs-tab"
-            :class="{ active: activeId === hs.id }"
-            :style="activeId === hs.id ? { color: hs.color, boxShadow: `inset 0 -2px 0 ${hs.color}` } : {}"
-            @click="clickHotspot(hs)"
-          >{{ hs.label }}</button>
-        </div>
+        <!-- Extracted → the shot plan, one class per tab (each can grow freely) -->
+        <template v-else>
+          <div class="hs-tabs">
+            <button v-for="tb in PLAN_TABS" :key="tb.key" class="hs-tab"
+                    :class="{ active: planTab === tb.key }"
+                    :style="planTab === tb.key ? { color: 'var(--accent)', boxShadow: 'inset 0 -2px 0 var(--accent)' } : {}"
+                    @click="planTab = tb.key">{{ tb.label }}</button>
+          </div>
 
-        <div class="detail-body">
-          <div v-if="layoutNodes.length === 0" class="detail-empty">
-            <span>先生成例图<br>再查看拍摄指南</span>
+          <div class="plan-body">
+            <!-- A. 相关信息 -->
+            <div v-if="planTab === 'overview'" class="plan-sec">
+              <div class="plan-line"><span class="pk">梗概</span><span class="pv"><EditableText :model-value="shotPlan.overview.synopsis" multiline placeholder="—" @save="saveField('overview.synopsis', $event)" /></span></div>
+              <div class="plan-line"><span class="pk">目标</span><span class="pv"><EditableText :model-value="shotPlan.overview.goal" placeholder="点击填写目标…" @save="saveField('overview.goal', $event)" /></span></div>
+              <div class="plan-line"><span class="pk">优先级</span><span class="pv"><span class="p-pill">{{ PRIO_LABEL[shotPlan.overview.priority] || '想拍' }}</span></span></div>
+            </div>
+
+            <!-- B. 拍摄物流（核心，汇入项目） -->
+            <div v-else-if="planTab === 'logistics'" class="plan-sec logi">
+              <div class="plan-line"><span class="pk">场景</span><span class="pv"><EditableText :model-value="shotPlan.logistics.scene.place" placeholder="—" @save="saveField('logistics.scene.place', $event)" /><span class="io">{{ shotPlan.logistics.scene.indoor_outdoor }}</span></span></div>
+              <!-- 取景地：项目共享，必选 -->
+              <div class="plan-line"><span class="pk">取景地</span>
+                <span class="pv" v-if="shotPlan.logistics.scene.location && !locPicking">
+                  <span class="pill loc-on">📍 {{ shotPlan.logistics.scene.location }}</span>
+                  <button class="loc-change" @click="locPicking = true">换</button>
+                </span>
+                <span class="pv" v-else>
+                  <div class="loc-hint">选一个取景地（同类镜头尽量复用同一个，方便排场地）</div>
+                  <span v-for="c in shotPlan.logistics.scene.candidates" :key="c" class="pill loc-pick" @click="pickLocation(c)">{{ c }}</span>
+                  <span class="loc-custom">
+                    <input v-model="locCustom" placeholder="或自己填一个…" @keydown.enter="pickLocation(locCustom)" />
+                    <button v-if="locCustom.trim()" @click="pickLocation(locCustom)">加</button>
+                  </span>
+                </span>
+              </div>
+              <div class="plan-line"><span class="pk">时间</span><span class="pv"><EditableText :model-value="shotPlan.logistics.timing.best_time" placeholder="—" @save="saveField('logistics.timing.best_time', $event)" /></span></div>
+              <div class="plan-line"><span class="pk">天气</span><span class="pv"><EditableText :model-value="shotPlan.logistics.timing.weather" placeholder="点击填写…" @save="saveField('logistics.timing.weather', $event)" /></span></div>
+
+              <!-- 参与者 -->
+              <div class="plan-sub">参与者</div>
+              <div class="plan-line"><span class="pk">coser</span><span class="pv">{{ shotPlan.logistics.crew.cosers.join('、') }} · {{ shotPlan.logistics.crew.cosers.length }} 人</span></div>
+              <div class="plan-line"><span class="pk">摄影</span><span class="pv">1 人</span></div>
+              <div class="plan-line"><span class="pk">后勤</span>
+                <span class="pv" v-if="!shotPlan.logistics.crew.support || shotPlan.logistics.crew.support === '不需要'">0 人</span>
+                <span class="pv help" v-else :title="shotPlan.logistics.crew.support">需后勤 <span class="q">?</span></span>
+              </div>
+
+              <!-- 物品 三类（可编辑） -->
+              <div class="plan-sub">物品</div>
+              <div class="plan-line"><span class="pk">角色道具</span><span class="pv"><EditableList :items="shotPlan.logistics.props.character || []" @change="saveField('logistics.props.character', $event)" /></span></div>
+              <div class="plan-line"><span class="pk">辅助道具</span><span class="pv"><template v-if="shotPlan.logistics.props.aux?.length"><span v-for="a in shotPlan.logistics.props.aux" :key="a.item" class="pill" :title="a.reason">{{ a.item }}</span></template><span v-else class="none">这张无需</span></span></div>
+              <div class="plan-line"><span class="pk">摄影设备</span><span class="pv"><EditableList :items="shotPlan.logistics.equipment || []" @change="saveField('logistics.equipment', $event)" /></span></div>
+            </div>
+
+            <!-- C. 拍摄要点 — 三块：模特 / 摄影 / 风险 -->
+            <div v-else class="plan-sec tech">
+              <div class="tech-block model">
+                <div class="tb-head"><span class="tb-ico">🎭</span>模特指引<span class="tb-for">给 coser</span></div>
+                <div class="plan-line"><span class="pk">表情</span><span class="pv"><EditableText :model-value="shotPlan.technique.expression" placeholder="—" @save="saveField('technique.expression', $event)" /></span></div>
+                <div class="plan-line"><span class="pk">视线</span><span class="pv">{{ shotPlan.technique.params.gaze }}</span></div>
+                <div class="plan-line"><span class="pk">姿势</span><span class="pv"><EditableList :items="shotPlan.technique.pose_tips || []" @change="saveField('technique.pose_tips', $event)" /></span></div>
+              </div>
+
+              <div class="tech-block photo">
+                <div class="tb-head"><span class="tb-ico">🎬</span>拍摄指引<span class="tb-for">给摄影</span></div>
+                <div class="plan-line snap"><span class="pk">镜头</span><span class="pv"><span v-for="(v,k) in { 景别: shotPlan.technique.params.shot, 机位: shotPlan.technique.params.angle, 画幅: shotPlan.technique.params.aspect, 朝向: shotPlan.technique.params.facing }" :key="k" class="chip">{{ k }} <b>{{ v }}</b></span></span></div>
+                <div class="plan-line"><span class="pk">构图</span><span class="pv"><EditableText :model-value="shotPlan.technique.composition" multiline placeholder="点击填写构图补充…" @save="saveField('technique.composition', $event)" /></span></div>
+                <div class="plan-line"><span class="pk">布光</span><span class="pv"><EditableText :model-value="shotPlan.technique.lighting" multiline placeholder="点击填写布光建议…" @save="saveField('technique.lighting', $event)" /></span></div>
+                <div class="plan-line snap"><span class="pk">色调</span><span class="pv"><span class="chip">冷暖 <b>{{ shotPlan.technique.params.temp }}</b></span><span class="chip">氛围 <b>{{ shotPlan.technique.params.mood }}</b></span></span></div>
+              </div>
+
+              <div class="tech-block risk-block">
+                <div class="tb-head"><span class="tb-ico">⚠</span>风险提示</div>
+                <div class="plan-line"><span class="pv"><EditableList :items="shotPlan.technique.risks || []" @change="saveField('technique.risks', $event)" /></span></div>
+              </div>
+            </div>
           </div>
-          <div v-else-if="!activeId" class="detail-empty">
-            <span>点击上方标注点<br>查看指南</span>
-          </div>
-          <div v-else-if="guideLoading" class="detail-loading">
-            <div class="spinner" />
-            <span>生成指南中…</span>
-          </div>
-          <div v-else-if="guide" class="guide-panel">
-            <div class="gc-label" :style="{ color: activeHs!.color }">{{ activeHs!.label }}</div>
-            <ActionGuide     v-if="activeHs!.guideType === 'action'"     :guide="guide" :color="activeHs!.color" :sketch-url="sketchUrl" />
-            <BackgroundGuide v-if="activeHs!.guideType === 'background'" :guide="guide" :color="activeHs!.color" />
-            <ExpressionGuide v-if="activeHs!.guideType === 'expression'" :guide="guide" :color="activeHs!.color" />
-            <CameraGuide     v-if="activeHs!.guideType === 'camera'"     :guide="guide" :color="activeHs!.color" />
-          </div>
-        </div>
+        </template>
       </div>
 
       <!-- ── Right: Refine panel (click a version → adjust params → new branch) ── -->
@@ -1258,6 +1313,51 @@ async function clickHotspot(hs: Hotspot) {
   } catch (e) { console.error('Guide error', e) }
   guideLoading.value = false
 }
+
+// Stage 3 「提取」: the shot plan (拍摄方案). extractPlan runs one AI extraction;
+// having a plan flips the shot to 已完成 (plan_done).
+const shotPlan  = ref<any | null>(null)
+const extracting = ref(false)
+const planTab   = ref<'overview' | 'logistics' | 'technique'>('logistics')
+const PLAN_TABS = [
+  { key: 'overview',  label: '相关信息' },
+  { key: 'logistics', label: '拍摄物流' },
+  { key: 'technique', label: '拍摄要点' },
+] as const
+const PRIO_LABEL: Record<string, string> = { high: '必拍', mid: '想拍', low: '可选' }
+
+async function initPlan() {
+  try { shotPlan.value = await api.getShotPlan(projectId.value, shotId.value) }
+  catch { shotPlan.value = null }
+}
+async function extractPlan() {
+  if (extracting.value) return
+  extracting.value = true
+  try {
+    shotPlan.value = await api.extractShotPlan(projectId.value, shotId.value)
+    if (shotData.value) shotData.value.plan_done = true
+  } catch (e) { console.error('extractPlan', e) }
+  extracting.value = false
+}
+
+// 取景地：项目共享池。已解析就显示复用的景；未解析让用户从候选选一个（存回池 + 本 shot）。
+const locCustom = ref('')
+const locPicking = ref(false)   // show the picker even when already chosen (改)
+async function pickLocation(name: string) {
+  const n = (name || '').trim()
+  if (!n || !shotPlan.value) return
+  const io = shotPlan.value.logistics.scene.indoor_outdoor || '均可'
+  try {
+    shotPlan.value = await api.setShotLocation(projectId.value, shotId.value, n, io)
+    locCustom.value = ''; locPicking.value = false
+  } catch (e) { console.error('setLocation', e) }
+}
+
+// inline-edit any whitelisted plan field (string or list)
+async function saveField(path: string, value: any) {
+  try { shotPlan.value = await api.updatePlanField(projectId.value, shotId.value, path, value) }
+  catch (e) { console.error('savePlanField', path, e) }
+}
 function closePopup() { activeId.value = null; guide.value = null; sketchUrl.value = null }
 
 // ── Pan ───────────────────────────────────────────────────
@@ -1514,6 +1614,7 @@ async function selectFinal() {
   refinePanel.value = null
   await api.updateShotStatus(projectId.value, shotId.value, 'refined', vid)
   if (shotData.value) { shotData.value.status = 'refined'; shotData.value.final_version_id = vid }
+  initPlan()
 }
 async function unlockShot() {
   await api.updateShotStatus(projectId.value, shotId.value, 'done')
@@ -1574,6 +1675,7 @@ onMounted(async () => {
     if (aiMessages.value.length === 0 && shotData.value?.status !== 'generating' && !isRefined.value) {
       kickoff()
     }
+    if (isRefined.value) initPlan()
   } catch (e) { console.error('mount error', e) }
 })
 
@@ -1764,6 +1866,56 @@ onUnmounted(() => {
 .final-btn:hover { opacity: .9; }
 .stage3-banner { margin: 0 12px 8px; padding: 8px 11px; display: flex; gap: 7px; align-items: flex-start; background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent); border-radius: 8px; font-size: 11px; line-height: 1.5; color: var(--text-muted); }
 .s3-check { color: var(--accent); font-weight: 700; flex-shrink: 0; }
+.extract-btn { margin: 0 12px 8px; padding: 9px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; transition: opacity .12s; }
+.extract-btn:hover:not(:disabled) { opacity: .9; }
+.extract-btn:disabled { opacity: .6; cursor: wait; }
+.extract-btn.ghost { background: none; border: 1px solid var(--border-md); color: var(--text-muted); font-weight: 500; }
+.extract-btn.ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); opacity: 1; }
+
+/* Shot plan card */
+.plan-body { flex: 1; overflow-y: auto; padding: 4px 14px 14px; }
+.plan-sec { padding: 12px 0 4px; }
+.plan-sub { font-size: 10.5px; font-weight: 700; color: var(--text-sub); text-transform: uppercase; letter-spacing: .4px; margin: 12px 0 4px; }
+.plan-line .pk { width: 56px; white-space: nowrap; }
+.plan-line .pv.help { cursor: help; }
+.plan-line .pv .q { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--border-md); font-size: 9px; color: var(--text-sub); }
+.plan-line .pv .none { color: var(--text-ghost); }
+.plan-line .pill.loc-on { background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.loc-change { background: none; border: none; color: var(--text-sub); font-size: 11px; text-decoration: underline; cursor: pointer; margin-left: 4px; font-family: inherit; }
+.loc-change:hover { color: var(--accent); }
+.loc-hint { font-size: 10.5px; color: var(--text-sub); margin-bottom: 6px; line-height: 1.5; }
+.pill.loc-pick { cursor: pointer; transition: all .12s; }
+.pill.loc-pick:hover { border-color: var(--accent); color: var(--accent); background: var(--surface-raised); }
+.loc-custom { display: inline-flex; gap: 5px; margin-top: 4px; width: 100%; }
+.loc-custom input { flex: 1; min-width: 0; border: 1px solid var(--border-md); background: var(--bg); color: var(--text-hi); border-radius: 6px; padding: 4px 9px; font-size: 11px; font-family: inherit; outline: none; }
+.loc-custom input:focus { border-color: var(--accent); }
+.loc-custom button { border: none; background: var(--accent); color: #fff; border-radius: 6px; padding: 4px 11px; font-size: 11px; cursor: pointer; font-family: inherit; }
+.plan-line { display: flex; gap: 9px; padding: 4px 0; font-size: 12px; line-height: 1.55; }
+.plan-line .pk { color: var(--text-sub); width: 42px; flex-shrink: 0; }
+.plan-line .pv { color: var(--text-hi); flex: 1; min-width: 0; }
+.plan-line .pv .io { display: inline-block; font-size: 10px; color: #fff; background: var(--accent); border-radius: 5px; padding: 1px 6px; margin-left: 6px; }
+.plan-line .pv .pill { display: inline-block; background: var(--surface-2); border: 1px solid var(--border-md); border-radius: 6px; padding: 2px 8px; font-size: 11px; margin: 0 4px 4px 0; }
+.plan-line .pv .chip { display: inline-block; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; font-size: 11px; color: var(--text-sub); margin: 0 4px 4px 0; }
+.plan-line .pv .chip b { color: var(--text-hi); }
+.plan-line .pv .li { display: block; padding: 1px 0; }
+.plan-line .pv .li::before { content: '· '; color: var(--text-ghost); }
+.plan-line .p-pill { display: inline-block; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); border-radius: 6px; padding: 2px 9px; font-size: 11px; font-weight: 600; }
+.plan-line.snap .pv .chip { background: var(--surface-2); }
+.plan-line.risk .pk { color: var(--error); }
+.plan-line.risk .pv { color: var(--text-muted); }
+
+/* 拍摄要点 — three distinct blocks */
+.plan-sec.tech { display: flex; flex-direction: column; gap: 12px; }
+.tech-block { border: 1px solid var(--border); border-radius: 10px; padding: 4px 12px 10px; background: var(--surface); }
+.tech-block .tb-head { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 9px 0 7px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
+.tech-block .tb-ico { font-size: 13px; }
+.tech-block .tb-for { margin-left: auto; font-size: 10px; font-weight: 500; color: var(--text-ghost); background: var(--surface-2); padding: 2px 7px; border-radius: 20px; }
+.tech-block.model { background: color-mix(in srgb, #d1477f 5%, var(--surface)); }
+.tech-block.model .tb-head { color: var(--accent); }
+.tech-block.photo { background: color-mix(in srgb, #b5643c 5%, var(--surface)); }
+.tech-block.photo .tb-head { color: #b5643c; }
+.tech-block.risk-block { background: color-mix(in srgb, var(--error) 6%, var(--surface)); }
+.tech-block.risk-block .tb-head { color: var(--error); }
 
 .ratio-panel { position: absolute; top: calc(100% + 48px); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 5px; white-space: nowrap; z-index: 20; pointer-events: all; }
 .ratio-chip { padding: 3px 8px; border: 1px solid var(--border-md); border-radius: 5px; background: var(--bg); color: var(--text-muted); font-size: 11px; cursor: pointer; transition: background .1s, color .1s; }

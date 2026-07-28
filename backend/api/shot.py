@@ -256,6 +256,65 @@ def refine_version(
         raise HTTPException(status_code=404, detail="Shot or version not found")
 
 
+# ── Stage 3: shot plan (拍摄方案) ──────────────────────────────
+
+@router.get("/{project_id}/shots/{shot_id}/plan")
+def get_shot_plan(project_id: str, shot_id: str, user_id: str = Depends(get_current_user)):
+    """Cached shot plan, or null if not extracted yet."""
+    _check_owner(project_id, user_id)
+    from services import shot_plan_service
+    return shot_plan_service.load_plan(project_id, shot_id)
+
+
+@router.post("/{project_id}/shots/{shot_id}/plan")
+def extract_shot_plan(project_id: str, shot_id: str, user_id: str = Depends(get_current_user)):
+    """Extract the shooting plan for the selected final version (stage-3 提取)."""
+    _check_owner(project_id, user_id)
+    from services import shot_plan_service
+    try:
+        return shot_plan_service.extract_plan(project_id, shot_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Shot not found")
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+class SetLocationRequest(BaseModel):
+    name: str
+    indoor_outdoor: str = "均可"
+
+
+@router.put("/{project_id}/shots/{shot_id}/plan/location")
+def set_shot_location(project_id: str, shot_id: str, req: SetLocationRequest,
+                      user_id: str = Depends(get_current_user)):
+    """User picks/adds this shot's 取景地 → joins the project pool + set on the plan."""
+    _check_owner(project_id, user_id)
+    from services import shot_plan_service
+    try:
+        return shot_plan_service.set_location(project_id, shot_id, req.name, req.indoor_outdoor)
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+class UpdatePlanFieldRequest(BaseModel):
+    path: str
+    value: object = ""
+
+
+@router.put("/{project_id}/shots/{shot_id}/plan/field")
+def update_plan_field(project_id: str, shot_id: str, req: UpdatePlanFieldRequest,
+                      user_id: str = Depends(get_current_user)):
+    """User edited a plan field (whitelisted dotted path)."""
+    _check_owner(project_id, user_id)
+    from services import shot_plan_service
+    try:
+        return shot_plan_service.update_field(project_id, shot_id, req.path, req.value)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 # ── Version tree ──────────────────────────────────────────────
 
 @router.get("/{project_id}/shots/{shot_id}/versions")

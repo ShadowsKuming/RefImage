@@ -371,6 +371,25 @@ export const useApi = () => {
     return api<{ guide: any; sketch_url: string }>(`/projects/${projectId}/shots/${shotId}/guides/${guideType}`, { method: 'POST' })
   }
 
+  function getShotPlan(projectId: string, shotId: string) {
+    return api<any>(`/projects/${projectId}/shots/${shotId}/plan`)
+  }
+  function extractShotPlan(projectId: string, shotId: string) {
+    return api<any>(`/projects/${projectId}/shots/${shotId}/plan`, { method: 'POST' })
+  }
+  function setShotLocation(projectId: string, shotId: string, name: string, indoorOutdoor: string) {
+    return api<any>(`/projects/${projectId}/shots/${shotId}/plan/location`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, indoor_outdoor: indoorOutdoor }),
+    })
+  }
+  function updatePlanField(projectId: string, shotId: string, path: string, value: any) {
+    return api<any>(`/projects/${projectId}/shots/${shotId}/plan/field`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, value }),
+    })
+  }
+
   function chat(
     message: string,
     history: { role: 'user' | 'assistant'; content: string }[],
@@ -469,6 +488,10 @@ export const useApi = () => {
     saveImage,
     getGuide,
     generateGuide,
+    getShotPlan,
+    extractShotPlan,
+    setShotLocation,
+    updatePlanField,
     uploadShotRef,
     listShotRefs,
     deleteShotRef,
