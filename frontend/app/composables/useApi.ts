@@ -389,6 +389,18 @@ export const useApi = () => {
       body: JSON.stringify({ path, value }),
     })
   }
+  function getShotSheet(projectId: string, shotId: string) {
+    return api<any>(`/projects/${projectId}/shots/${shotId}/sheet`)
+  }
+  function compileShotSheet(projectId: string, shotId: string) {
+    return api<any>(`/projects/${projectId}/shots/${shotId}/sheet`, { method: 'POST' })
+  }
+  function setShotCompleted(projectId: string, shotId: string, completed: boolean) {
+    return api<any>(`/projects/${projectId}/shots/${shotId}/completed`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ completed }),
+    })
+  }
 
   function chat(
     message: string,
@@ -492,6 +504,9 @@ export const useApi = () => {
     extractShotPlan,
     setShotLocation,
     updatePlanField,
+    getShotSheet,
+    compileShotSheet,
+    setShotCompleted,
     uploadShotRef,
     listShotRefs,
     deleteShotRef,

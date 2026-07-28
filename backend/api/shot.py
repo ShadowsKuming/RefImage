@@ -315,6 +315,46 @@ def update_plan_field(project_id: str, shot_id: str, req: UpdatePlanFieldRequest
         raise HTTPException(status_code=404, detail=str(e))
 
 
+# ── Handbook sheet (Overleaf-style compile → project PDF page) ──
+
+@router.get("/{project_id}/shots/{shot_id}/sheet")
+def get_shot_sheet(project_id: str, shot_id: str, user_id: str = Depends(get_current_user)):
+    """The compiled handbook page snapshot, or null if never compiled."""
+    _check_owner(project_id, user_id)
+    from services import shot_plan_service
+    return shot_plan_service.load_sheet(project_id, shot_id)
+
+
+@router.post("/{project_id}/shots/{shot_id}/sheet")
+def compile_shot_sheet(project_id: str, shot_id: str, user_id: str = Depends(get_current_user)):
+    """Compile: snapshot the current plan into the frozen handbook page."""
+    _check_owner(project_id, user_id)
+    from services import shot_plan_service
+    try:
+        return shot_plan_service.compile_sheet(project_id, shot_id)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+class SetCompletedRequest(BaseModel):
+    completed: bool = True
+
+
+@router.put("/{project_id}/shots/{shot_id}/completed")
+def set_shot_completed(project_id: str, shot_id: str, req: SetCompletedRequest,
+                       user_id: str = Depends(get_current_user)):
+    """Mark 已完成 (only meaningful once the handbook page is compiled)."""
+    _check_owner(project_id, user_id)
+    from services import project_service, shot_plan_service
+    if req.completed and shot_plan_service.load_sheet(project_id, shot_id) is None:
+        raise HTTPException(status_code=400, detail="compile the sheet first")
+    try:
+        project_service.set_shot_completed(project_id, shot_id, req.completed)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Shot not found")
+    return {"completed": req.completed}
+
+
 # ── Version tree ──────────────────────────────────────────────
 
 @router.get("/{project_id}/shots/{shot_id}/versions")

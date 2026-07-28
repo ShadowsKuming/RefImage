@@ -19,6 +19,7 @@ Design principles baked in:
 Cached at shots/{shot_id}/plan.json; regeneratable.
 """
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 STORAGE_ROOT = Path(__file__).parent.parent / "storage" / "projects"
@@ -30,6 +31,32 @@ def _path(project_id: str, shot_id: str) -> Path:
 
 def load_plan(project_id: str, shot_id: str) -> dict | None:
     p = _path(project_id, shot_id)
+    if p.exists():
+        try:
+            return json.loads(p.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    return None
+
+
+def _sheet_path(project_id: str, shot_id: str) -> Path:
+    return STORAGE_ROOT / project_id / "shots" / shot_id / "sheet.json"
+
+
+def compile_sheet(project_id: str, shot_id: str) -> dict:
+    """Overleaf-style compile: snapshot the CURRENT plan.json into sheet.json —
+    the frozen page that the project handbook PDF reuses. Editing the plan afterwards
+    does NOT change the sheet until the user recompiles."""
+    plan = load_plan(project_id, shot_id)
+    if plan is None:
+        raise FileNotFoundError("plan not generated")
+    sheet = {"compiled_at": datetime.now(timezone.utc).isoformat(), "plan": plan}
+    _sheet_path(project_id, shot_id).write_text(json.dumps(sheet, ensure_ascii=False, indent=2))
+    return sheet
+
+
+def load_sheet(project_id: str, shot_id: str) -> dict | None:
+    p = _sheet_path(project_id, shot_id)
     if p.exists():
         try:
             return json.loads(p.read_text())

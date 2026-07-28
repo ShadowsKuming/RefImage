@@ -285,6 +285,8 @@ def get_project(project_id: str) -> dict:
                 shot.setdefault("essential", True)
                 # lifecycle helpers for the workspace card status (构思/探索/选定/完成)
                 shot["version_count"] = len(shot.get("versions") or [])
+                shot.setdefault("completed", False)
+                shot["sheet_compiled"] = (shot_dir / "sheet.json").exists()
                 # 已完成 = the stage-3 shot plan has been extracted; surface its key
                 # fields so the workspace (cards / grouping / search) sees real data.
                 plan_file = shot_dir / "plan.json"
@@ -426,6 +428,16 @@ def update_shot_status(
             shot["final_version_id"] = final_version_id
         else:
             shot.pop("final_version_id", None)
+    shot_file.write_text(json.dumps(shot, ensure_ascii=False, indent=2))
+
+
+def set_shot_completed(project_id: str, shot_id: str, completed: bool) -> None:
+    """Mark a shot 已完成 (handbook page compiled + confirmed). Separate from status."""
+    shot_file = STORAGE_ROOT / project_id / "shots" / shot_id / "shot.json"
+    if not shot_file.exists():
+        raise FileNotFoundError(f"Shot {shot_id!r} not found")
+    shot = json.loads(shot_file.read_text())
+    shot["completed"] = bool(completed)
     shot_file.write_text(json.dumps(shot, ensure_ascii=False, indent=2))
 
 

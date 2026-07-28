@@ -27,6 +27,15 @@
       </div>
       <div class="tb-actions">
         <span v-if="generating" class="tb-generating">✦ 生成中…</span>
+        <template v-else-if="isRefined">
+          <button class="hb-btn" :class="{ stale: sheetStale }" :disabled="compiling || !shotPlan" @click="compileSheet">
+            <Play :size="14" />{{ compiling ? '编译中…' : (compiled ? '重新编译' : '编译') }}
+          </button>
+          <button class="hb-btn ghost" :disabled="!compiled" @click="previewOpen = true"><Eye :size="14" /> 预览</button>
+          <button class="hb-btn markdone" :class="{ on: shot.completed }" :disabled="!compiled" @click="toggleComplete">
+            <Check :size="14" />{{ shot.completed ? '已完成' : '标记完成' }}
+          </button>
+        </template>
       </div>
     </div>
 
@@ -111,6 +120,16 @@
           <div v-if="fullscreen && currentDisplayUrl" class="fs-overlay" @click="fullscreen = false">
             <button class="fs-close" title="关闭" @click.stop="fullscreen = false"><X :size="22" /></button>
             <img :src="currentDisplayUrl" class="fs-img" draggable="false" @click.stop />
+          </div>
+        </Transition>
+
+        <!-- 拍摄手册页预览（编译后的快照） -->
+        <Transition name="fs-fade">
+          <div v-if="previewOpen && sheet" class="fs-overlay sheet-overlay" @click="previewOpen = false">
+            <button class="fs-close" title="关闭" @click.stop="previewOpen = false"><X :size="22" /></button>
+            <div class="sheet-frame" @click.stop>
+              <ShotSheet :plan="sheet.plan" :image-url="currentDisplayUrl" :index="shotIndex" :title="shot.title" />
+            </div>
           </div>
         </Transition>
 
@@ -693,7 +712,7 @@ import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from
 import { Send, ArrowDown, User, Image as ImageIcon, Camera, Smartphone, Monitor, Check, Sparkles, Pencil,
          Move, Maximize2, Aperture, Smile, Eye, PersonStanding, Palette, RotateCw, Gauge, RotateCcw,
          Home, MapPin, Clock, Users, ShoppingBag, Plus, Battery, Lightbulb, CircleDot, Triangle,
-         FileText, Target, Flag, ShieldCheck, Tag, CheckCircle2, ChevronDown, Grid3x3, X } from 'lucide-vue-next'
+         FileText, Target, Flag, ShieldCheck, Tag, CheckCircle2, ChevronDown, Grid3x3, X, Play } from 'lucide-vue-next'
 import { useRoute, onBeforeRouteLeave } from 'vue-router'
 import { useApi } from '~/composables/useApi'
 
@@ -719,6 +738,7 @@ const shot = computed(() => ({
   mood:   shotData.value?.mood   ?? '',
   icon:   '🎬',
   status: shotData.value?.status ?? 'pending',
+  completed: shotData.value?.completed ?? false,
 }))
 const isRefined = computed(() => shot.value.status === 'refined')
 
@@ -727,7 +747,9 @@ const phaseMeta = computed(() => {
   const st = shot.value.status
   if (generating.value)  return { label: '生成中', cls: 'ph-explore' }
   if (st === 'error')    return { label: '生成失败', cls: 'ph-error' }
-  if (st === 'refined')  return { label: '已选定', cls: 'ph-selected' }
+  if (st === 'refined')  return shot.value.completed
+    ? { label: '已完成', cls: 'ph-done' }
+    : { label: '已选定', cls: 'ph-selected' }
   return versions.value.length > 0
     ? { label: '探索中', cls: 'ph-explore' }
     : { label: '构思中', cls: 'ph-ideating' }
@@ -1527,6 +1549,7 @@ async function setPriority(p: string) {
   try {
     await api.setShotAttrs(projectId.value, shotId.value, { priority: p })
     shotPlan.value = await api.updatePlanField(projectId.value, shotId.value, 'overview.priority', p)
+    clearCompleted()
   } catch (e) { console.error('setPriority', e) }
 }
 const PLAN_TABS = [
@@ -1550,6 +1573,52 @@ async function extractPlan() {
   extracting.value = false
 }
 
+// ── 拍摄手册页（Overleaf 式：编译 = 快照当前 plan → sheet；预览看快照；标记完成需先编译）──
+const sheet       = ref<any>(null)
+const compiling   = ref(false)
+const previewOpen = ref(false)
+const compiled    = computed(() => !!sheet.value)
+// plan 改了但没重编译 → 产物过期，提示重新编译
+const sheetStale  = computed(() =>
+  !!sheet.value && !!shotPlan.value &&
+  JSON.stringify(sheet.value.plan) !== JSON.stringify(shotPlan.value))
+const shotIndex = computed(() => {
+  const shots = projectData.value?.shots || []
+  const i = shots.findIndex((s: any) => s.shot_id === shotId.value)
+  return i >= 0 ? i + 1 : 1
+})
+async function loadSheet() {
+  try { sheet.value = await api.getShotSheet(projectId.value, shotId.value) }
+  catch { sheet.value = null }
+}
+async function compileSheet() {
+  if (compiling.value) return
+  compiling.value = true
+  try {
+    sheet.value = await api.compileShotSheet(projectId.value, shotId.value)
+    previewOpen.value = true   // 编译完直接看产物（Overleaf 式反馈）
+    clearCompleted()           // 新产物需重新确认
+  } catch (e) { console.error('compileSheet', e) }
+  compiling.value = false
+}
+async function toggleComplete() {
+  if (!compiled.value) return
+  const next = !shot.value.completed
+  try {
+    await api.setShotCompleted(projectId.value, shotId.value, next)
+    if (shotData.value) shotData.value.completed = next
+    if (next) navigateTo(`/projects/${route.params.id}`)   // 收尾即回工作区看整体进度
+  } catch (e) { console.error('toggleComplete', e) }
+}
+// 已完成是对某个定格产物的确认；一旦源/终选版本/编译产物变了，确认失效 → 自动退回"标记完成"
+async function clearCompleted() {
+  if (!shot.value.completed) return
+  try {
+    await api.setShotCompleted(projectId.value, shotId.value, false)
+    if (shotData.value) shotData.value.completed = false
+  } catch (e) { console.error('clearCompleted', e) }
+}
+
 // 取景地：项目共享池。已解析就显示复用的景；未解析让用户从候选选一个（存回池 + 本 shot）。
 const locCustom = ref('')
 const locPicking = ref(false)   // show the picker even when already chosen (改)
@@ -1560,12 +1629,13 @@ async function pickLocation(name: string) {
   try {
     shotPlan.value = await api.setShotLocation(projectId.value, shotId.value, n, io)
     locCustom.value = ''; locPicking.value = false
+    clearCompleted()
   } catch (e) { console.error('setLocation', e) }
 }
 
 // inline-edit any whitelisted plan field (string or list)
 async function saveField(path: string, value: any) {
-  try { shotPlan.value = await api.updatePlanField(projectId.value, shotId.value, path, value) }
+  try { shotPlan.value = await api.updatePlanField(projectId.value, shotId.value, path, value); clearCompleted() }
   catch (e) { console.error('savePlanField', path, e) }
 }
 
@@ -1904,12 +1974,14 @@ async function selectFinal() {
   refinePanel.value = null
   await api.updateShotStatus(projectId.value, shotId.value, 'refined', vid)
   if (shotData.value) { shotData.value.status = 'refined'; shotData.value.final_version_id = vid }
+  clearCompleted()
   await initPlan()
   if (!shotPlan.value) await extractPlan()   // 选定即整理，无需二次确认
 }
 async function unlockShot() {
   await api.updateShotStatus(projectId.value, shotId.value, 'done')
   if (shotData.value) { shotData.value.status = 'done'; shotData.value.final_version_id = null }
+  clearCompleted()
 }
 
 // In 已选为最终 mode, clicking the empty canvas (not a pan-drag) exits back to adjusting.
@@ -1973,7 +2045,7 @@ onMounted(async () => {
     } else {
       scrollChatBottom()   // existing history → rest the view at the latest message
     }
-    if (isRefined.value) initPlan()
+    if (isRefined.value) { initPlan(); loadSheet() }
   } catch (e) { console.error('mount error', e) }
 })
 
@@ -2025,6 +2097,20 @@ onUnmounted(() => {
 .tb-btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
 .tb-btn.primary:hover { background: var(--accent-dim); }
 .tb-generating { font-size: 12px; color: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+/* 拍摄手册：编译 / 预览 / 标记完成 */
+.hb-btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 13px; background: var(--accent); border: 1px solid var(--accent); border-radius: 7px; color: #fff; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; transition: opacity .12s, background .12s; }
+.hb-btn:hover:not(:disabled) { opacity: .9; }
+.hb-btn:disabled { opacity: .45; cursor: not-allowed; }
+.hb-btn.stale { animation: hbpulse 1.4s ease-in-out infinite; }
+@keyframes hbpulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); } 50% { box-shadow: 0 0 0 4px transparent; } }
+.hb-btn.ghost { background: var(--surface); color: var(--text-muted); border-color: var(--border-md); }
+.hb-btn.ghost:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.hb-btn.markdone { background: var(--surface); color: var(--text-muted); border-color: var(--border-md); }
+.hb-btn.markdone:hover:not(:disabled) { color: var(--badge-done-text); border-color: var(--badge-done-text); }
+.hb-btn.markdone.on { background: var(--badge-done-bg); color: var(--badge-done-text); border-color: color-mix(in srgb, var(--badge-done-text) 40%, transparent); }
+/* 手册页预览弹层 */
+.sheet-overlay { cursor: zoom-out; }
+.sheet-frame { width: min(92vw, 1180px); cursor: default; border-radius: 10px; overflow: hidden; box-shadow: 0 20px 70px rgba(0,0,0,.5); }
 .tb-refined-badge { font-size: 11px; color: var(--badge-done-text); background: var(--badge-done-bg); padding: 3px 8px; border-radius: 5px; font-weight: 600; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
 
