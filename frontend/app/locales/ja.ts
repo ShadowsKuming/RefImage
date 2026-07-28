@@ -186,6 +186,7 @@ export default {
     scene: 'シーン', location: 'ロケ地', locHint: 'ロケ地を選択（似た撮影で使い回すと段取りが楽）',
     locCustomPlaceholder: '自分で入力…', locAdd: '追加', locChange: '変更 ›',
     time: '時間', weather: '天気', weatherPlaceholder: '入力…',
+    duration: '所要時間', durationPlaceholder: '例：10〜15 分', backupLabel: '予備プラン', backupPlaceholder: '条件が悪い場合の対応…',
     crewCoser: 'コスプレイヤー', crewPhoto: '撮影', crewLogistics: '進行', personUnit: '人',
     needLogistics: '進行係が必要', crewNotNeeded: '不要',
     props: '持ち物準備', charProps: 'キャラ小道具', auxProps: '補助小道具',

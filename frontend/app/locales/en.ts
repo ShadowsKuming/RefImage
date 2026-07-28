@@ -186,6 +186,7 @@ export default {
     scene: 'Scene', location: 'Location', locHint: 'Pick a location (reuse across similar shots to ease scheduling)',
     locCustomPlaceholder: 'Or type your own…', locAdd: 'Add', locChange: 'Change ›',
     time: 'Time', weather: 'Weather', weatherPlaceholder: 'Click to fill in…',
+    duration: 'Duration', durationPlaceholder: 'e.g. 10–15 min', backupLabel: 'Backup plan', backupPlaceholder: 'What to do if conditions aren\'t ideal…',
     crewCoser: 'Coser', crewPhoto: 'Photo', crewLogistics: 'Support', personUnit: '',
     needLogistics: 'Support needed', crewNotNeeded: 'Not needed',
     props: 'Props & Prep', charProps: 'Character props', auxProps: 'Aux props',

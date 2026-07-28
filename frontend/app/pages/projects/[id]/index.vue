@@ -1923,7 +1923,7 @@ async function removeShot(shotId: string) {
 function shotPhase(s: any): string {
   const st = s.status || 'pending'
   if (st === 'error') return 'error'
-  if (st === 'refined') return s.plan_done ? 'completed' : 'selected'
+  if (st === 'refined') return s.completed ? 'completed' : 'selected'
   const hasImage = (s.version_count ?? 0) > 0 || !!s.image_url
   return hasImage ? 'exploring' : 'ideating'
 }

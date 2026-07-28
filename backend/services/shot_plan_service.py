@@ -69,9 +69,9 @@ _EDITABLE_PATHS = {
     # dotted path in plan.json → the value must be a string
     "overview.synopsis", "overview.goal",
     # overview.constraints / overview.tags are lists (in _EDITABLE_LISTS below)
-    "logistics.scene.place", "logistics.timing.best_time", "logistics.timing.weather",
+    "logistics.scene.place", "logistics.timing.best_time", "logistics.timing.duration", "logistics.timing.weather",
     "logistics.crew.support",
-    "technique.expression", "technique.composition", "technique.lighting",
+    "technique.expression", "technique.composition", "technique.lighting", "technique.backup",
 }
 # priority mirrors shot.json (canonical); callers must sync shot.json too
 _PRIORITY_PATH = "overview.priority"
@@ -165,6 +165,7 @@ _TOOL = {
         "new_candidates": {"type": "array", "items": {"type": "string"},
                            "description": "仅当项目已有取景地里没有合适的，才给 2-3 个新的真实取景地候选（可租借/可去）；有合适的就空数组"},
         "best_time":  {"type": "string", "description": "最佳拍摄时段（含光线理由），室内可写 均可"},
+        "duration":   {"type": "string", "description": "这一张预计拍摄时长，简短，如 10-15 分钟 / 20 分钟"},
         "weather_note": {"type": "string", "description": "天气注意（室外才关键；室内写 不受天气影响）"},
         "support_reason": {"type": "string", "description": "是否需要后勤及原因（如 需人挑裙摆/扶姿势）；不需要就写 不需要"},
         "shot_props": {"type": "array", "items": {"type": "string"},
@@ -184,6 +185,7 @@ _TOOL = {
         "composition_note": {"type": "string", "description": "构图补充：人物在三分线何处、留白方向等（镜头参数已知，这里只补建议）"},
         "lighting": {"type": "string", "description": "布光/打光建议（真实拍摄怎么打光）：自然光还是人工光、光源方向（顺/侧/逆/顶）、软硬、是否需要反光板/柔光/补光。跟色调无关"},
         "risks":      {"type": "array", "items": {"type": "string"}, "description": "本张风险/注意（1-3 条，如 注重表情、裙摆动作易解剖学出错）"},
+        "backup_plan": {"type": "string", "description": "备用方案：条件不理想时的应对，简短，如 光线不足时改为座位旁补光 / 场地占用则换走廊窗边"},
     }, "required": ["synopsis", "scene_place", "indoor_outdoor", "best_time", "expression"]},
 }
 
@@ -234,6 +236,7 @@ def extract_plan(project_id: str, shot_id: str) -> dict:
         "- 场景要判断室内/室外，并给真实可去/可租的取景地建议。\n"
         "- 布光是真实拍摄怎么打光的指令（光源方向/软硬/补光），跟色调（冷暖氛围）分开，别混。\n"
         "- 风险提示写这张实际拍摄要注意的点。\n"
+        "- 预计时长(duration)给这张的拍摄时间估计；备用方案(backup_plan)给条件不理想时的应对。\n"
         "- 目标要具体、面向摄影师（观众先看什么再感受什么），别写抽象术语。\n"
         "- 限制(constraints)是硬要求（必须/不能/最好），跟风险区分开。\n"
         "- 标签(tags)给几个简短检索词，覆盖场景/时段/人数/氛围/道具/室内外。\n"
@@ -278,6 +281,7 @@ def extract_plan(project_id: str, shot_id: str) -> dict:
                             "location": matched,              # resolved reuse, or "" → needs pick
                             "candidates": candidate_names},   # pool + new, for the picker
             "timing":      {"best_time": result.get("best_time", ""),
+                            "duration": result.get("duration", ""),
                             "weather": result.get("weather_note", "")},
             "crew":        {"cosers": characters or [name],           # known
                             "support": result.get("support_reason", "")},
@@ -292,6 +296,7 @@ def extract_plan(project_id: str, shot_id: str) -> dict:
             "composition": result.get("composition_note", ""),
             "lighting":    result.get("lighting", ""),
             "risks":       result.get("risks", []),
+            "backup":      result.get("backup_plan", ""),
         },
     }
     _path(project_id, shot_id).write_text(json.dumps(plan, ensure_ascii=False, indent=2))

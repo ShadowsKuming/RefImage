@@ -531,6 +531,7 @@
                 <div class="lg-ico"><Clock :size="18" /></div>
                 <div class="lg-crew">
                   <div class="lg-crow"><span class="lg-ck">{{ t('shotEditor.time') }}</span><span class="lg-cv"><EditableText :model-value="shotPlan.logistics.timing.best_time" placeholder="—" @save="saveField('logistics.timing.best_time', $event)" /></span></div>
+                  <div class="lg-crow"><span class="lg-ck">{{ t('shotEditor.duration') }}</span><span class="lg-cv"><EditableText :model-value="shotPlan.logistics.timing.duration" :placeholder="t('shotEditor.durationPlaceholder')" @save="saveField('logistics.timing.duration', $event)" /></span></div>
                   <div class="lg-crow"><span class="lg-ck">{{ t('shotEditor.weather') }}</span><span class="lg-cv"><EditableText :model-value="shotPlan.logistics.timing.weather" :placeholder="t('shotEditor.weatherPlaceholder')" @save="saveField('logistics.timing.weather', $event)" /></span></div>
                 </div>
               </div>
@@ -603,6 +604,7 @@
               <div class="tech-block risk-block">
                 <div class="tb-head"><span class="tb-ico">⚠</span>{{ t('shotEditor.risks') }}</div>
                 <div class="plan-line"><span class="pv block"><EditableList :items="shotPlan.technique.risks || []" @change="saveField('technique.risks', $event)" /></span></div>
+                <div class="plan-line"><span class="pk">{{ t('shotEditor.backupLabel') }}</span><span class="pv"><EditableText :model-value="shotPlan.technique.backup" multiline :placeholder="t('shotEditor.backupPlaceholder')" @save="saveField('technique.backup', $event)" /></span></div>
               </div>
             </div>
           </div>

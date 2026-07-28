@@ -79,8 +79,8 @@ const fields = computed(() => [
   { k: t('shotEditor.compLabel'),    v: te.value.composition || '—' },
   { k: t('shotEditor.sheetLight'),   v: te.value.lighting || '—' },
   { k: t('shotEditor.sheetProps'),   v: props_all.value },
-  { k: t('shotEditor.time'),         v: (lg.value.timing || {}).best_time || '—' },
-  { k: t('shotEditor.sheetBackup'),  v: (te.value.risks || []).join('；') || '—' },
+  { k: t('shotEditor.time'),         v: (lg.value.timing || {}).duration || (lg.value.timing || {}).best_time || '—' },
+  { k: t('shotEditor.sheetBackup'),  v: te.value.backup || (te.value.risks || []).join('；') || '—' },
 ])
 </script>
 

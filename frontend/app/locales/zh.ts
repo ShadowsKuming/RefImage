@@ -184,6 +184,7 @@ const zh = {
     scene: '场景', location: '取景地', locHint: '选一个取景地（同类镜头尽量复用，方便排场地）',
     locCustomPlaceholder: '或自己填一个…', locAdd: '加', locChange: '换一个 ›',
     time: '时间', weather: '天气', weatherPlaceholder: '点击填写…',
+    duration: '时长', durationPlaceholder: '如 10-15 分钟', backupLabel: '备用方案', backupPlaceholder: '条件不理想时的应对…',
     crewCoser: 'coser', crewPhoto: '摄影', crewLogistics: '后勤', personUnit: '人',
     needLogistics: '需后勤', crewNotNeeded: '不需要',
     props: '物品准备', charProps: '角色道具', auxProps: '辅助道具',
