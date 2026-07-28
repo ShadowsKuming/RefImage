@@ -25,6 +25,7 @@ plan/ and shots/ are writable by the AI planning assistant and the user.
 """
 import json
 import os
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -361,27 +362,97 @@ def aggregate_shot_logistics(project_id: str) -> dict:
     return {"locations": list(locations.values()), "equipment": list(equipment.values())}
 
 
+_NAMED_HEX = {"粉红": "#f4a6c0", "橙": "#f2a65a", "黄": "#f2d06b",
+              "绿": "#9ccc8f", "蓝": "#7fb3e0", "紫": "#b79ae0"}
+_DEFAULT_PALETTE = ["#efe7dc", "#c9b79a", "#3a3550", "#6a4f8a", "#c98a4a"]
+
+
+def _parse_minutes(s: str) -> int:
+    m = re.search(r"\d+", s or "")
+    return int(m.group()) if m else 0
+
+
 def get_handbook(project_id: str) -> dict:
-    """Assemble the project shooting handbook: every shot that has a compiled sheet
-    (Overleaf-style snapshot), in workspace order, as one page each for the PDF."""
+    """Assemble the project shooting handbook. Per-shot 镜头详表 pages come from the
+    compiled sheets; the cover / visual-style / backup sections are aggregated across
+    all shots' plans (shots are the source of truth)."""
     from services import shot_plan_service
     proj = get_project(project_id)
-    pages = []
-    for idx, shot in enumerate(proj.get("shots", [])):
+    shots = proj.get("shots", [])
+    rollup = proj.get("logistics_rollup") or {"locations": [], "equipment": []}
+    wardrobe = proj.get("wardrobe") or {}
+    char = (proj.get("characters") or [{}])[0]
+    plan_data = (proj.get("plan") or {}).get("data") or {}
+    theme = plan_data.get("theme", "")
+    char_name = char.get("name") or proj.get("character") or ""
+
+    pages, backups, tags, palette_named, palette_hex, mood_images, props_all = [], [], [], [], [], [], []
+    total_minutes = 0
+    for idx, shot in enumerate(shots):
         sid = shot.get("shot_id")
+        label = f"S{idx + 1:02d}"
+        if shot.get("image_url"):
+            mood_images.append(shot["image_url"])
+        plan = shot_plan_service.load_plan(project_id, sid)
+        if plan:
+            ov, te, lg = plan.get("overview") or {}, plan.get("technique") or {}, plan.get("logistics") or {}
+            for tg in ov.get("tags") or []:
+                if tg not in tags:
+                    tags.append(tg)
+            mc = (te.get("params") or {}).get("maincolor", "").strip()
+            if mc.startswith("#") and mc not in palette_hex:
+                palette_hex.append(mc)
+            elif mc in _NAMED_HEX and _NAMED_HEX[mc] not in palette_named:
+                palette_named.append(_NAMED_HEX[mc])
+            total_minutes += _parse_minutes((lg.get("timing") or {}).get("duration", ""))
+            for p in (lg.get("props") or {}).get("character") or []:
+                if p not in props_all:
+                    props_all.append(p)
+            backup, risks = te.get("backup", "").strip(), te.get("risks") or []
+            if backup or risks:
+                backups.append({"label": label, "title": shot.get("title", ""), "backup": backup, "risks": risks})
         sheet = shot_plan_service.load_sheet(project_id, sid)
-        if not sheet:
-            continue
-        pages.append({
-            "shot_id": sid,
-            "index": idx + 1,
-            "title": shot.get("title", ""),
-            "completed": bool(shot.get("completed", False)),
-            "compiled_at": sheet.get("compiled_at", ""),
-            "plan": sheet.get("plan", {}),
-            "image_url": f"/projects/{project_id}/shots/{sid}/image",
-        })
-    return {"project": proj.get("name") or proj.get("title") or "", "pages": pages}
+        if sheet:
+            pages.append({
+                "shot_id": sid, "index": idx + 1, "title": shot.get("title", ""),
+                "completed": bool(shot.get("completed", False)),
+                "compiled_at": sheet.get("compiled_at", ""),
+                "plan": sheet.get("plan", {}),
+                "image_url": f"/projects/{project_id}/shots/{sid}/image",
+            })
+
+    costumes = [c.get("name", "") for c in (wardrobe.get("costumes") or wardrobe.get("outfits") or []) if c.get("name")]
+    palette = (palette_hex + palette_named) or _DEFAULT_PALETTE
+
+    return {
+        "project": {
+            "title": f"{char_name}｜{theme}" if (char_name and theme) else (theme or char_name),
+            "character": char_name,
+            "series": char.get("series") or "",
+            "theme": theme,
+            "direction": plan_data.get("direction", ""),
+            "shoot_date": plan_data.get("shoot_date", ""),
+            "cover_url": proj.get("cover") or "",
+            "avatar_url": char.get("avatar") or "",
+        },
+        "summary": {
+            "shot_count": len(shots),
+            "scene_count": len(rollup["locations"]),
+            "duration_minutes": total_minutes,
+            "costume_count": len(costumes),
+            "tags": tags,
+        },
+        "palette": palette[:6],
+        "mood_images": mood_images[:6],
+        "prep": {
+            "costumes": costumes,
+            "props": props_all,
+            "equipment": [e["name"] for e in rollup["equipment"]],
+            "locations": [l["name"] for l in rollup["locations"]],
+        },
+        "backups": backups,
+        "pages": pages,
+    }
 
 
 # ── Shots ──────────────────────────────────────────────────────────────────────

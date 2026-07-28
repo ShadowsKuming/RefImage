@@ -237,6 +237,12 @@ export default {
     title: 'Shooting Handbook', print: 'Print / Export PDF', back: 'Back', loading: 'Loading…',
     empty: 'No compiled shot pages yet. Hit "Compile" on a shot to build its page.',
     pageCount: '{n} pages', openHandbook: 'Handbook',
+    secCover: 'Cover & Overview', secPrep: 'Prep Checklist', secVisual: 'Visual Style', secBackup: 'Backup Plans & Notes',
+    theme: 'Theme', direction: 'Direction', keywords: 'Visual keywords',
+    stCharacter: 'Character', stDate: 'Shoot date', stDuration: 'Est. duration', stShots: 'Shots', stScenes: 'Scenes', stCostumes: 'Costumes',
+    prepCostume: 'Costume', prepProps: 'Props', prepEquip: 'Equipment', prepLoc: 'Locations',
+    moodBoard: 'Overall mood', palette: 'Color palette',
+    problem: 'Problem', solution: 'Backup plan', risk: 'Note', onsiteNotes: 'On-site notes',
   },
   fields: {
     genre: 'Genre', era: 'Era', timeline: 'Timeline', synopsis: 'Synopsis',

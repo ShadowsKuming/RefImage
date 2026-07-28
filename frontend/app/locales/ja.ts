@@ -237,6 +237,12 @@ export default {
     title: '撮影ハンドブック', print: '印刷 / PDF 出力', back: '戻る', loading: '読み込み中…',
     empty: 'コンパイル済みのカットページがありません。カットで「コンパイル」を押してページを作成してください。',
     pageCount: '全 {n} ページ', openHandbook: 'ハンドブック',
+    secCover: '表紙と概要', secPrep: '準備チェックリスト', secVisual: 'ビジュアルスタイル', secBackup: '予備プランと備考',
+    theme: '撮影テーマ', direction: '撮影方針', keywords: 'ビジュアルキーワード',
+    stCharacter: 'キャラ', stDate: '撮影日', stDuration: '所要時間', stShots: 'カット数', stScenes: '主なシーン', stCostumes: '衣装数',
+    prepCostume: '衣装', prepProps: '小道具', prepEquip: '機材', prepLoc: 'ロケ地',
+    moodBoard: '全体の雰囲気', palette: 'カラーパレット',
+    problem: '問題', solution: '予備プラン', risk: '注意', onsiteNotes: '現場メモ',
   },
   fields: {
     genre: 'ジャンル', era: '時代', timeline: 'タイムライン', synopsis: 'あらすじ',

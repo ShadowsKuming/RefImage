@@ -236,6 +236,12 @@ const zh = {
     title: '拍摄手册', print: '打印 / 导出 PDF', back: '返回', loading: '加载中…',
     empty: '还没有已编译的分镜页。先在分镜里点"编译"生成手册页。',
     pageCount: '共 {n} 页', openHandbook: '拍摄手册',
+    secCover: '封面与概览', secPrep: '准备清单', secVisual: '视觉风格参考', secBackup: '备用方案与备注',
+    theme: '拍摄主题', direction: '拍摄方向', keywords: '视觉关键词',
+    stCharacter: '角色', stDate: '拍摄日期', stDuration: '预计时长', stShots: '镜头数量', stScenes: '主要场景', stCostumes: '服装数量',
+    prepCostume: '服装', prepProps: '道具', prepEquip: '设备', prepLoc: '场地',
+    moodBoard: '整体氛围', palette: '色彩参考',
+    problem: '问题', solution: '备用方案', risk: '注意', onsiteNotes: '现场备注',
   },
   fields: {
     genre: '类型', era: '时代', timeline: '时间线', synopsis: '作品简介',
