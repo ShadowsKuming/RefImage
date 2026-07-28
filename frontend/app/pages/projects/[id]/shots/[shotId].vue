@@ -27,10 +27,6 @@
       </div>
       <div class="tb-actions">
         <span v-if="generating" class="tb-generating">✦ 生成中…</span>
-        <template v-else-if="isRefined">
-          <span class="tb-refined-badge">✓ 已选为最终版本</span>
-          <button class="tb-btn" @click="unlockShot">继续调整</button>
-        </template>
       </div>
     </div>
 
@@ -110,6 +106,14 @@
       <!-- ── Center: Canvas ── -->
       <div class="canvas-col">
 
+        <!-- Fullscreen preview -->
+        <Transition name="fs-fade">
+          <div v-if="fullscreen && currentDisplayUrl" class="fs-overlay" @click="fullscreen = false">
+            <button class="fs-close" title="关闭" @click.stop="fullscreen = false"><X :size="22" /></button>
+            <img :src="currentDisplayUrl" class="fs-img" draggable="false" @click.stop />
+          </div>
+        </Transition>
+
         <!-- Generating overlay — blocks all canvas interaction during image gen -->
         <Transition name="gen-overlay">
           <div v-if="generating" class="gen-overlay">
@@ -169,7 +173,7 @@
           :class="{ panning: dragMode === 'pan', 'crop-active': editMode === 'crop' }"
           :style="gridStyle"
           @mousedown.self="startPan"
-          @dblclick.self="onCanvasDblClick"
+          @click.self="onCanvasClick"
           @wheel.prevent="onWheel"
         >
           <div class="canvas-scene" :style="{ transform: sceneTransform }">
@@ -199,6 +203,12 @@
                 <div class="img-clip">
                   <img :src="currentDisplayUrl" class="gen-img" draggable="false" @load="onVersionImgLoad(node.id, $event)" />
 
+                  <!-- Rule-of-thirds grid (两横两竖) -->
+                  <div v-if="showGrid && editMode !== 'crop'" class="thirds-grid">
+                    <span class="tg-v" style="left:33.333%" /><span class="tg-v" style="left:66.666%" />
+                    <span class="tg-h" style="top:33.333%" /><span class="tg-h" style="top:66.666%" />
+                  </div>
+
                   <!-- Crop layer -->
                   <template v-if="editMode === 'crop'">
                     <div class="crop-layer" @mousedown.stop="onCropLayerDown" />
@@ -226,6 +236,12 @@
                         <path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>
                       </svg>
                     </button>
+                    <button class="tb-icon" :class="{ active: showGrid }" title="构图分割线" @click.stop="showGrid = !showGrid">
+                      <Grid3x3 :size="18" />
+                    </button>
+                    <button class="tb-icon" title="全屏预览" @click.stop="fullscreen = true">
+                      <Maximize2 :size="17" />
+                    </button>
                     <button v-if="!isRefined" class="tb-icon"
                             :class="{ active: refinePanel?.versionId === node.id }"
                             title="调参数，生成新版本" @click.stop="openRefinePanel(node)">
@@ -233,15 +249,16 @@
                         <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>
                       </svg>
                     </button>
-                    <button v-if="!isRefined" class="final-btn"
-                            title="选为最终版本 · 之后仍可继续调整" @click.stop="guardAction(selectFinal)">✓ 选为最终</button>
                   </div>
+                  <button class="final-btn final-row" :class="{ done: isRefined }"
+                          :title="isRefined ? '已选为最终版本' : '选为最终版本 · 之后仍可继续调整'"
+                          @click.stop="!isRefined && guardAction(selectFinal)">{{ isRefined ? '✓ 已选为最终版本' : '✓ 选为最终' }}</button>
                   <div v-if="showRatioPanel" class="ratio-panel" @click.stop @mousedown.stop>
                     <button v-for="r in RATIOS" :key="r.label" class="ratio-chip" @click.stop="selectRatio(r.value)">{{ r.label }}</button>
                   </div>
                 </template>
 
-                <!-- Active badge -->
+                <!-- Version badge — below the image -->
                 <div class="card-active-badge">v{{ node.index + 1 }} · 当前</div>
 
                 <!-- Delete button — hidden during crop to avoid accidental deletion -->
@@ -387,16 +404,13 @@
       <div v-if="isRefined" class="detail-col" :style="{ width: rightWidth + 'px' }">
         <div class="col-header">拍摄方案</div>
 
-        <!-- Not yet extracted → prompt + extract button -->
+        <!-- Auto-organizing (选定即整理) → loading; retry only if it failed -->
         <template v-if="!shotPlan">
-          <div class="stage3-banner">
-            <span class="s3-check">✓</span>
-            <span>已选为最终版本。整理这张的拍摄信息（场景 / 时间 / 道具 / 拍摄要点），供实际拍摄，并汇入项目计划。</span>
+          <div v-if="extracting" class="stage3-loading">
+            <div class="s3-spinner" />
+            <span>正在整理这张的拍摄信息…（约 10 秒）</span>
           </div>
-          <button class="extract-btn" :disabled="extracting" @click="extractPlan">
-            <span v-if="extracting">整理中…（约 10 秒）</span>
-            <span v-else>📋 整理这张的拍摄信息</span>
-          </button>
+          <button v-else class="extract-btn" @click="extractPlan">📋 重新整理</button>
         </template>
 
         <!-- Extracted → the shot plan, one class per tab (each can grow freely) -->
@@ -679,7 +693,7 @@ import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from
 import { Send, ArrowDown, User, Image as ImageIcon, Camera, Smartphone, Monitor, Check, Sparkles, Pencil,
          Move, Maximize2, Aperture, Smile, Eye, PersonStanding, Palette, RotateCw, Gauge, RotateCcw,
          Home, MapPin, Clock, Users, ShoppingBag, Plus, Battery, Lightbulb, CircleDot, Triangle,
-         FileText, Target, Flag, ShieldCheck, Tag, CheckCircle2, ChevronDown } from 'lucide-vue-next'
+         FileText, Target, Flag, ShieldCheck, Tag, CheckCircle2, ChevronDown, Grid3x3, X } from 'lucide-vue-next'
 import { useRoute, onBeforeRouteLeave } from 'vue-router'
 import { useApi } from '~/composables/useApi'
 
@@ -713,9 +727,7 @@ const phaseMeta = computed(() => {
   const st = shot.value.status
   if (generating.value)  return { label: '生成中', cls: 'ph-explore' }
   if (st === 'error')    return { label: '生成失败', cls: 'ph-error' }
-  if (st === 'refined')  return shotPlan.value
-    ? { label: '已完成', cls: 'ph-done' }
-    : { label: '已选定', cls: 'ph-selected' }
+  if (st === 'refined')  return { label: '已选定', cls: 'ph-selected' }
   return versions.value.length > 0
     ? { label: '探索中', cls: 'ph-explore' }
     : { label: '构思中', cls: 'ph-ideating' }
@@ -785,6 +797,9 @@ function stopResize2() {
 const canvasWrapRef = ref<HTMLElement | null>(null)
 const canvasPan     = ref({ x: 0, y: 0 })
 const canvasZoom    = ref(1)
+const showGrid      = ref(false)
+const fullscreen    = ref(false)
+const pointerDragged = ref(false)
 
 const sceneTransform = computed(() =>
   `translate(${canvasPan.value.x}px, ${canvasPan.value.y}px) scale(${canvasZoom.value})`
@@ -1048,10 +1063,14 @@ function startDrag(
 ) {
   const sx = e.clientX, sy = e.clientY
   const sp = { ...getPos() }
-  const onMove = (me: MouseEvent) => setPos({
-    x: sp.x + (me.clientX - sx) / canvasZoom.value,
-    y: sp.y + (me.clientY - sy) / canvasZoom.value,
-  })
+  pointerDragged.value = false
+  const onMove = (me: MouseEvent) => {
+    if (Math.abs(me.clientX - sx) + Math.abs(me.clientY - sy) > 4) pointerDragged.value = true
+    setPos({
+      x: sp.x + (me.clientX - sx) / canvasZoom.value,
+      y: sp.y + (me.clientY - sy) / canvasZoom.value,
+    })
+  }
   const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
   window.addEventListener('mousemove', onMove)
   window.addEventListener('mouseup', onUp)
@@ -1195,15 +1214,6 @@ async function deleteVersionCard(id: string) {
 }
 
 // ── Blank node CRUD ───────────────────────────────────────
-function onCanvasDblClick(e: MouseEvent) {
-  const wrap = canvasWrapRef.value
-  if (!wrap) return
-  const rect = wrap.getBoundingClientRect()
-  const x = (e.clientX - rect.left  - canvasPan.value.x) / canvasZoom.value - CARD_W_THUMB / 2
-  const y = (e.clientY - rect.top   - canvasPan.value.y) / canvasZoom.value - CARD_H_THUMB / 2
-  blankNodes.value.push({ id: `blank-${Date.now()}`, x, y, w: CARD_W_THUMB, h: CARD_H_THUMB, isDragOver: false })
-}
-
 function removeBlankNode(id: string) {
   blankNodes.value = blankNodes.value.filter(b => b.id !== id)
   selectedBlankIds.value = selectedBlankIds.value.filter(s => s !== id)
@@ -1462,6 +1472,7 @@ function onBeforeUnload(e: BeforeUnloadEvent) {
   if (hasUnsavedChanges.value) { e.preventDefault(); e.returnValue = '' }
 }
 function onKeyDown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && fullscreen.value) { fullscreen.value = false; return }
   if (!(e.metaKey || e.ctrlKey)) return
   if (e.key === 's') { e.preventDefault(); saveImage() }
   if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo() }
@@ -1603,10 +1614,12 @@ function startPan(e: MouseEvent) {
   if (editMode.value !== null) { editMode.value = null; inlineCrop.value = null }
   showRatioPanel.value = false; closePopup()
   dragMode.value  = 'pan'
+  pointerDragged.value = false
   dragStart.value = { mx: e.clientX, my: e.clientY, panX: canvasPan.value.x, panY: canvasPan.value.y }
 }
 function onWindowMouseMove(e: MouseEvent) {
   if (dragMode.value === 'pan') {
+    if (Math.abs(e.clientX - dragStart.value.mx) + Math.abs(e.clientY - dragStart.value.my) > 4) pointerDragged.value = true
     canvasPan.value = {
       x: dragStart.value.panX + e.clientX - dragStart.value.mx,
       y: dragStart.value.panY + e.clientY - dragStart.value.my,
@@ -1891,11 +1904,17 @@ async function selectFinal() {
   refinePanel.value = null
   await api.updateShotStatus(projectId.value, shotId.value, 'refined', vid)
   if (shotData.value) { shotData.value.status = 'refined'; shotData.value.final_version_id = vid }
-  initPlan()
+  await initPlan()
+  if (!shotPlan.value) await extractPlan()   // 选定即整理，无需二次确认
 }
 async function unlockShot() {
   await api.updateShotStatus(projectId.value, shotId.value, 'done')
   if (shotData.value) { shotData.value.status = 'done'; shotData.value.final_version_id = null }
+}
+
+// In 已选为最终 mode, clicking the empty canvas (not a pan-drag) exits back to adjusting.
+function onCanvasClick() {
+  if (isRefined.value && !pointerDragged.value) unlockShot()
 }
 
 function onChatInputEnter(e: KeyboardEvent) {
@@ -2059,6 +2078,19 @@ onUnmounted(() => {
 .img-clip { position: absolute; inset: 0; overflow: hidden; border-radius: 12px; }
 .gen-img  { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
 
+/* 构图分割线（三分法：两横两竖） */
+.thirds-grid { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.thirds-grid .tg-v { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,.7); box-shadow: 0 0 1px rgba(0,0,0,.4); }
+.thirds-grid .tg-h { position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,.7); box-shadow: 0 0 1px rgba(0,0,0,.4); }
+
+/* 全屏预览 */
+.fs-overlay { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 40px; background: rgba(0,0,0,.86); cursor: zoom-out; }
+.fs-img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; box-shadow: 0 12px 60px rgba(0,0,0,.5); cursor: default; }
+.fs-close { position: fixed; top: 18px; right: 20px; width: 40px; height: 40px; display: grid; place-items: center; border: none; border-radius: 50%; background: rgba(255,255,255,.14); color: #fff; cursor: pointer; transition: background .12s; }
+.fs-close:hover { background: rgba(255,255,255,.28); }
+.fs-fade-enter-active, .fs-fade-leave-active { transition: opacity .18s ease; }
+.fs-fade-enter-from, .fs-fade-leave-to { opacity: 0; }
+
 /* ── Resize handles ── */
 .rh {
   position: absolute; width: 12px; height: 12px;
@@ -2151,9 +2183,13 @@ onUnmounted(() => {
 .tb-icon { width: 28px; height: 28px; padding: 5px; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; cursor: pointer; color: var(--text-muted); box-shadow: 0 2px 8px var(--shadow); display: flex; align-items: center; justify-content: center; transition: background .12s, color .12s; flex-shrink: 0; }
 .tb-icon:hover { background: var(--surface-2); color: var(--text); }
 .tb-icon.active { background: var(--accent); color: white; border-color: var(--accent); }
+.tb-icon.danger:hover { background: #e53e3e; color: #fff; border-color: #e53e3e; }
 .tb-icon svg { width: 100%; height: 100%; }
 .final-btn { height: 28px; padding: 0 12px; background: var(--accent); color: #fff; border: none; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; box-shadow: 0 2px 8px var(--shadow); white-space: nowrap; transition: opacity .12s; }
 .final-btn:hover { opacity: .9; }
+.final-row { position: absolute; top: calc(100% + 46px); left: 50%; transform: translateX(-50%); height: 32px; padding: 0 18px; z-index: 20; pointer-events: all; }
+.final-btn.done { background: var(--badge-done-bg); color: var(--badge-done-text); box-shadow: none; cursor: default; opacity: 1; }
+.final-btn.done:hover { opacity: 1; }
 .stage3-banner { margin: 0 12px 8px; padding: 8px 11px; display: flex; gap: 7px; align-items: flex-start; background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent); border-radius: 8px; font-size: 11px; line-height: 1.5; color: var(--text-muted); }
 .s3-check { color: var(--accent); font-weight: 700; flex-shrink: 0; }
 .extract-btn { margin: 0 12px 8px; padding: 9px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; transition: opacity .12s; }
@@ -2161,6 +2197,9 @@ onUnmounted(() => {
 .extract-btn:disabled { opacity: .6; cursor: wait; }
 .extract-btn.ghost { background: none; border: 1px solid var(--border-md); color: var(--text-muted); font-weight: 500; }
 .extract-btn.ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); opacity: 1; }
+.stage3-loading { margin: 0 12px 8px; padding: 12px 13px; display: flex; gap: 9px; align-items: center; background: color-mix(in srgb, var(--accent) 8%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); border-radius: 8px; font-size: 12px; color: var(--text-muted); }
+.s3-spinner { width: 15px; height: 15px; flex-shrink: 0; border: 2px solid color-mix(in srgb, var(--accent) 28%, transparent); border-top-color: var(--accent); border-radius: 50%; animation: s3spin .7s linear infinite; }
+@keyframes s3spin { to { transform: rotate(360deg); } }
 
 /* Shot plan card */
 .plan-body { flex: 1; overflow-y: auto; padding: 4px 14px 14px; }
@@ -2297,7 +2336,7 @@ onUnmounted(() => {
 .tech-block.risk-block { background: color-mix(in srgb, var(--error) 6%, var(--surface)); }
 .tech-block.risk-block .tb-head { color: var(--error); }
 
-.ratio-panel { position: absolute; top: calc(100% + 48px); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 5px; white-space: nowrap; z-index: 20; pointer-events: all; }
+.ratio-panel { position: absolute; top: calc(100% + 88px); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 5px; white-space: nowrap; z-index: 20; pointer-events: all; }
 .ratio-chip { padding: 3px 8px; border: 1px solid var(--border-md); border-radius: 5px; background: var(--bg); color: var(--text-muted); font-size: 11px; cursor: pointer; transition: background .1s, color .1s; }
 .ratio-chip:hover { background: var(--accent); color: white; border-color: var(--accent); }
 

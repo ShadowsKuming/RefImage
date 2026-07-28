@@ -11,6 +11,7 @@ Called from shot_service as a FastAPI BackgroundTask.
 """
 import json
 import os
+import random
 import uuid
 from pathlib import Path
 
@@ -69,7 +70,7 @@ def generate_shot_image(
 
         image_url = f"/projects/{project_id}/shots/{shot_id}/image"
         project_service.append_shot_messages(project_id, shot_id, [
-            {"role": "agent", "text": "例图已生成！点击图上的标注点查看各部分拍摄指南。"},
+            {"role": "agent", "text": _completion_message(params or {})},
         ])
         project_service.update_shot_status(project_id, shot_id, "done", image_url)
     except Exception as e:
@@ -78,6 +79,26 @@ def generate_shot_image(
         if error_type == "moderation":
             _analyze_moderation_error(project_id, shot_id)
         raise
+
+
+def _completion_message(params: dict) -> str:
+    """A short, human-sounding 'done' line that echoes THIS version's actual settings,
+    so consecutive generations don't read as the same robotic template."""
+    bits = [params.get(k) for k in ("shot", "aspect", "angle") if params.get(k)]
+    expr = params.get("expr")
+    if bits and expr:
+        subj = "、".join(bits) + f"、{expr}这版"
+    elif bits:
+        subj = "、".join(bits) + "这版"
+    else:
+        subj = "这一版"
+    templates = [
+        f"{subj}生成好啦，看看效果~",
+        f"好了，{subj}出来了，瞧瞧满不满意。",
+        f"{subj}我给你出好了，感觉怎么样？",
+        f"{subj}搞定，点开看看吧。",
+    ]
+    return random.choice(templates)
 
 
 def _classify_error(e: Exception) -> str:
