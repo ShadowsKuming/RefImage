@@ -275,35 +275,10 @@
                           <span class="ei-status" :class="isPrepared(e) ? 'ready' : 'pending'">
                             <component :is="isPrepared(e) ? CircleCheck : Clock" class="eis-ico" />{{ isPrepared(e) ? t('projectCanvas.prepared') : t('projectCanvas.pending') }}
                           </span>
-                          <button
-                            v-if="e.source === 'manual'"
-                            class="ei-del"
-                            :class="{ armed: pendingDelete === e }"
-                            :title="pendingDelete === e ? t('projectCanvas.confirmDelete') : t('projectCanvas.delete')"
-                            @click="armDelete(e, () => removeEquipment(e))"
-                          >
-                            <template v-if="pendingDelete === e">{{ t('projectCanvas.delete') }}</template>
-                            <X v-else />
-                          </button>
                         </div>
                     </div>
                   </template>
                   <p v-else class="detail-empty">{{ t('projectCanvas.emptyEquip') }}</p>
-
-                  <!-- 添加设备:表单入口 -->
-                  <button v-if="!showAddEquip" class="equip-add-btn" @click="showAddEquip = true">{{ t('projectCanvas.addEquip') }}</button>
-                  <div v-else class="equip-form">
-                    <select v-model="newEquip.category" class="ef-select">
-                      <option v-for="c in EQUIP_CATEGORIES" :key="c.key" :value="c.key">{{ c.label }}</option>
-                    </select>
-                    <input v-model="newEquip.name" class="ef-input" :placeholder="t('projectCanvas.equipNamePlaceholder')" @keydown.enter="submitAddEquip" />
-                    <input v-model="newEquip.desc" class="ef-input" :placeholder="t('projectCanvas.equipDescPlaceholder')" @keydown.enter="submitAddEquip" />
-                    <label class="ef-req"><input type="checkbox" v-model="newEquip.required" /> {{ t('projectCanvas.requiredEquip') }}</label>
-                    <div class="ef-actions">
-                      <button class="ef-cancel" @click="showAddEquip = false">{{ t('projectCanvas.cancel') }}</button>
-                      <button class="ef-submit" :disabled="!newEquip.name.trim()" @click="submitAddEquip">{{ t('projectCanvas.add') }}</button>
-                    </div>
-                  </div>
                 </div>
               </template>
 
@@ -1271,9 +1246,7 @@ function buildPlanData() {
     theme: draft.theme,
     shoot_date: draft.shootDate,
     crew: planData.value.crew ?? {},
-    equipment: equipmentList.value.map(e => ({
-      id: e.id, name: e.name, required: e.required, desc: e.desc, category: e.category,
-    })),
+    equipment: [],   // 设备改为从 shots 聚合派生；清掉旧的项目级手填数据
     schedule: planData.value.schedule ?? [],
     notes: notesList.value.map(n => ({
       id: n.id, title: n.title, desc: n.desc, phase: n.phase, priority: n.priority,
@@ -1304,48 +1277,15 @@ function persistPlan() {
 
 // Re-seed all editable state from planData. Called on load and whenever the AI
 // assistant mutates the plan (its chat response carries the fresh plan.data).
-// equipmentList / notesList / prepared / noteDone / locAddr / draft are separate
+// notesList / prepared / noteDone / locAddr / draft are separate
 // reactive state (not derived from planData), so they must be re-synced explicitly.
 function syncPlanFromData() {
   draft.theme     = plan.value.theme
   draft.shootDate = plan.value.shootDate
-  loadEquipment()
   loadPrepared()
   loadNotes()
   loadNoteDone()
   loadLocationMeta()
-}
-
-// ── Equipment: editable list (add/remove), persisted to the backend plan blob.
-// addEquipment / removeEquipment are the single mutation surface — exposing them
-// as AI tools later won't touch any caller. Field shape { category, name, desc,
-// required } is exactly the future tool's parameter schema.
-const EQUIP_CATEGORIES = computed(() => [
-  { key: 'camera',    label: t('projectCanvas.catCamera') },
-  { key: 'lens',      label: t('projectCanvas.catLens') },
-  { key: 'light',     label: t('projectCanvas.catLight') },
-  { key: 'reflector', label: t('projectCanvas.catReflector') },
-  { key: 'support',   label: t('projectCanvas.catSupport') },
-  { key: 'power',     label: t('projectCanvas.catPower') },
-  { key: 'charger',   label: t('projectCanvas.catCharger') },
-  { key: 'audio',     label: t('projectCanvas.catAudio') },
-  { key: 'backdrop',  label: t('projectCanvas.catBackdrop') },
-  { key: 'misc',      label: t('projectCanvas.catMisc') },
-])
-const equipmentList = ref<EquipmentItem[]>([])
-function loadEquipment() {
-  equipmentList.value = (planData.value.equipment ?? []).map((e: any) =>
-    (typeof e === 'string' ? { name: e } : { ...e }))
-}
-function addEquipment(item: EquipmentItem) {
-  equipmentList.value.push({ ...item })
-  persistPlan()
-}
-function removeEquipment(item: EquipmentItem) {
-  const i = equipmentList.value.findIndex(e => e.name === item.name)  // allEquipment items are copies
-  if (i >= 0) equipmentList.value.splice(i, 1)
-  delete prepared[item.name]   // drop its checklist state too
-  persistPlan()
 }
 
 // Inline two-step delete confirm (no modal — the × arms into a 删除 button that
@@ -1365,22 +1305,7 @@ function armDelete(item: unknown, onConfirm: () => void) {
   }
 }
 
-// Add-equipment inline form
-const showAddEquip = ref(false)
-const newEquip = reactive({ category: 'camera', name: '', desc: '', required: true })
-function submitAddEquip() {
-  if (!newEquip.name.trim()) return
-  addEquipment({
-    category: newEquip.category,
-    name: newEquip.name.trim(),
-    desc: newEquip.desc.trim() || undefined,
-    required: newEquip.required,
-  })
-  newEquip.name = ''; newEquip.desc = ''   // keep category/required for quick repeat
-  showAddEquip.value = false
-}
-
-// 设备清单 = 从各 shot 聚合的（来源真理）∪ 用户手动补的额外项。
+// 设备清单 = 从各 shot 聚合（shots 为源）。
 type EquipView = EquipmentItem & { source: 'shot' | 'manual'; shotIds: string[] }
 function guessEquipCat(name: string): string {
   const s = name || ''
@@ -1394,18 +1319,12 @@ function guessEquipCat(name: string): string {
   if (/相机|机身/.test(s)) return 'camera'
   return 'misc'
 }
-const shotEquipment = computed<EquipView[]>(() => rollup.value.equipment.map((e: any) => ({
+// 设备清单纯粹从各 shot 聚合而来（旧的项目级手填数据已弃用，不再读取/显示）。
+const allEquipment = computed<EquipView[]>(() => rollup.value.equipment.map((e: any) => ({
   name: e.name, desc: (e.purposes ?? []).join('、') || undefined,
   category: guessEquipCat(e.name), required: true,
   source: 'shot', shotIds: (e.shots ?? []).map((s: any) => s.shot_id),
 })))
-const allEquipment = computed<EquipView[]>(() => {
-  const shotNames = new Set(shotEquipment.value.map(e => e.name))
-  const manual = equipmentList.value
-    .filter(e => !shotNames.has(e.name))
-    .map(e => ({ ...e, source: 'manual' as const, shotIds: [] as string[] }))
-  return [...shotEquipment.value, ...manual]
-})
 // Equipment grouped by 必要 / 可选 for the detail list.
 const requiredEquip = computed(() => allEquipment.value.filter(e => e.required !== false))
 const optionalEquip = computed(() => allEquipment.value.filter(e => e.required === false))
@@ -1654,18 +1573,19 @@ const detailHeader = computed(() => {
 
 const planTiles = computed(() => {
   const p = plan.value
-  const eq = equipmentList.value
+  const eq = allEquipment.value
   const req = eq.filter(e => e.required !== false).length
   const opt = eq.filter(e => e.required === false).length
   const hasSplit = req + opt > 0
+  const locCount = locationCards.value.length
   const sched = p.schedule.length ? scheduleTotal(p.schedule) : null
   return [
     { id: 'equipment' as PlanTab, label: t('projectCanvas.tabEquipment'), icon: Package,
       num: eq.length ? String(eq.length) : '', unit: t('projectCanvas.unitItems'), ph: eq.length ? '' : t('projectCanvas.todoPlan'),
       sub: hasSplit ? t('projectCanvas.requiredOptional', { req, opt }) : '' },
     { id: 'locations' as PlanTab, label: t('projectCanvas.tabLocations'), icon: MapPin,
-      num: p.locations.length ? String(p.locations.length) : '', unit: t('projectCanvas.unitPlaces'), ph: p.locations.length ? '' : t('projectCanvas.todoPlan'),
-      sub: p.locations.length ? t('projectCanvas.shootScenes') : '' },
+      num: locCount ? String(locCount) : '', unit: t('projectCanvas.unitPlaces'), ph: locCount ? '' : t('projectCanvas.todoPlan'),
+      sub: locCount ? t('projectCanvas.shootScenes') : '' },
     { id: 'schedule' as PlanTab, label: t('projectCanvas.tabSchedule'), icon: Clock,
       num: p.schedule.length ? String(p.schedule.length) : '', unit: t('projectCanvas.unitSegments'), ph: p.schedule.length ? '' : t('projectCanvas.todoPlan'),
       // 头条用"段数"(计数,不折行);总时长降级到副标题
