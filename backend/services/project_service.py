@@ -321,6 +321,7 @@ def get_project(project_id: str) -> dict:
         "cover":          cover_service.cover_url(project_id),
         "shots": shots,
         "logistics_rollup": aggregate_shot_logistics(project_id),
+        "schedule_rollup": aggregate_schedule(project_id),
     }
 
 
@@ -360,6 +361,56 @@ def aggregate_shot_logistics(project_id: str) -> dict:
                     ent["purposes"].append(purpose)
                 ent["shots"].append(ref)
     return {"locations": list(locations.values()), "equipment": list(equipment.values())}
+
+
+def aggregate_schedule(project_id: str) -> list[dict]:
+    """Group shots by 取景地 into ordered shooting segments, summing each shot's
+    duration. Deterministic derived view (source = shots); minimises location moves
+    by putting all shots of one location together. No absolute clock times yet."""
+    base = STORAGE_ROOT / project_id / "shots"
+    groups: dict[str, dict] = {}
+    order: list[str] = []
+    if base.exists():
+        idx = 0
+        for shot_dir in sorted(base.iterdir()):
+            shot_file, plan_file = shot_dir / "shot.json", shot_dir / "plan.json"
+            if not (shot_dir.is_dir() and shot_file.exists()):
+                continue
+            idx += 1
+            label = f"S{idx:02d}"
+            if not plan_file.exists():
+                continue
+            try:
+                plan = json.loads(plan_file.read_text())
+                shot = json.loads(shot_file.read_text())
+            except (json.JSONDecodeError, OSError):
+                continue
+            lg = plan.get("logistics") or {}
+            loc = ((lg.get("scene") or {}).get("location") or "").strip()
+            if not loc:
+                continue
+            if loc not in groups:
+                groups[loc] = {"scene": loc, "shot_ids": [], "labels": [], "titles": [], "minutes": 0}
+                order.append(loc)
+            g = groups[loc]
+            g["shot_ids"].append(shot.get("shot_id") or shot_dir.name)
+            g["labels"].append(label)
+            if shot.get("title"):
+                g["titles"].append(shot["title"])
+            g["minutes"] += _parse_minutes((lg.get("timing") or {}).get("duration", ""))
+    rows = []
+    for loc in order:
+        g = groups[loc]
+        labels = g["labels"]
+        rows.append({
+            "scene": g["scene"],
+            "shot_ids": g["shot_ids"],
+            "shots": f"{labels[0]}–{labels[-1]}" if len(labels) > 1 else (labels[0] if labels else ""),
+            "content": "、".join(g["titles"]),
+            "duration_minutes": g["minutes"],
+            "time": "",
+        })
+    return rows
 
 
 _NAMED_HEX = {"粉红": "#f4a6c0", "橙": "#f2a65a", "黄": "#f2d06b",
@@ -424,15 +475,8 @@ def get_handbook(project_id: str) -> dict:
     costumes = [c.get("name", "") for c in (wardrobe.get("costumes") or wardrobe.get("outfits") or []) if c.get("name")]
     palette = (palette_hex + palette_named) or _DEFAULT_PALETTE
 
-    # 拍摄日程：暂用项目级 planData.schedule（后续换成按场地/时长的 shot 聚合）
-    id_to_label = {s.get("shot_id"): f"S{i + 1:02d}" for i, s in enumerate(shots)}
-    schedule = []
-    for row in (plan_data.get("schedule") or []):
-        labels = [id_to_label.get(x, x) for x in (row.get("shot_ids") or [])]
-        shots_lbl = f"{labels[0]}–{labels[-1]}" if len(labels) > 1 else (labels[0] if labels else "")
-        schedule.append({"time": row.get("time", ""), "scene": row.get("scene", ""),
-                         "shots": shots_lbl, "content": row.get("content", ""),
-                         "duration": row.get("duration", "")})
+    # 拍摄日程：按场地聚合 shot（source = shots），前端按 duration_minutes 本地化格式化
+    schedule = aggregate_schedule(project_id)
 
     return {
         "project": {

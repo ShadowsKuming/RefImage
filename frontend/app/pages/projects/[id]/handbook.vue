@@ -56,7 +56,7 @@
               <span class="sc-c sc-scene">{{ r.scene || '—' }}</span>
               <span class="sc-c sc-shots">{{ r.shots || '—' }}</span>
               <span class="sc-c sc-content">{{ r.content || '—' }}</span>
-              <span class="sc-c sc-dur">{{ r.duration || '—' }}</span>
+              <span class="sc-c sc-dur">{{ r.duration_minutes ? fmtDuration(r.duration_minutes) : '—' }}</span>
             </div>
           </div>
         </div>

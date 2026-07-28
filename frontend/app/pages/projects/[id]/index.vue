@@ -1217,17 +1217,13 @@ const planData = computed<any>(() => projectData.value?.plan?.data ?? {})
 const rollup = computed<{ locations: any[]; equipment: any[] }>(
   () => projectData.value?.logistics_rollup ?? { locations: [], equipment: [] })
 
-function mapScheduleRow(r: any): ScheduleRow {
-  return {
-    time: r.time ?? '', scene: r.scene ?? '', shotIds: r.shot_ids ?? [],
-    content: r.content ?? '', duration: r.duration ?? '', light: r.light, priority: r.priority,
-  }
-}
-
 const plan = computed(() => {
-  const d = planData.value
-  const schedule = (d.schedule ?? []).map(mapScheduleRow) as ScheduleRow[]
-  // 场地名单派生自日程的去重场景(不单独存储)。
+  // 拍摄日程按场地聚合自 shots（source = shots），不再读项目级手填 schedule。
+  const schedule = (projectData.value?.schedule_rollup ?? []).map((r: any): ScheduleRow => ({
+    time: r.time ?? '', scene: r.scene ?? '', shotIds: r.shot_ids ?? [],
+    content: r.content ?? '', duration: r.duration_minutes ? String(r.duration_minutes) : '',
+    light: undefined, priority: undefined,
+  }))
   const locations = [...new Set(schedule.map(r => r.scene).filter(Boolean))]
   return {
     theme:     (d.theme ?? '') as string,
@@ -1247,8 +1243,8 @@ function buildPlanData() {
     theme: draft.theme,
     shoot_date: draft.shootDate,
     crew: planData.value.crew ?? {},
-    equipment: [],   // 设备改为从 shots 聚合派生；清掉旧的项目级手填数据
-    schedule: planData.value.schedule ?? [],
+    equipment: [],   // 设备/日程改为从 shots 聚合派生；清掉旧的项目级手填数据
+    schedule: [],
     notes: notesList.value.map(n => ({
       id: n.id, title: n.title, desc: n.desc, phase: n.phase, priority: n.priority,
     })),
