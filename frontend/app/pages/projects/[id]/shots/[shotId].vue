@@ -492,8 +492,12 @@
 
       <!-- ── Right: Refine panel (click a version → adjust params → new branch) ── -->
       <div v-if="refinePanel && !generating" class="detail-col refine-col">
-        <div class="col-header refine-head">
-          调整这一版
+        <div class="refine-head">
+          <span class="rf-head-ico"><Camera :size="18" /></span>
+          <div class="rf-head-txt">
+            <div class="rf-head-title">调整视觉参数</div>
+            <div class="rf-head-sub">选择或组合参数，生成新版本</div>
+          </div>
           <button class="refine-close" @click="refinePanel = null" title="关闭">×</button>
         </div>
         <div class="refine-body">
@@ -501,39 +505,66 @@
             <div class="rf-grp-title">{{ g.title }}</div>
             <div v-for="c in g.ctrls" :key="c.key" class="rf-ctrl"
                  :class="{ changed: (refinePanel.params[c.key]||'') !== (refinePanel.base[c.key]||'') }">
-              <div class="rf-label"><span class="rf-dot" />{{ c.label }}</div>
+              <div class="rf-label"><component :is="RF_ICONS[c.key]" :size="13" class="rf-ico" />{{ c.label }}<span class="rf-dot" /></div>
 
               <input v-if="c.type === 'text'" class="rf-text"
                      :value="refinePanel.params[c.key]" :placeholder="c.placeholder"
                      @input="setRefine(c.key, ($event.target as HTMLInputElement).value)" />
 
-              <div v-else-if="c.type === 'swatch'" class="rf-swatches">
-                <div v-for="s in TEMP_SWATCHES" :key="s.v" class="rf-sw"
-                     :class="{ on: refinePanel.params[c.key] === s.v }"
-                     :style="{ background: s.c }" :title="s.v" @click="setRefine(c.key, s.v)" />
+              <!-- 色温：渐变滑块 -->
+              <div v-else-if="c.type === 'tempslider'" class="rf-temp">
+                <input type="range" min="0" max="4" step="1" class="rf-temp-range"
+                       :value="TEMP_LEVELS.indexOf(refinePanel.params[c.key] || '中性')"
+                       @input="setRefine(c.key, TEMP_LEVELS[+($event.target as HTMLInputElement).value])" />
+                <div class="rf-temp-labels"><span>冷色调</span><span>{{ refinePanel.params[c.key] }}</span><span>暖色调</span></div>
+              </div>
+
+              <!-- 整体色调：风格卡片 -->
+              <div v-else-if="c.type === 'cards'" class="rf-cards">
+                <button v-for="o in c.opts" :key="o" class="rf-scard"
+                        :class="{ on: refinePanel.params[c.key] === o }" @click="setRefine(c.key, o)">{{ o }}</button>
+              </div>
+
+              <!-- 主色：色块 + 自定义色轮 -->
+              <div v-else-if="c.type === 'color'" class="rf-colors">
+                <button class="rf-color none" :class="{ on: !refinePanel.params[c.key] }" title="不指定" @click="setRefine(c.key, '')">∅</button>
+                <button v-for="mc in MAIN_COLORS" :key="mc.name" class="rf-color"
+                        :class="{ on: refinePanel.params[c.key] === mc.name }"
+                        :style="{ background: mc.hex }" :title="mc.name" @click="setRefine(c.key, mc.name)" />
+                <label class="rf-color custom" :class="{ on: refinePanel.params[c.key]?.startsWith('#') }"
+                       :style="refinePanel.params[c.key]?.startsWith('#') ? { background: refinePanel.params[c.key] } : {}" title="自定义颜色">
+                  <Aperture v-if="!refinePanel.params[c.key]?.startsWith('#')" :size="14" />
+                  <input type="color" class="rf-color-input"
+                         :value="refinePanel.params[c.key]?.startsWith('#') ? refinePanel.params[c.key] : '#f4a6c0'"
+                         @input="setRefine(c.key, ($event.target as HTMLInputElement).value)" />
+                </label>
               </div>
 
               <div v-else-if="c.type === 'segcustom'" class="rf-seg">
                 <button v-for="o in c.opts" :key="o" class="rf-btn"
                         :class="{ on: refinePanel.params[c.key] === o }"
-                        @click="setRefine(c.key, o); moodCustomOpen = false">{{ o }}</button>
-                <button class="rf-btn" :class="{ on: moodCustomOpen }" @click="moodCustomOpen = !moodCustomOpen">✏️ 自定义</button>
-                <input v-if="moodCustomOpen" class="rf-text" style="margin-top:6px" placeholder="自己描述氛围…"
+                        @click="setRefine(c.key, o); customOpen[c.key] = false">{{ o }}</button>
+                <button class="rf-btn" :class="{ on: customOpen[c.key] }" @click="customOpen[c.key] = !customOpen[c.key]">✏️ 自定义</button>
+                <input v-if="customOpen[c.key]" class="rf-text" style="margin-top:6px" :placeholder="`自己描述${c.label}…`"
                        :value="refinePanel.params[c.key]" @input="setRefine(c.key, ($event.target as HTMLInputElement).value)" />
               </div>
 
               <div v-else class="rf-seg">
                 <button v-for="o in c.opts" :key="o" class="rf-btn"
-                        :class="{ on: refinePanel.params[c.key] === o }"
-                        @click="setRefine(c.key, o)">{{ o }}</button>
+                        :class="{ on: refinePanel.params[c.key] === o, ratio: c.key === 'aspect' }"
+                        @click="setRefine(c.key, o)">
+                  {{ o }}<small v-if="c.key === 'aspect'">{{ ASPECT_RATIO[o] }}</small>
+                </button>
               </div>
             </div>
           </div>
         </div>
         <div class="refine-foot">
-          <span class="rf-count">{{ refineChangeCount === 0 ? '未改动' : `已改 ${refineChangeCount} 处` }}</span>
+          <button class="rf-reset" :disabled="refineChangeCount === 0" @click="resetRefine">
+            <RotateCcw :size="15" /> 重置本页
+          </button>
           <button class="rf-gen" :disabled="refineChangeCount === 0" @click="generateRefine">
-            {{ refineChangeCount === 0 ? '生成新版本' : `生成新版本 · ${refineChangeCount} 处 →` }}
+            <Sparkles :size="16" /> 生成新版本<span v-if="refineChangeCount > 0" class="rf-gen-n">{{ refineChangeCount }}</span>
           </button>
         </div>
       </div>
@@ -562,8 +593,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { Send, ArrowDown, User, Image as ImageIcon, Camera, Smartphone, Monitor, Check, Sparkles, Pencil } from 'lucide-vue-next'
+import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { Send, ArrowDown, User, Image as ImageIcon, Camera, Smartphone, Monitor, Check, Sparkles, Pencil,
+         Move, Maximize2, Aperture, Smile, Eye, PersonStanding, Palette, RotateCw, Gauge, RotateCcw } from 'lucide-vue-next'
 import { useRoute, onBeforeRouteLeave } from 'vue-router'
 import { useApi } from '~/composables/useApi'
 
@@ -1608,36 +1640,64 @@ const REFINE_GROUPS = [
     { key: 'bg',    label: '背景', opts: ['清晰','适中','虚化'] },
   ]},
   { title: '人物', ctrls: [
-    { key: 'expr', label: '表情', opts: ['害羞','微笑','认真','失落','俏皮'] },
-    { key: 'gaze', label: '视线', opts: ['看镜头','看别处','低垂'] },
-    { key: 'pose', label: '姿势', type: 'text', placeholder: '自己描述姿势…（如：双手托腮）' },
+    { key: 'expr',     label: '表情', type: 'segcustom', opts: ['害羞','微笑','认真','失落','俏皮'] },
+    { key: 'emphasis', label: '表情强度', opts: ['微弱','适中','明显'] },
+    { key: 'gaze',     label: '视线', opts: ['看镜头','略偏左','略偏右','低头','望向远处'] },
+    { key: 'pose',     label: '姿势', type: 'text', placeholder: '自己描述姿势…（如：双手托腮）' },
   ]},
-  { title: '色调 · 氛围', ctrls: [
-    { key: 'temp', label: '冷暖', type: 'swatch' },
-    { key: 'mood', label: '氛围', type: 'segcustom', opts: ['平淡','适中','戏剧化','温暖治愈','孤独疏离'] },
+  { title: '色调', ctrls: [
+    { key: 'temp',      label: '色温', type: 'tempslider' },
+    { key: 'grade',     label: '整体色调', type: 'cards', opts: ['自然真实','清新明亮','温暖柔和','冷峻清冷','复古胶片','高对比'] },
+    { key: 'maincolor', label: '主色', type: 'color' },
+    { key: 'mood',      label: '氛围', type: 'segcustom', opts: ['平淡','适中','戏剧化','温暖治愈','孤独疏离'] },
   ]},
 ] as const
+const RF_ICONS: Record<string, any> = {
+  shot: User, angle: Camera, facing: RotateCw, aspect: ImageIcon,
+  pos: Move, scale: Maximize2, bg: Aperture,
+  expr: Smile, emphasis: Gauge, gaze: Eye, pose: PersonStanding,
+  temp: Palette, grade: ImageIcon, maincolor: Aperture, mood: Sparkles,
+}
+const ASPECT_RATIO: Record<string, string> = { 竖图: '9:16', 横图: '16:9', 方图: '1:1' }
+const TEMP_LEVELS = ['冷', '偏冷', '中性', '偏暖', '暖']
+const MAIN_COLORS = [
+  { name: '粉红', hex: '#f4a6c0' }, { name: '橙', hex: '#f2a65a' }, { name: '黄', hex: '#f2d06b' },
+  { name: '绿', hex: '#9ccc8f' }, { name: '蓝', hex: '#7fb3e0' }, { name: '紫', hex: '#b79ae0' },
+]
 const TEMP_SWATCHES = [
   { v: '冷', c: '#5b8bd0' }, { v: '偏冷', c: '#8fb3d9' }, { v: '中性', c: '#cfc8c2' },
   { v: '偏暖', c: '#e0a878' }, { v: '暖', c: '#d4823f' },
 ]
 const REFINE_DEFAULTS: Record<string, string> = {
   shot: '半身', angle: '平视', facing: '侧前', aspect: '竖图', pos: '居中', scale: '适中',
-  bg: '适中', expr: '害羞', gaze: '看别处', pose: '', temp: '中性', mood: '适中',
+  bg: '适中', expr: '害羞', emphasis: '适中', gaze: '看镜头', pose: '',
+  temp: '中性', grade: '自然真实', maincolor: '', mood: '适中',
 }
 
 const refinePanel = ref<{ versionId: string; base: Record<string,string>; params: Record<string,string> } | null>(null)
-const moodCustomOpen = ref(false)
+// per-control "自定义" input open-state, keyed by param key (expr, mood, …)
+const customOpen = reactive<Record<string, boolean>>({})
+const EXPR_PRESETS = ['害羞','微笑','认真','失落','俏皮']
+const MOOD_PRESETS = ['平淡','适中','戏剧化','温暖治愈','孤独疏离']
 
 function openRefinePanel(node: LayoutNode) {
   const src = node.params || {}
   const params: Record<string,string> = {}
   for (const k of Object.keys(REFINE_DEFAULTS)) params[k] = src[k] || REFINE_DEFAULTS[k]
   refinePanel.value = { versionId: node.id, base: { ...params }, params }
-  moodCustomOpen.value = !['平淡','适中','戏剧化','温暖治愈','孤独疏离'].includes(params.mood)
+  // open the custom input when the stored value isn't one of the presets
+  customOpen.expr = !!params.expr && !EXPR_PRESETS.includes(params.expr)
+  customOpen.mood = !!params.mood && !MOOD_PRESETS.includes(params.mood)
 }
 function setRefine(key: string, val: string) {
   if (refinePanel.value) refinePanel.value.params[key] = val
+}
+function resetRefine() {
+  const rp = refinePanel.value
+  if (!rp) return
+  rp.params = { ...rp.base }
+  customOpen.expr = !!rp.params.expr && !EXPR_PRESETS.includes(rp.params.expr)
+  customOpen.mood = !!rp.params.mood && !MOOD_PRESETS.includes(rp.params.mood)
 }
 const refineChangeCount = computed(() => {
   const rp = refinePanel.value
@@ -2114,22 +2174,29 @@ onUnmounted(() => {
 
 /* Refine panel (right column) */
 .refine-col { width: 300px; }
-.refine-head { display: flex; align-items: center; justify-content: space-between; }
-.refine-close { background: none; border: none; color: var(--text-sub); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.refine-head { display: flex; align-items: center; gap: 11px; padding: 13px 15px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.rf-head-ico { width: 38px; height: 38px; border-radius: 11px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; flex-shrink: 0; }
+.rf-head-txt { min-width: 0; }
+.rf-head-title { font-size: 14px; font-weight: 700; color: var(--text-hi); }
+.rf-head-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+.refine-close { margin-left: auto; align-self: flex-start; background: none; border: none; color: var(--text-sub); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
 .refine-close:hover { color: var(--accent); }
 .refine-body { flex: 1; overflow-y: auto; padding: 4px 14px 8px; }
-.rf-grp { padding: 10px 0 2px; border-bottom: 1px solid var(--border); }
+.rf-grp { padding: 13px 0 6px; border-bottom: 1px solid var(--border); }
 .rf-grp:last-child { border-bottom: none; }
-.rf-grp-title { font-size: 10.5px; font-weight: 700; letter-spacing: .5px; color: var(--accent); text-transform: uppercase; margin: 0 0 7px; }
-.rf-ctrl { margin-bottom: 10px; }
-.rf-label { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-sub); margin-bottom: 5px; }
-.rf-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); opacity: 0; transition: opacity .15s; }
+.rf-grp-title { font-size: 12.5px; font-weight: 700; color: var(--accent); margin: 0 0 11px; }
+.rf-ctrl { margin-bottom: 13px; }
+.rf-label { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text-sub); margin-bottom: 7px; }
+.rf-ico { color: var(--text-sub); opacity: .8; }
+.rf-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); opacity: 0; transition: opacity .15s; margin-left: 2px; }
 .rf-ctrl.changed .rf-dot { opacity: 1; }
-.rf-ctrl.changed .rf-label { color: var(--accent); font-weight: 600; }
-.rf-seg { display: flex; flex-wrap: wrap; gap: 5px; }
-.rf-btn { border: 1px solid var(--border-md); background: var(--bg); color: var(--text-hi); border-radius: 6px; padding: 4px 9px; font-size: 11px; cursor: pointer; font-family: inherit; transition: all .12s; }
-.rf-btn:hover { border-color: var(--accent); color: var(--accent); }
-.rf-btn.on { background: var(--accent-dim); border-color: var(--accent); color: #fff; font-weight: 600; }
+.rf-ctrl.changed .rf-label, .rf-ctrl.changed .rf-ico { color: var(--accent); font-weight: 600; }
+.rf-seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.rf-btn { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; border: 1.5px solid var(--border); background: var(--surface); color: var(--text-hi); border-radius: 9px; padding: 8px 13px; font-size: 12px; cursor: pointer; font-family: inherit; transition: all .13s; }
+.rf-btn small { font-size: 9px; color: var(--text-ghost); }
+.rf-btn:hover { border-color: var(--accent-dim); }
+.rf-btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.rf-btn.on small { color: color-mix(in srgb, var(--accent) 70%, transparent); }
 .rf-text { width: 100%; border: 1px solid var(--border-md); background: var(--bg); color: var(--text-hi); border-radius: 6px; padding: 6px 9px; font-size: 11px; font-family: inherit; outline: none; }
 .rf-text:focus { border-color: var(--accent); }
 .rf-text::placeholder { color: var(--text-ghost); }
@@ -2137,11 +2204,37 @@ onUnmounted(() => {
 .rf-sw { width: 30px; height: 22px; border-radius: 6px; cursor: pointer; border: 2px solid transparent; transition: transform .1s, border-color .12s; }
 .rf-sw:hover { transform: translateY(-1px); }
 .rf-sw.on { border-color: var(--text-hi); }
-.refine-foot { border-top: 1px solid var(--border); padding: 10px 14px; display: flex; flex-direction: column; gap: 7px; }
-.rf-count { font-size: 11px; color: var(--text-sub); }
-.rf-gen { background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 12px; font-weight: 600; padding: 9px; cursor: pointer; font-family: inherit; transition: opacity .12s; }
-.rf-gen:hover:not(:disabled) { opacity: .9; }
-.rf-gen:disabled { opacity: .45; cursor: not-allowed; }
+
+/* 色温 gradient slider */
+.rf-temp-range { -webkit-appearance: none; appearance: none; width: 100%; height: 8px; border-radius: 999px; outline: none; cursor: pointer;
+  background: linear-gradient(90deg, #6aa6e0, #a9c8e6, #d8d2ca, #e7b98a, #e09a5a); }
+.rf-temp-range::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); box-shadow: 0 1px 4px var(--shadow); cursor: pointer; }
+.rf-temp-range::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); cursor: pointer; }
+.rf-temp-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-sub); margin-top: 5px; }
+.rf-temp-labels span:nth-child(2) { color: var(--accent); font-weight: 600; }
+
+/* 整体色调 style cards */
+.rf-cards { display: flex; flex-wrap: wrap; gap: 6px; }
+.rf-scard { flex: 1 1 30%; padding: 9px 6px; border: 1.5px solid var(--border); background: var(--surface); border-radius: 9px; color: var(--text-hi); font-size: 11.5px; cursor: pointer; font-family: inherit; transition: all .13s; }
+.rf-scard:hover { border-color: var(--accent-dim); }
+.rf-scard.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 700; }
+
+/* 主色 swatches + custom color */
+.rf-colors { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.rf-color { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; box-shadow: 0 0 0 1px var(--border-md) inset; cursor: pointer; display: grid; place-items: center; color: var(--text-ghost); font-size: 12px; transition: transform .1s, border-color .12s; padding: 0; }
+.rf-color:hover { transform: translateY(-1px); }
+.rf-color.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.rf-color.none { background: var(--surface); }
+.rf-color.custom { position: relative; background: conic-gradient(from 0deg, #f4a6c0, #f2d06b, #9ccc8f, #7fb3e0, #b79ae0, #f4a6c0); color: #fff; overflow: hidden; }
+.rf-color-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.refine-foot { border-top: 1px solid var(--border); padding: 12px 14px; display: flex; gap: 9px; align-items: stretch; }
+.rf-reset { display: flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0; padding: 0 14px; background: var(--surface); border: 1.5px solid var(--border-md); border-radius: 12px; color: var(--text-hi); font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all .13s; }
+.rf-reset:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.rf-reset:disabled { opacity: .4; cursor: not-allowed; }
+.rf-gen { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 13px; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 66%, #6f2340)); border: none; border-radius: 12px; color: #fff; font-size: 13.5px; font-weight: 700; cursor: pointer; font-family: inherit; transition: opacity .13s; box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 36%, transparent); }
+.rf-gen:hover:not(:disabled) { opacity: .93; }
+.rf-gen:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
+.rf-gen-n { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: rgba(255,255,255,.28); font-size: 11px; display: inline-flex; align-items: center; justify-content: center; }
 
 .selection-hint { margin: 0 14px 4px; padding: 5px 10px; background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 6px; font-size: 11px; color: var(--accent); text-align: center; flex-shrink: 0; }
 

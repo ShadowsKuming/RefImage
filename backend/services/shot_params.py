@@ -30,12 +30,15 @@ PARAM_SCHEMA = {
     "scale":  {"group": "构图", "label": "主体大小", "values": ["占满", "适中", "留白多"], "default": "适中"},
     "bg":     {"group": "构图", "label": "背景", "values": ["清晰", "适中", "虚化"], "default": "适中"},
     # 人物
-    "expr":   {"group": "人物", "label": "表情", "values": ["害羞", "微笑", "认真", "失落", "俏皮"], "default": "害羞", "open": True},
-    "gaze":   {"group": "人物", "label": "视线", "values": ["看镜头", "看别处", "低垂"], "default": "看别处"},
-    "pose":   {"group": "人物", "label": "姿势", "values": [], "default": "", "open": True},  # upload or free text
+    "expr":     {"group": "人物", "label": "表情", "values": ["害羞", "微笑", "认真", "失落", "俏皮"], "default": "害羞", "open": True},
+    "emphasis": {"group": "人物", "label": "表情强度", "values": ["微弱", "适中", "明显"], "default": "适中"},
+    "gaze":     {"group": "人物", "label": "视线", "values": ["看镜头", "略偏左", "略偏右", "低头", "望向远处"], "default": "看镜头"},
+    "pose":     {"group": "人物", "label": "姿势", "values": [], "default": "", "open": True},  # upload or free text
     # 色调 · 氛围
-    "temp":   {"group": "色调", "label": "冷暖", "values": ["冷", "偏冷", "中性", "偏暖", "暖"], "default": "中性"},
-    "mood":   {"group": "色调", "label": "氛围", "values": ["平淡", "适中", "戏剧化", "温暖治愈", "孤独疏离"], "default": "适中", "open": True},
+    "temp":      {"group": "色调", "label": "色温", "values": ["冷", "偏冷", "中性", "偏暖", "暖"], "default": "中性"},
+    "grade":     {"group": "色调", "label": "整体色调", "values": ["自然真实", "清新明亮", "温暖柔和", "冷峻清冷", "复古胶片", "高对比"], "default": "自然真实"},
+    "maincolor": {"group": "色调", "label": "主色", "values": [], "default": "", "open": True},  # named color or hex
+    "mood":      {"group": "色调", "label": "氛围", "values": ["平淡", "适中", "戏剧化", "温暖治愈", "孤独疏离"], "default": "适中", "open": True},
 }
 
 _ASPECT_TO_ORIENTATION = {"竖图": "portrait", "横图": "landscape", "方图": "square"}
@@ -82,8 +85,18 @@ _EXPR_EN = {
 }
 _GAZE_EN = {
     "看镜头": "looking directly at the camera",
+    "略偏左": "gaze directed slightly to the left",
+    "略偏右": "gaze directed slightly to the right",
+    "低头": "head lowered, looking down",
+    "望向远处": "gazing into the distance",
+    # legacy values (kept so old versions still translate)
     "看别处": "gaze directed off to the side",
     "低垂": "eyes lowered",
+}
+_EMPHASIS_EN = {
+    "微弱": "subtle",
+    "适中": "moderate",
+    "明显": "pronounced",
 }
 _TEMP_EN = {
     "冷": "cool blue color tone",
@@ -91,6 +104,18 @@ _TEMP_EN = {
     "中性": "neutral color tone",
     "偏暖": "warm golden color tone",
     "暖": "warm amber color tone",
+}
+_GRADE_EN = {
+    "自然真实": "natural, true-to-life color",
+    "清新明亮": "fresh and bright",
+    "温暖柔和": "warm and soft tones",
+    "冷峻清冷": "cool and crisp",
+    "复古胶片": "vintage film look",
+    "高对比": "high contrast, punchy colors",
+}
+_COLOR_EN = {
+    "粉红": "pink", "橙": "orange", "黄": "yellow",
+    "绿": "green", "蓝": "blue", "紫": "purple",
 }
 _MOOD_EN = {
     "平淡": "calm, understated mood",
@@ -129,13 +154,19 @@ def translate_params(params: dict) -> dict:
         _BG_EN.get(p["bg"], p["bg"]),
     ]) + "."
 
-    atmosphere = "\n".join([
-        f"Color tone: {_TEMP_EN.get(p['temp'], p['temp'])}",
-        f"Mood: {_open_value(p['mood'], _MOOD_EN)}",
-    ])
+    atmo_bits = [
+        f"Color temperature: {_TEMP_EN.get(p['temp'], p['temp'])}",
+        f"Color grading: {_GRADE_EN.get(p.get('grade', ''), p.get('grade', 'natural'))}",
+    ]
+    maincolor = str(p.get("maincolor") or "").strip()
+    if maincolor:
+        atmo_bits.append(f"Dominant color accent: {_COLOR_EN.get(maincolor, maincolor)}")
+    atmo_bits.append(f"Mood: {_open_value(p['mood'], _MOOD_EN)}")
+    atmosphere = "\n".join(atmo_bits)
 
+    emphasis = _EMPHASIS_EN.get(p.get("emphasis", "适中"), "moderate")
     pose_bits = [
-        f"Expression: {_open_value(p['expr'], _EXPR_EN)}",
+        f"Expression ({emphasis} intensity): {_open_value(p['expr'], _EXPR_EN)}",
         _GAZE_EN.get(p["gaze"], p["gaze"]),
     ]
     if p.get("pose") and not str(p["pose"]).startswith("上传:"):

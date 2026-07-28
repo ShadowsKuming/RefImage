@@ -260,7 +260,7 @@ TOOLS = [
                     ),
                     "properties": {
                         k: {"type": "string"} for k in
-                        ("shot", "angle", "facing", "aspect", "pos", "scale", "bg", "expr", "gaze", "pose", "temp", "mood")
+                        ("shot", "angle", "facing", "aspect", "pos", "scale", "bg", "expr", "emphasis", "gaze", "pose", "temp", "grade", "maincolor", "mood")
                     },
                 },
             },
