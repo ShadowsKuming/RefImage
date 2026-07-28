@@ -1462,30 +1462,14 @@ function pileStyle(k: number, n: number) {
 // 日程头部小统计:段数 / 总时长 / 场地数 / 必拍(高优段)数
 // 场地:按地点聚合的"这里拍什么"视图。当前从 schedule 归组(临时);等 shot
 // 加上 location 字段后,数据源改成从 shots 派生即可,此处 UI 不变。
-const locationCards = computed(() => {
-  // Primary source: aggregated from the shots' plan.json (each 取景地 → its shots).
-  if (rollup.value.locations.length) {
-    return rollup.value.locations.map(l => ({
-      scene: l.name, indoorOutdoor: (l.indoor_outdoor || '') as string,
-      shotIds: (l.shots ?? []).map((s: any) => s.shot_id),
-      segments: (l.shots ?? []).length, times: [] as string[], lights: [] as string[],
-    }))
-  }
-  // Fallback (no shot has picked a 取景地 yet): legacy schedule-derived grouping.
-  const map = new Map<string, { scene: string; indoorOutdoor: string; shotIds: string[]; segments: number; times: string[]; lights: string[] }>()
-  for (const row of plan.value.schedule) {
-    const e = map.get(row.scene) ?? { scene: row.scene, indoorOutdoor: '', shotIds: [], segments: 0, times: [], lights: [] }
-    e.shotIds.push(...(row.shotIds ?? []))
-    e.segments += 1
-    if (row.time) e.times.push(row.time)
-    if (row.light && !e.lights.includes(row.light)) e.lights.push(row.light)
-    map.set(row.scene, e)
-  }
-  if (map.size === 0) {
-    return plan.value.locations.map(name => ({ scene: name, indoorOutdoor: '', shotIds: [] as string[], segments: 0, times: [] as string[], lights: [] as string[] }))
-  }
-  return [...map.values()]
-})
+// 场地纯粹从各 shot 的取景地聚合（每个取景地 → 用它的分镜）。地址(locAddr)是
+// 用户填的真实信息，另存 location_meta、按场地名关联，仍保留。
+const locationCards = computed(() =>
+  rollup.value.locations.map(l => ({
+    scene: l.name, indoorOutdoor: (l.indoor_outdoor || '') as string,
+    shotIds: (l.shots ?? []).map((s: any) => s.shot_id),
+    segments: (l.shots ?? []).length, times: [] as string[], lights: [] as string[],
+  })))
 
 // 室内/室外/棚子:根据场景自动判定(不由用户选)。mock 阶段用场景名关键词
 // 猜;等 AI 给出 location.type 字段后,把这里换成读那个字段即可。
