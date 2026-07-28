@@ -14,6 +14,7 @@
       </div>
       <div class="tb-actions">
         <button class="tb-btn" @click="resetLayout">{{ t('projectCanvas.resetLayout') }}</button>
+        <button class="tb-btn primary" @click="openHandbook">{{ t('handbook.openHandbook') }}</button>
         <button class="tb-btn" :disabled="exporting" @click="doExport">
           {{ exporting ? t('projectCanvas.exporting') : t('projectCanvas.exportProject') }}
         </button>
@@ -2014,6 +2015,7 @@ const collapsed = ref<PanelId[]>([])
 let   ghostEl: HTMLElement | null = null
 
 function resetLayout() { layout.value = defaultLayout(); collapsed.value = [] }
+function openHandbook() { navigateTo(`/projects/${projectId.value}/handbook`) }
 
 function toggleCollapse(id: PanelId) {
   const idx = collapsed.value.indexOf(id)
@@ -2145,6 +2147,8 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
   transition: background 0.15s, color 0.15s;
 }
 .tb-btn:hover { background: var(--border-md); color: var(--text); }
+.tb-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tb-btn.primary:hover { background: var(--accent-dim); color: #fff; }
 
 /* ── Canvas ── */
 .canvas { flex: 1; overflow: hidden; padding: 10px; box-sizing: border-box; }

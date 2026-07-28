@@ -233,6 +233,11 @@ export default {
       必拍: 'Must', 想拍: 'Want', 可选: 'Optional',
     },
   },
+  handbook: {
+    title: 'Shooting Handbook', print: 'Print / Export PDF', back: 'Back', loading: 'Loading…',
+    empty: 'No compiled shot pages yet. Hit "Compile" on a shot to build its page.',
+    pageCount: '{n} pages', openHandbook: 'Handbook',
+  },
   fields: {
     genre: 'Genre', era: 'Era', timeline: 'Timeline', synopsis: 'Synopsis',
     themes: 'Themes', iconic_settings: 'Iconic Settings', tone: 'Tone',

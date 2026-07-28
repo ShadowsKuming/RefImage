@@ -361,6 +361,29 @@ def aggregate_shot_logistics(project_id: str) -> dict:
     return {"locations": list(locations.values()), "equipment": list(equipment.values())}
 
 
+def get_handbook(project_id: str) -> dict:
+    """Assemble the project shooting handbook: every shot that has a compiled sheet
+    (Overleaf-style snapshot), in workspace order, as one page each for the PDF."""
+    from services import shot_plan_service
+    proj = get_project(project_id)
+    pages = []
+    for idx, shot in enumerate(proj.get("shots", [])):
+        sid = shot.get("shot_id")
+        sheet = shot_plan_service.load_sheet(project_id, sid)
+        if not sheet:
+            continue
+        pages.append({
+            "shot_id": sid,
+            "index": idx + 1,
+            "title": shot.get("title", ""),
+            "completed": bool(shot.get("completed", False)),
+            "compiled_at": sheet.get("compiled_at", ""),
+            "plan": sheet.get("plan", {}),
+            "image_url": f"/projects/{project_id}/shots/{sid}/image",
+        })
+    return {"project": proj.get("name") or proj.get("title") or "", "pages": pages}
+
+
 # ── Shots ──────────────────────────────────────────────────────────────────────
 
 def get_shot_history(project_id: str, shot_id: str) -> list[dict]:

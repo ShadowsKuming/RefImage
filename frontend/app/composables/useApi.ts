@@ -106,6 +106,9 @@ export const useApi = () => {
   function getProject(projectId: string) {
     return api<any>(`/projects/${projectId}`)
   }
+  function getHandbook(projectId: string) {
+    return api<any>(`/projects/${projectId}/handbook`)
+  }
 
   function savePlanData(projectId: string, data: Record<string, any>) {
     return api<{ ok: boolean }>(`/projects/${projectId}/plan`, {
@@ -467,6 +470,7 @@ export const useApi = () => {
     runProfile,
     runScenes,
     getProject,
+    getHandbook,
     listProjects,
     savePlanData,
     saveWardrobe,

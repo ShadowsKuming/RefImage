@@ -233,6 +233,11 @@ export default {
       必拍: '必撮', 想拍: '希望', 可选: '任意',
     },
   },
+  handbook: {
+    title: '撮影ハンドブック', print: '印刷 / PDF 出力', back: '戻る', loading: '読み込み中…',
+    empty: 'コンパイル済みのカットページがありません。カットで「コンパイル」を押してページを作成してください。',
+    pageCount: '全 {n} ページ', openHandbook: 'ハンドブック',
+  },
   fields: {
     genre: 'ジャンル', era: '時代', timeline: 'タイムライン', synopsis: 'あらすじ',
     themes: 'テーマ', iconic_settings: '象徴的な舞台', tone: '作風',

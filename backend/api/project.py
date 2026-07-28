@@ -99,6 +99,16 @@ def get_project(project_id: str, user_id: str = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Project not found")
 
 
+@router.get("/{project_id}/handbook")
+def get_handbook(project_id: str, user_id: str = Depends(get_current_user)):
+    """Compiled shooting handbook = one page per shot that has a compiled sheet."""
+    _check_owner(project_id, user_id)
+    try:
+        return project_service.get_handbook(project_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+
 class PlanDataRequest(BaseModel):
     data: dict
 

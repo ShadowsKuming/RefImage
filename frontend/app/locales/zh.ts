@@ -232,6 +232,11 @@ const zh = {
       必拍: '必拍', 想拍: '想拍', 可选: '可选',
     },
   },
+  handbook: {
+    title: '拍摄手册', print: '打印 / 导出 PDF', back: '返回', loading: '加载中…',
+    empty: '还没有已编译的分镜页。先在分镜里点"编译"生成手册页。',
+    pageCount: '共 {n} 页', openHandbook: '拍摄手册',
+  },
   fields: {
     genre: '类型', era: '时代', timeline: '时间线', synopsis: '作品简介',
     themes: '主题', iconic_settings: '标志场景', tone: '风格基调',
