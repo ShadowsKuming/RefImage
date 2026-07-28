@@ -119,7 +119,7 @@ export default {
     catSupport: 'Tripod / Support', catPower: 'Battery / Storage', catCharger: 'Charger',
     catAudio: 'Audio / Mic', catBackdrop: 'Backdrop', catMisc: 'Misc / Tools',
     groupRequired: 'Essential', groupOptional: 'Optional',
-    linkShotsTodo: 'Link shots', linkTodo: 'To link',
+    linkShotsTodo: 'Link shots', linkTodo: 'To link', fromShots: 'From shots',
     addressPlaceholder: 'Actual address (e.g. Sakuragaoka HS, Bldg 3F)',
     emptyLoc: 'No locations yet — they appear here once you plan the schedule.',
     sceneIndoor: 'Indoor', sceneOutdoor: 'Outdoor', sceneStudio: 'Studio',

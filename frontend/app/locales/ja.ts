@@ -119,7 +119,7 @@ export default {
     catSupport: '三脚 / 支持', catPower: 'バッテリー / 保存', catCharger: '充電',
     catAudio: '録音 / マイク', catBackdrop: '背景', catMisc: 'その他 / 工具',
     groupRequired: '必須機材', groupOptional: '任意機材',
-    linkShotsTodo: 'カット未紐付け', linkTodo: '未紐付け',
+    linkShotsTodo: 'カット未紐付け', linkTodo: '未紐付け', fromShots: 'カットより',
     addressPlaceholder: '実際の住所（例：桜が丘高校 3F）',
     emptyLoc: 'まだロケ地がありません。日程を組むとここに自動整理されます。',
     sceneIndoor: '屋内', sceneOutdoor: '屋外', sceneStudio: 'スタジオ',

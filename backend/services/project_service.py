@@ -319,7 +319,46 @@ def get_project(project_id: str) -> dict:
         "wardrobe":       wardrobe,
         "cover":          cover_service.cover_url(project_id),
         "shots": shots,
+        "logistics_rollup": aggregate_shot_logistics(project_id),
     }
+
+
+def aggregate_shot_logistics(project_id: str) -> dict:
+    """Roll up every shot's plan.json logistics into project-level lists so the
+    workspace 场地/设备 panels reflect what the shots actually need (deterministic
+    union — the shots are the source of truth, this is a derived view)."""
+    base = STORAGE_ROOT / project_id / "shots"
+    locations: dict[str, dict] = {}
+    equipment: dict[str, dict] = {}
+    if base.exists():
+        for shot_dir in sorted(base.iterdir()):
+            plan_file, shot_file = shot_dir / "plan.json", shot_dir / "shot.json"
+            if not (plan_file.exists() and shot_file.exists()):
+                continue
+            try:
+                plan = json.loads(plan_file.read_text())
+                shot = json.loads(shot_file.read_text())
+            except (json.JSONDecodeError, OSError):
+                continue
+            ref = {"shot_id": shot.get("shot_id") or shot_dir.name, "title": shot.get("title", "")}
+            lg = plan.get("logistics") or {}
+            scene = lg.get("scene") or {}
+            loc = (scene.get("location") or "").strip()
+            if loc:
+                ent = locations.setdefault(loc, {"name": loc,
+                                                 "indoor_outdoor": scene.get("indoor_outdoor", ""),
+                                                 "shots": []})
+                ent["shots"].append(ref)
+            for e in (lg.get("equipment") or []):
+                name = (e.get("name", "") if isinstance(e, dict) else str(e)).strip()
+                purpose = (e.get("purpose", "").strip() if isinstance(e, dict) else "")
+                if not name:
+                    continue
+                ent = equipment.setdefault(name, {"name": name, "purposes": [], "shots": []})
+                if purpose and purpose not in ent["purposes"]:
+                    ent["purposes"].append(purpose)
+                ent["shots"].append(ref)
+    return {"locations": list(locations.values()), "equipment": list(equipment.values())}
 
 
 # ── Shots ──────────────────────────────────────────────────────────────────────

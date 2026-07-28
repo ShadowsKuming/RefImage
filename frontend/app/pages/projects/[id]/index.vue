@@ -246,11 +246,11 @@
 
               <template v-if="summaryTab === 'equipment'">
                 <div class="equip">
-                  <template v-if="equipmentList.length">
+                  <template v-if="allEquipment.length">
 
                     <!-- 准备进度条:勾选项 / 总数 -->
                     <div class="prep-bar">
-                      <span class="pb-head"><CircleCheck class="pb-ico" /> {{ t('projectCanvas.preparedProgress', { done: preparedCount, total: equipmentList.length }) }}</span>
+                      <span class="pb-head"><CircleCheck class="pb-ico" /> {{ t('projectCanvas.preparedProgress', { done: preparedCount, total: allEquipment.length }) }}</span>
                       <div class="pb-track"><div class="pb-fill" :style="{ width: preparedPct + '%' }" /></div>
                       <span class="pb-pct">{{ preparedPct }}%</span>
                     </div>
@@ -271,10 +271,12 @@
                             <span class="ei-name">{{ e.name }}</span>
                             <span v-if="e.desc" class="ei-desc">{{ e.desc }}</span>
                           </div>
+                          <span v-if="e.shotIds.length" class="ei-shots" :title="t('projectCanvas.fromShots')">{{ shotLabels(e.shotIds) }}</span>
                           <span class="ei-status" :class="isPrepared(e) ? 'ready' : 'pending'">
                             <component :is="isPrepared(e) ? CircleCheck : Clock" class="eis-ico" />{{ isPrepared(e) ? t('projectCanvas.prepared') : t('projectCanvas.pending') }}
                           </span>
                           <button
+                            v-if="e.source === 'manual'"
                             class="ei-del"
                             :class="{ armed: pendingDelete === e }"
                             :title="pendingDelete === e ? t('projectCanvas.confirmDelete') : t('projectCanvas.delete')"
@@ -311,7 +313,7 @@
                     <div class="loc-body">
                       <div class="loc-line1">
                         <span class="loc-name">{{ loc.scene }}</span>
-                        <span class="loc-type">{{ sceneType(loc.scene) }}</span>
+                        <span class="loc-type">{{ sceneTypeOf(loc) }}</span>
                       </div>
                       <div class="loc-meta">
                         <span v-if="loc.times.length" class="loc-mrow"><Clock class="loc-mi" />{{ loc.times.join('、') }}</span>
@@ -1234,6 +1236,10 @@ interface NoteItem { id?: string; title: string; desc?: string; phase: NotePhase
 // on disk at plan/plan.json. snake_case on the wire, camelCase in the UI. All
 // edits round-trip the whole blob back via PUT /projects/{id}/plan (persistPlan).
 const planData = computed<any>(() => projectData.value?.plan?.data ?? {})
+// Deterministic roll-up of every shot's plan logistics (locations + equipment).
+// Shots are the source of truth; these panels are a derived view (see memory).
+const rollup = computed<{ locations: any[]; equipment: any[] }>(
+  () => projectData.value?.logistics_rollup ?? { locations: [], equipment: [] })
 
 function mapScheduleRow(r: any): ScheduleRow {
   return {
@@ -1336,7 +1342,7 @@ function addEquipment(item: EquipmentItem) {
   persistPlan()
 }
 function removeEquipment(item: EquipmentItem) {
-  const i = equipmentList.value.indexOf(item)
+  const i = equipmentList.value.findIndex(e => e.name === item.name)  // allEquipment items are copies
   if (i >= 0) equipmentList.value.splice(i, 1)
   delete prepared[item.name]   // drop its checklist state too
   persistPlan()
@@ -1374,9 +1380,35 @@ function submitAddEquip() {
   showAddEquip.value = false
 }
 
+// 设备清单 = 从各 shot 聚合的（来源真理）∪ 用户手动补的额外项。
+type EquipView = EquipmentItem & { source: 'shot' | 'manual'; shotIds: string[] }
+function guessEquipCat(name: string): string {
+  const s = name || ''
+  if (/镜头|焦|mm/i.test(s)) return 'lens'
+  if (/反光板|反光|柔光/.test(s)) return 'reflector'
+  if (/灯|补光|光源/.test(s)) return 'light'
+  if (/三脚架|脚架|稳定器|支架/.test(s)) return 'support'
+  if (/电池|存储|卡|内存|充电/.test(s)) return 'power'
+  if (/麦|收音|录音/.test(s)) return 'audio'
+  if (/背景/.test(s)) return 'backdrop'
+  if (/相机|机身/.test(s)) return 'camera'
+  return 'misc'
+}
+const shotEquipment = computed<EquipView[]>(() => rollup.value.equipment.map((e: any) => ({
+  name: e.name, desc: (e.purposes ?? []).join('、') || undefined,
+  category: guessEquipCat(e.name), required: true,
+  source: 'shot', shotIds: (e.shots ?? []).map((s: any) => s.shot_id),
+})))
+const allEquipment = computed<EquipView[]>(() => {
+  const shotNames = new Set(shotEquipment.value.map(e => e.name))
+  const manual = equipmentList.value
+    .filter(e => !shotNames.has(e.name))
+    .map(e => ({ ...e, source: 'manual' as const, shotIds: [] as string[] }))
+  return [...shotEquipment.value, ...manual]
+})
 // Equipment grouped by 必要 / 可选 for the detail list.
-const requiredEquip = computed(() => equipmentList.value.filter(e => e.required !== false))
-const optionalEquip = computed(() => equipmentList.value.filter(e => e.required === false))
+const requiredEquip = computed(() => allEquipment.value.filter(e => e.required !== false))
+const optionalEquip = computed(() => allEquipment.value.filter(e => e.required === false))
 const equipGroups = computed(() => [
   { cls: 'req', label: t('projectCanvas.groupRequired'), items: requiredEquip.value },
   { cls: 'opt', label: t('projectCanvas.groupOptional'), items: optionalEquip.value },
@@ -1453,9 +1485,9 @@ function togglePrepared(e: EquipmentItem) {
   persistPlan()
 }
 const isPrepared = (e: EquipmentItem) => !!prepared[e.name]
-const preparedCount = computed(() => equipmentList.value.filter(e => prepared[e.name]).length)
+const preparedCount = computed(() => allEquipment.value.filter(e => prepared[e.name]).length)
 const preparedPct = computed(() => {
-  const t = equipmentList.value.length
+  const t = allEquipment.value.length
   return t ? Math.round((preparedCount.value / t) * 100) : 0
 })
 
@@ -1512,18 +1544,26 @@ function pileStyle(k: number, n: number) {
 // 场地:按地点聚合的"这里拍什么"视图。当前从 schedule 归组(临时);等 shot
 // 加上 location 字段后,数据源改成从 shots 派生即可,此处 UI 不变。
 const locationCards = computed(() => {
-  const map = new Map<string, { scene: string; shotIds: string[]; segments: number; times: string[]; lights: string[] }>()
+  // Primary source: aggregated from the shots' plan.json (each 取景地 → its shots).
+  if (rollup.value.locations.length) {
+    return rollup.value.locations.map(l => ({
+      scene: l.name, indoorOutdoor: (l.indoor_outdoor || '') as string,
+      shotIds: (l.shots ?? []).map((s: any) => s.shot_id),
+      segments: (l.shots ?? []).length, times: [] as string[], lights: [] as string[],
+    }))
+  }
+  // Fallback (no shot has picked a 取景地 yet): legacy schedule-derived grouping.
+  const map = new Map<string, { scene: string; indoorOutdoor: string; shotIds: string[]; segments: number; times: string[]; lights: string[] }>()
   for (const row of plan.value.schedule) {
-    const e = map.get(row.scene) ?? { scene: row.scene, shotIds: [], segments: 0, times: [], lights: [] }
+    const e = map.get(row.scene) ?? { scene: row.scene, indoorOutdoor: '', shotIds: [], segments: 0, times: [], lights: [] }
     e.shotIds.push(...(row.shotIds ?? []))
     e.segments += 1
     if (row.time) e.times.push(row.time)
-    if (row.light && !e.lights.includes(row.light)) e.lights.push(row.light)   // 光线由镜头需要决定,派生自日程
+    if (row.light && !e.lights.includes(row.light)) e.lights.push(row.light)
     map.set(row.scene, e)
   }
-  // 日程为空时,退回用孤立的 locations 名单当占位
   if (map.size === 0) {
-    return plan.value.locations.map(name => ({ scene: name, shotIds: [] as string[], segments: 0, times: [] as string[], lights: [] as string[] }))
+    return plan.value.locations.map(name => ({ scene: name, indoorOutdoor: '', shotIds: [] as string[], segments: 0, times: [] as string[], lights: [] as string[] }))
   }
   return [...map.values()]
 })
@@ -1534,6 +1574,12 @@ function sceneType(scene: string): string {
   if (/棚|影棚/.test(scene)) return t('projectCanvas.sceneStudio')
   if (/室外|户外|街|公园|操场|天台|门口|广场|野外|马路|路口/.test(scene)) return t('projectCanvas.sceneOutdoor')
   return t('projectCanvas.sceneIndoor')
+}
+// Prefer the real 室内/室外 the shot recorded; fall back to a name-based guess.
+function sceneTypeOf(loc: { scene: string; indoorOutdoor?: string }): string {
+  if (loc.indoorOutdoor === '室外') return t('projectCanvas.sceneOutdoor')
+  if (loc.indoorOutdoor === '室内') return t('projectCanvas.sceneIndoor')
+  return sceneType(loc.scene)
 }
 
 // 地点唯一的用户元数据:实际地址(系统推不出、只有用户知道)。其余(类型/时间/
@@ -2805,6 +2851,10 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 .ei-check-ico { width: 13px; height: 13px; color: #fff; stroke-width: 3; }
 
 /* 右侧状态徽章 */
+.ei-shots {
+  flex-shrink: 0; font-size: 9.5px; font-weight: 600; color: var(--accent);
+  background: var(--accent-soft); border-radius: 5px; padding: 2px 6px; white-space: nowrap;
+}
 .ei-status {
   flex-shrink: 0; display: inline-flex; align-items: center; gap: 3px;
   font-size: 10px; font-weight: 600; white-space: nowrap;

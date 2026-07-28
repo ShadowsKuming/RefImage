@@ -117,7 +117,7 @@ const zh = {
     catSupport: '三脚架 / 支撑', catPower: '电池 / 存储', catCharger: '充电',
     catAudio: '收音 / 麦克风', catBackdrop: '背景', catMisc: '杂项 / 工具',
     groupRequired: '必要设备', groupOptional: '可选设备',
-    linkShotsTodo: '待关联镜头', linkTodo: '待关联',
+    linkShotsTodo: '待关联镜头', linkTodo: '待关联', fromShots: '来自分镜',
     addressPlaceholder: '实际地址（如 樱丘高中 教学楼 3F）',
     emptyLoc: '还没有场地，规划拍摄日程后会自动整理到这里。',
     sceneIndoor: '室内', sceneOutdoor: '室外', sceneStudio: '棚子',
