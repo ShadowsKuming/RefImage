@@ -376,15 +376,6 @@
 
         </div>
 
-        <!-- Bottom info bar -->
-        <div class="info-bar">
-          <span class="shot-icon-lg">{{ shot.icon }}</span>
-          <div class="shot-meta">
-            <span class="shot-title-lg">{{ shot.title }}</span>
-            <span class="shot-mood-lg" v-if="shot.mood">{{ shot.mood }}</span>
-          </div>
-          <span v-if="versions.length > 0" class="version-count">{{ versions.length }} 个版本</span>
-        </div>
       </div>
 
       <!-- Resizer: canvas | right — only when guides are shown (after 完善) -->
@@ -419,49 +410,140 @@
 
           <div class="plan-body">
             <!-- A. 相关信息 -->
-            <div v-if="planTab === 'overview'" class="plan-sec">
-              <div class="plan-line"><span class="pk">梗概</span><span class="pv"><EditableText :model-value="shotPlan.overview.synopsis" multiline placeholder="—" @save="saveField('overview.synopsis', $event)" /></span></div>
-              <div class="plan-line"><span class="pk">目标</span><span class="pv"><EditableText :model-value="shotPlan.overview.goal" multiline placeholder="点击填写摄影目标…" @save="saveField('overview.goal', $event)" /></span></div>
-              <div class="plan-line"><span class="pk">优先级</span><span class="pv"><span class="p-pill">{{ PRIO_LABEL[shotPlan.overview.priority] || '想拍' }}</span></span></div>
-              <div class="plan-line"><span class="pk">限制</span><span class="pv"><EditableList :items="shotPlan.overview.constraints || []" @change="saveField('overview.constraints', $event)" /></span></div>
-              <div class="plan-line"><span class="pk">标签</span><span class="pv"><EditableList :items="shotPlan.overview.tags || []" @change="saveField('overview.tags', $event)" /></span></div>
+            <div v-if="planTab === 'overview'" class="plan-info">
+              <!-- 标签 -->
+              <div class="info-card col">
+                <div class="info-head"><div class="info-ico"><Tag :size="17" /></div><span class="info-title">标签</span>
+                  <button class="info-add txt" @click="startAddTag"><Plus :size="14" /> 添加标签</button></div>
+                <div class="tag-grid">
+                  <div v-for="(tg, i) in (shotPlan.overview.tags || [])" :key="i" class="tag-chip">
+                    <span class="tag-txt">{{ tg }}</span>
+                    <button class="tag-x" title="删除" @click="removeTag(i)">×</button>
+                  </div>
+                  <input v-if="tagAdding" v-model="tagDraft" class="tag-input" placeholder="标签…" autofocus
+                         @blur="commitTag" @keydown.enter="commitTag" @keydown.esc="tagAdding = false" />
+                  <span v-if="!(shotPlan.overview.tags || []).length && !tagAdding" class="tag-empty">暂无标签</span>
+                </div>
+              </div>
+
+              <!-- 优先级 -->
+              <div class="info-card row">
+                <div class="info-head"><div class="info-ico"><Flag :size="17" /></div><span class="info-title">优先级</span></div>
+                <div class="prio-dd">
+                  <button class="prio-cur" @click="prioOpen = !prioOpen">
+                    {{ PRIO_LABEL[shotPlan.overview.priority] || '想拍' }}<ChevronDown :size="13" :class="{ up: prioOpen }" />
+                  </button>
+                  <div v-if="prioOpen" class="prio-back" @click="prioOpen = false" />
+                  <div v-if="prioOpen" class="prio-menu">
+                    <button v-for="p in PRIO_ORDER" :key="p" class="prio-item"
+                            :class="{ on: (shotPlan.overview.priority || 'mid') === p }"
+                            @click="setPriority(p); prioOpen = false">{{ PRIO_LABEL[p] }}</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 概述 -->
+              <div class="info-card">
+                <div class="info-head"><div class="info-ico"><FileText :size="17" /></div><span class="info-title">概述</span></div>
+                <div class="info-body"><EditableText :model-value="shotPlan.overview.synopsis" multiline placeholder="—" @save="saveField('overview.synopsis', $event)" /></div>
+              </div>
+
+              <!-- 拍摄目标 -->
+              <div class="info-card">
+                <div class="info-head"><div class="info-ico"><Target :size="17" /></div><span class="info-title">拍摄目标</span></div>
+                <div class="info-body"><EditableText :model-value="shotPlan.overview.goal" multiline placeholder="点击填写摄影目标…" @save="saveField('overview.goal', $event)" /></div>
+              </div>
+
+              <!-- 限制条件 -->
+              <div class="info-card col">
+                <div class="info-head"><div class="info-ico"><ShieldCheck :size="17" /></div><span class="info-title">限制条件</span>
+                  <button class="info-add" @click="constraintsRef?.startAdd()"><Plus :size="15" /></button></div>
+                <div class="info-constraints"><EditableList ref="constraintsRef" :items="shotPlan.overview.constraints || []" add-placeholder="添加限制…" @change="saveField('overview.constraints', $event)" /></div>
+              </div>
             </div>
 
             <!-- B. 拍摄物流（核心，汇入项目） -->
-            <div v-else-if="planTab === 'logistics'" class="plan-sec logi">
-              <div class="plan-line"><span class="pk">场景</span><span class="pv"><EditableText :model-value="shotPlan.logistics.scene.place" placeholder="—" @save="saveField('logistics.scene.place', $event)" /><span class="io">{{ shotPlan.logistics.scene.indoor_outdoor }}</span></span></div>
-              <!-- 取景地：项目共享，必选 -->
-              <div class="plan-line"><span class="pk">取景地</span>
-                <span class="pv" v-if="shotPlan.logistics.scene.location && !locPicking">
-                  <span class="pill loc-on">📍 {{ shotPlan.logistics.scene.location }}</span>
-                  <button class="loc-change" @click="locPicking = true">换</button>
-                </span>
-                <span class="pv" v-else>
-                  <div class="loc-hint">选一个取景地（同类镜头尽量复用同一个，方便排场地）</div>
-                  <span v-for="c in shotPlan.logistics.scene.candidates" :key="c" class="pill loc-pick" @click="pickLocation(c)">{{ c }}</span>
-                  <span class="loc-custom">
-                    <input v-model="locCustom" placeholder="或自己填一个…" @keydown.enter="pickLocation(locCustom)" />
-                    <button v-if="locCustom.trim()" @click="pickLocation(locCustom)">加</button>
-                  </span>
-                </span>
+            <div v-else-if="planTab === 'logistics'" class="plan-logi">
+              <!-- 场景 -->
+              <div class="lg-card">
+                <div class="lg-ico"><Home :size="18" /></div>
+                <div class="lg-main">
+                  <div class="lg-k">场景</div>
+                  <div class="lg-v"><EditableText :model-value="shotPlan.logistics.scene.place" placeholder="—" @save="saveField('logistics.scene.place', $event)" /></div>
+                </div>
+                <span class="lg-io">{{ shotPlan.logistics.scene.indoor_outdoor }}</span>
               </div>
-              <div class="plan-line"><span class="pk">时间</span><span class="pv"><EditableText :model-value="shotPlan.logistics.timing.best_time" placeholder="—" @save="saveField('logistics.timing.best_time', $event)" /></span></div>
-              <div class="plan-line"><span class="pk">天气</span><span class="pv"><EditableText :model-value="shotPlan.logistics.timing.weather" placeholder="点击填写…" @save="saveField('logistics.timing.weather', $event)" /></span></div>
+
+              <!-- 取景地：项目共享，必选 -->
+              <div class="lg-card">
+                <div class="lg-ico"><MapPin :size="18" /></div>
+                <div class="lg-main">
+                  <div class="lg-k">取景地</div>
+                  <div class="lg-v" v-if="shotPlan.logistics.scene.location && !locPicking">
+                    <span class="pill loc-on">{{ shotPlan.logistics.scene.location }}</span>
+                  </div>
+                  <div class="lg-v" v-else>
+                    <div class="loc-hint">选一个取景地（同类镜头尽量复用，方便排场地）</div>
+                    <span v-for="c in shotPlan.logistics.scene.candidates" :key="c" class="pill loc-pick" @click="pickLocation(c)">{{ c }}</span>
+                    <span class="loc-custom">
+                      <input v-model="locCustom" placeholder="或自己填一个…" @keydown.enter="pickLocation(locCustom)" />
+                      <button v-if="locCustom.trim()" @click="pickLocation(locCustom)">加</button>
+                    </span>
+                  </div>
+                </div>
+                <button v-if="shotPlan.logistics.scene.location && !locPicking" class="lg-aside" @click="locPicking = true">换一个 ›</button>
+              </div>
+
+              <!-- 时间 / 天气 -->
+              <div class="lg-card">
+                <div class="lg-ico"><Clock :size="18" /></div>
+                <div class="lg-crew">
+                  <div class="lg-crow"><span class="lg-ck">时间</span><span class="lg-cv"><EditableText :model-value="shotPlan.logistics.timing.best_time" placeholder="—" @save="saveField('logistics.timing.best_time', $event)" /></span></div>
+                  <div class="lg-crow"><span class="lg-ck">天气</span><span class="lg-cv"><EditableText :model-value="shotPlan.logistics.timing.weather" placeholder="点击填写…" @save="saveField('logistics.timing.weather', $event)" /></span></div>
+                </div>
+              </div>
 
               <!-- 参与者 -->
-              <div class="plan-sub">参与者</div>
-              <div class="plan-line"><span class="pk">coser</span><span class="pv">{{ shotPlan.logistics.crew.cosers.join('、') }} · {{ shotPlan.logistics.crew.cosers.length }} 人</span></div>
-              <div class="plan-line"><span class="pk">摄影</span><span class="pv">1 人</span></div>
-              <div class="plan-line"><span class="pk">后勤</span>
-                <span class="pv" v-if="!shotPlan.logistics.crew.support || shotPlan.logistics.crew.support === '不需要'">0 人</span>
-                <span class="pv help" v-else :title="shotPlan.logistics.crew.support">需后勤 <span class="q">?</span></span>
+              <div class="lg-card">
+                <div class="lg-ico"><Users :size="18" /></div>
+                <div class="lg-crew">
+                  <div class="lg-crow"><span class="lg-ck">coser</span><span class="lg-cv">{{ shotPlan.logistics.crew.cosers.join('、') }} · {{ shotPlan.logistics.crew.cosers.length }} 人</span></div>
+                  <div class="lg-crow"><span class="lg-ck">摄影</span><span class="lg-cv">1 人</span></div>
+                  <div class="lg-crow"><span class="lg-ck">后勤</span>
+                    <span class="lg-cv" v-if="!shotPlan.logistics.crew.support || shotPlan.logistics.crew.support === '不需要'">0 人</span>
+                    <span class="lg-cv help" v-else :title="shotPlan.logistics.crew.support">需后勤 <span class="q">?</span></span>
+                  </div>
+                </div>
               </div>
 
-              <!-- 物品 三类（可编辑） -->
-              <div class="plan-sub">物品</div>
-              <div class="plan-line"><span class="pk">角色道具</span><span class="pv"><EditableList :items="shotPlan.logistics.props.character || []" @change="saveField('logistics.props.character', $event)" /></span></div>
-              <div class="plan-line"><span class="pk">辅助道具</span><span class="pv"><template v-if="shotPlan.logistics.props.aux?.length"><span v-for="a in shotPlan.logistics.props.aux" :key="a.item" class="pill" :title="a.reason">{{ a.item }}</span></template><span v-else class="none">这张无需</span></span></div>
-              <div class="plan-line"><span class="pk">摄影设备</span><span class="pv"><EditableList :items="shotPlan.logistics.equipment || []" @change="saveField('logistics.equipment', $event)" /></span></div>
+              <!-- 物品准备 -->
+              <div class="lg-card col">
+                <div class="lg-chead"><div class="lg-ico"><ShoppingBag :size="18" /></div><span class="lg-ctitle">物品准备</span></div>
+                <div class="lg-item"><span class="lg-ik">角色道具</span><span class="lg-iv block"><EditableList :items="shotPlan.logistics.props.character || []" @change="saveField('logistics.props.character', $event)" /></span></div>
+                <div class="lg-item"><span class="lg-ik">辅助道具</span><span class="lg-iv block"><EditableList :items="(shotPlan.logistics.props.aux || []).map(a => a.item)" @change="saveField('logistics.props.aux', $event)" /></span></div>
+              </div>
+
+              <!-- 摄影设备 — each item its own card -->
+              <div class="lg-eqlabel"><Camera :size="14" /> 摄影设备</div>
+              <template v-for="(e, i) in (shotPlan.logistics.equipment || [])" :key="i">
+                <div v-if="eqEdit === i" class="eq-edit2">
+                  <input v-model="eqName" class="eq-in-name" placeholder="名称（如 中焦镜头）" @keydown.enter="commitEq" />
+                  <input v-model="eqPurpose" class="eq-in-purpose" placeholder="用途备注" @keydown.enter="commitEq" @blur="commitEq" />
+                </div>
+                <div v-else class="eq-card" @click="startEqEdit(i)">
+                  <div class="lg-ico"><component :is="equipIcon(e)" :size="18" /></div>
+                  <div class="lg-main">
+                    <div class="eq-title">{{ eqItem(e).name }}</div>
+                    <div class="eq-desc" v-if="eqItem(e).purpose">{{ eqItem(e).purpose }}</div>
+                  </div>
+                  <button class="eq-del" @click.stop="removeEquip(i)">×</button>
+                </div>
+              </template>
+              <div v-if="eqEdit === (shotPlan.logistics.equipment || []).length" class="eq-edit2">
+                <input v-model="eqName" class="eq-in-name" placeholder="名称（如 中焦镜头）" @keydown.enter="commitEq" />
+                <input v-model="eqPurpose" class="eq-in-purpose" placeholder="用途备注" @keydown.enter="commitEq" @blur="commitEq" />
+              </div>
+              <button v-else class="eq-add" @click="addEquip">＋ 加设备</button>
             </div>
 
             <!-- C. 拍摄要点 — 三块：模特 / 摄影 / 风险 -->
@@ -470,7 +552,7 @@
                 <div class="tb-head"><span class="tb-ico">🎭</span>模特指引<span class="tb-for">给 coser</span></div>
                 <div class="plan-line"><span class="pk">表情</span><span class="pv"><EditableText :model-value="shotPlan.technique.expression" placeholder="—" @save="saveField('technique.expression', $event)" /></span></div>
                 <div class="plan-line"><span class="pk">视线</span><span class="pv">{{ shotPlan.technique.params.gaze }}</span></div>
-                <div class="plan-line"><span class="pk">姿势</span><span class="pv"><EditableList :items="shotPlan.technique.pose_tips || []" @change="saveField('technique.pose_tips', $event)" /></span></div>
+                <div class="plan-line"><span class="pk">姿势</span><span class="pv block"><EditableList :items="shotPlan.technique.pose_tips || []" @change="saveField('technique.pose_tips', $event)" /></span></div>
               </div>
 
               <div class="tech-block photo">
@@ -483,7 +565,7 @@
 
               <div class="tech-block risk-block">
                 <div class="tb-head"><span class="tb-ico">⚠</span>风险提示</div>
-                <div class="plan-line"><span class="pv"><EditableList :items="shotPlan.technique.risks || []" @change="saveField('technique.risks', $event)" /></span></div>
+                <div class="plan-line"><span class="pv block"><EditableList :items="shotPlan.technique.risks || []" @change="saveField('technique.risks', $event)" /></span></div>
               </div>
             </div>
           </div>
@@ -595,7 +677,9 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { Send, ArrowDown, User, Image as ImageIcon, Camera, Smartphone, Monitor, Check, Sparkles, Pencil,
-         Move, Maximize2, Aperture, Smile, Eye, PersonStanding, Palette, RotateCw, Gauge, RotateCcw } from 'lucide-vue-next'
+         Move, Maximize2, Aperture, Smile, Eye, PersonStanding, Palette, RotateCw, Gauge, RotateCcw,
+         Home, MapPin, Clock, Users, ShoppingBag, Plus, Battery, Lightbulb, CircleDot, Triangle,
+         FileText, Target, Flag, ShieldCheck, Tag, CheckCircle2, ChevronDown } from 'lucide-vue-next'
 import { useRoute, onBeforeRouteLeave } from 'vue-router'
 import { useApi } from '~/composables/useApi'
 
@@ -1410,6 +1494,30 @@ async function clickHotspot(hs: Hotspot) {
 const shotPlan  = ref<any | null>(null)
 const extracting = ref(false)
 const planTab   = ref<'overview' | 'logistics' | 'technique'>('logistics')
+const constraintsRef = ref<{ startAdd: () => void } | null>(null)
+const tagAdding = ref(false)
+const tagDraft  = ref('')
+const PRIO_ORDER = ['high', 'mid', 'low'] as const
+const prioOpen = ref(false)
+function startAddTag() { tagDraft.value = ''; tagAdding.value = true }
+function commitTag() {
+  const v = tagDraft.value.trim()
+  tagAdding.value = false
+  if (!v) return
+  saveField('overview.tags', [...(shotPlan.value?.overview?.tags || []), v])
+}
+function removeTag(i: number) {
+  const next = [...(shotPlan.value?.overview?.tags || [])]
+  next.splice(i, 1)
+  saveField('overview.tags', next)
+}
+async function setPriority(p: string) {
+  if ((shotPlan.value?.overview?.priority || 'mid') === p) return
+  try {
+    await api.setShotAttrs(projectId.value, shotId.value, { priority: p })
+    shotPlan.value = await api.updatePlanField(projectId.value, shotId.value, 'overview.priority', p)
+  } catch (e) { console.error('setPriority', e) }
+}
 const PLAN_TABS = [
   { key: 'overview',  label: '相关信息' },
   { key: 'logistics', label: '拍摄物流' },
@@ -1448,6 +1556,40 @@ async function pickLocation(name: string) {
 async function saveField(path: string, value: any) {
   try { shotPlan.value = await api.updatePlanField(projectId.value, shotId.value, path, value) }
   catch (e) { console.error('savePlanField', path, e) }
+}
+
+// 摄影设备 as cards: each item is { name, purpose } (legacy strings normalized).
+function eqItem(e: any) {
+  if (typeof e === 'string') return { name: e, purpose: '' }
+  return { name: e?.name || '', purpose: e?.purpose || '' }
+}
+function equipIcon(e: any) {
+  const t = eqItem(e).name
+  if (/镜头|焦|mm/i.test(t)) return Aperture
+  if (/电池|存储|卡|内存|充电/.test(t)) return Battery
+  if (/反光板|反光|柔光箱/.test(t)) return CircleDot
+  if (/灯|补光|光源/.test(t)) return Lightbulb
+  if (/三脚架|脚架|稳定器|支架/.test(t)) return Triangle
+  return Camera
+}
+const eqEdit    = ref<number | null>(null)
+const eqName    = ref('')
+const eqPurpose = ref('')
+function startEqEdit(i: number) { const it = eqItem(shotPlan.value?.logistics.equipment?.[i]); eqEdit.value = i; eqName.value = it.name; eqPurpose.value = it.purpose }
+function addEquip() { eqEdit.value = (shotPlan.value?.logistics.equipment || []).length; eqName.value = ''; eqPurpose.value = '' }
+function commitEq() {
+  const i = eqEdit.value
+  if (i === null) return
+  const list = [...(shotPlan.value?.logistics.equipment || [])].map(eqItem)
+  const name = eqName.value.trim()
+  if (name) { const obj = { name, purpose: eqPurpose.value.trim() }; if (i < list.length) list[i] = obj; else list.push(obj) }
+  else if (i < list.length) list.splice(i, 1)
+  eqEdit.value = null
+  saveField('logistics.equipment', list)
+}
+function removeEquip(i: number) {
+  const list = [...(shotPlan.value?.logistics.equipment || [])].map(eqItem); list.splice(i, 1)
+  saveField('logistics.equipment', list)
 }
 function closePopup() { activeId.value = null; guide.value = null; sketchUrl.value = null }
 
@@ -2023,6 +2165,96 @@ onUnmounted(() => {
 /* Shot plan card */
 .plan-body { flex: 1; overflow-y: auto; padding: 4px 14px 14px; }
 .plan-sec { padding: 12px 0 4px; }
+
+/* 相关信息 — icon-badge cards */
+.plan-info { display: flex; flex-direction: column; gap: 8px; padding: 10px 0 4px; }
+.info-card { background: color-mix(in srgb, var(--accent) 5%, var(--surface)); border: 1px solid var(--border); border-radius: 9px; padding: 11px 12px; }
+.info-card.row { display: flex; align-items: center; gap: 10px; }
+.info-head { display: flex; align-items: center; gap: 8px; }
+.info-ico { width: 26px; height: 26px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; flex-shrink: 0; }
+.info-ico :deep(svg) { width: 14px; height: 14px; }
+.info-title { font-size: 12.5px; font-weight: 700; color: var(--text-hi); }
+.info-add { margin-left: auto; display: inline-flex; align-items: center; gap: 3px; background: none; border: none; color: var(--accent); font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; padding: 2px 4px; border-radius: 6px; transition: background .12s; }
+.info-add:hover { background: var(--accent-soft); }
+.info-add.txt { border: 1px solid var(--border-md); padding: 3px 8px; }
+.info-add :deep(svg) { width: 12px; height: 12px; }
+.info-body { margin-top: 8px; padding: 9px 10px; background: color-mix(in srgb, var(--accent) 4%, transparent); border-radius: 7px; font-size: 12px; line-height: 1.6; color: var(--text-hi); }
+.info-card.row .p-pill { display: inline-block; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); border-radius: 6px; padding: 2px 10px; font-size: 11.5px; font-weight: 700; }
+/* 限制条件 — 每条一行，check-circle 前缀 */
+.info-constraints { margin-top: 8px; }
+.info-constraints :deep(.el) { display: flex; flex-direction: column; align-items: stretch; gap: 6px; line-height: 1.4; }
+.info-constraints :deep(.el-sep) { display: none; }
+.info-constraints :deep(.el-item) { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; font-size: 12px; color: var(--text-hi); }
+.info-constraints :deep(.el-item)::before { content: '✓'; display: grid; place-items: center; width: 15px; height: 15px; flex-shrink: 0; border-radius: 50%; background: var(--accent); color: #fff; font-size: 9px; font-weight: 700; }
+.info-constraints :deep(.el-add) { display: none; }
+/* 标签 — 每个一张卡，右上角 × */
+.tag-grid { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 7px; }
+.tag-chip { position: relative; display: inline-flex; align-items: center; padding: 5px 15px 5px 11px; background: var(--surface); border: 1px solid var(--border-md); border-radius: 8px; font-size: 11.5px; color: var(--text-hi); }
+.tag-x { position: absolute; top: -5px; right: -5px; width: 15px; height: 15px; display: grid; place-items: center; border: none; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; line-height: 1; cursor: pointer; padding: 0; opacity: 0; transition: opacity .12s; }
+.tag-chip:hover .tag-x { opacity: 1; }
+.tag-input { font: inherit; font-size: 11.5px; color: var(--text-hi); background: var(--surface); border: 1px solid var(--accent); border-radius: 8px; padding: 5px 10px; outline: none; width: 7em; }
+.tag-empty { font-size: 11.5px; color: var(--text-ghost); }
+/* 优先级 — 当前值 + 下拉 */
+.prio-dd { margin-left: auto; position: relative; }
+.prio-cur { display: inline-flex; align-items: center; gap: 4px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); border: none; border-radius: 6px; padding: 4px 8px 4px 11px; font-size: 11.5px; font-weight: 700; font-family: inherit; cursor: pointer; }
+.prio-cur :deep(svg) { transition: transform .15s; }
+.prio-cur :deep(svg.up) { transform: rotate(180deg); }
+.prio-back { position: fixed; inset: 0; z-index: 20; }
+.prio-menu { position: absolute; top: calc(100% + 5px); right: 0; z-index: 21; display: flex; flex-direction: column; min-width: 96px; background: var(--surface); border: 1px solid var(--border-md); border-radius: 9px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+.prio-item { border: none; background: none; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--text-hi); text-align: left; padding: 7px 11px; border-radius: 6px; cursor: pointer; transition: background .12s; }
+.prio-item:hover { background: var(--accent-soft); }
+.prio-item.on { color: var(--accent); background: var(--accent-soft); }
+
+/* 拍摄物流 — icon-badge cards */
+.plan-logi { display: flex; flex-direction: column; gap: 7px; padding: 12px 0 4px; }
+.lg-card { display: flex; align-items: flex-start; gap: 11px; background: color-mix(in srgb, var(--accent) 5%, var(--surface)); border: 1px solid var(--border); border-radius: 8px; padding: 13px 13px; }
+.lg-card.col { flex-direction: column; align-items: stretch; gap: 9px; }
+.lg-ico { width: 38px; height: 38px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; flex-shrink: 0; }
+.lg-main { flex: 1; min-width: 0; }
+.lg-k { font-size: 11.5px; font-weight: 700; color: var(--accent); margin-bottom: 3px; }
+.lg-v { font-size: 12.5px; color: var(--text-hi); line-height: 1.5; }
+.lg-io { flex-shrink: 0; align-self: center; font-size: 11px; font-weight: 600; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 8px; padding: 3px 9px; }
+.lg-aside { flex-shrink: 0; align-self: center; background: none; border: none; color: var(--accent); font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
+.lg-aside:hover { text-decoration: underline; }
+.lg-cols { flex: 1; display: flex; align-items: stretch; gap: 12px; }
+.lg-cols.crew { gap: 8px; }
+.lg-col { flex: 1; min-width: 0; }
+.lg-vsep { width: 1px; background: var(--border); align-self: stretch; }
+.lg-col .lg-v.help { cursor: help; }
+.lg-col .q { display: inline-grid; place-items: center; width: 13px; height: 13px; border-radius: 50%; background: var(--surface-2); font-size: 8px; color: var(--text-sub); }
+/* 参与者：coser / 摄影 / 后勤 每条一行，可拓展 */
+.lg-crew { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.lg-crow { display: flex; align-items: baseline; gap: 10px; }
+.lg-ck { flex-shrink: 0; width: 48px; font-size: 11.5px; font-weight: 600; color: var(--text-sub); }
+.lg-cv { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text-hi); line-height: 1.5; }
+.lg-cv.help { cursor: help; }
+.lg-cv .q { display: inline-grid; place-items: center; width: 13px; height: 13px; border-radius: 50%; background: var(--surface-2); font-size: 8px; color: var(--text-sub); vertical-align: middle; }
+.lg-chead { display: flex; align-items: center; gap: 11px; }
+.lg-ctitle { font-size: 12.5px; font-weight: 700; color: var(--accent); }
+.lg-item { display: flex; align-items: flex-start; gap: 10px; margin: 0 -13px; padding: 9px 13px 0; border-top: 1px dashed var(--border-md); }
+.lg-ik { font-size: 11.5px; font-weight: 600; color: var(--text-sub); width: 52px; flex-shrink: 0; }
+.lg-iv { flex: 1; min-width: 0; font-size: 12px; color: var(--text-hi); }
+.lg-v .pill, .lg-iv .pill { display: inline-block; background: var(--surface); border: 1px solid var(--border-md); border-radius: 7px; padding: 3px 9px; font-size: 11px; margin: 0 4px 4px 0; }
+.lg-v .pill.loc-on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; display: inline-flex; align-items: center; gap: 3px; }
+.lg-iv .none { color: var(--text-ghost); }
+/* 每条一行（列表加项时不再挤成一行，每个换行） */
+.lg-v.block :deep(.el), .lg-iv.block :deep(.el), .pv.block :deep(.el) { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.lg-v.block :deep(.el-sep), .lg-iv.block :deep(.el-sep), .pv.block :deep(.el-sep) { display: none; }
+.lg-v.block :deep(.el-item), .lg-iv.block :deep(.el-item), .pv.block :deep(.el-item) { display: block; position: relative; padding-left: 11px; }
+.lg-v.block :deep(.el-item)::before, .lg-iv.block :deep(.el-item)::before, .pv.block :deep(.el-item)::before { content: '·'; position: absolute; left: 2px; color: var(--text-ghost); }
+
+/* 摄影设备 — each item a card (icon + title + purpose) */
+.lg-eqlabel { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: var(--accent); margin: 4px 2px 1px; }
+.eq-card { position: relative; display: flex; align-items: center; gap: 11px; background: color-mix(in srgb, var(--accent) 5%, var(--surface)); border: 1px solid var(--border); border-radius: 8px; padding: 11px 12px; cursor: pointer; transition: border-color .12s; }
+.eq-card:hover { border-color: var(--accent-dim); }
+.eq-title { font-size: 12.5px; font-weight: 700; color: var(--text-hi); }
+.eq-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; line-height: 1.45; }
+.eq-del { position: absolute; top: 6px; right: 8px; background: none; border: none; color: var(--text-ghost); font-size: 15px; line-height: 1; cursor: pointer; opacity: 0; transition: opacity .12s; }
+.eq-card:hover .eq-del { opacity: 1; }
+.eq-del:hover { color: var(--error); }
+.eq-editrow input { width: 100%; border: 1px solid var(--accent); background: var(--surface); color: var(--text-hi); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; font-family: inherit; outline: none; }
+.eq-add { align-self: flex-start; background: none; border: 1px dashed var(--border-md); border-radius: 8px; color: var(--text-sub); font-size: 12px; padding: 8px 14px; cursor: pointer; font-family: inherit; transition: all .12s; }
+.eq-add:hover { border-color: var(--accent); color: var(--accent); }
 .plan-sub { font-size: 10.5px; font-weight: 700; color: var(--text-sub); text-transform: uppercase; letter-spacing: .4px; margin: 12px 0 4px; }
 .plan-line .pk { width: 56px; white-space: nowrap; }
 .plan-line .pv.help { cursor: help; }
@@ -2084,13 +2316,6 @@ onUnmounted(() => {
 .cc-btn.fit-btn { font-size: 12px; margin-left: 2px; padding: 0 4px; width: auto; }
 .zoom-label { font-size: 11px; color: var(--text-muted); min-width: 38px; text-align: center; }
 
-/* ── Info bar ── */
-.info-bar { height: 44px; flex-shrink: 0; background: var(--surface); border-top: 1px solid var(--border); display: flex; align-items: center; gap: 10px; padding: 0 20px; z-index: 3; }
-.shot-icon-lg  { font-size: 18px; }
-.shot-meta     { display: flex; flex-direction: column; gap: 1px; flex: 1; }
-.shot-title-lg { font-size: 13px; font-weight: 600; color: var(--text-hi); }
-.shot-mood-lg  { font-size: 10px; color: var(--text-muted); }
-.version-count { font-size: 11px; color: var(--text-ghost); }
 
 /* ── AI chat ── */
 /* Body holds the scrolling messages + floating options/camera overlay, so the

@@ -102,13 +102,13 @@
 
                 <!-- info rows -->
                 <div class="sc-info">
-                  <div v-if="shot.scene" class="sc-irow">
+                  <div class="sc-irow">
                     <MapPin class="sc-ii" /><span class="sc-ik">{{ t('projectCanvas.scScene') }}</span>
-                    <span class="sc-iv">{{ shot.scene }}</span>
+                    <span class="sc-iv" :class="{ empty: !shot.scene }">{{ shot.scene || '待整理' }}</span>
                   </div>
-                  <div v-if="shot.mood || shot.description" class="sc-irow">
+                  <div class="sc-irow">
                     <Clapperboard class="sc-ii" /><span class="sc-ik">{{ t('projectCanvas.scMood') }}</span>
-                    <span class="sc-iv">{{ shot.description || shot.mood }}</span>
+                    <span class="sc-iv" :class="{ empty: !(shot.expression || shot.description || shot.mood) }">{{ shot.expression || shot.description || shot.mood || '待整理' }}</span>
                   </div>
                   <div class="sc-irow">
                     <CircleDot class="sc-ii" /><span class="sc-ik">{{ t('projectCanvas.scStatus') }}</span>
@@ -2306,6 +2306,7 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 .sc-ik { font-size: 11px; color: var(--text-quiet); flex-shrink: 0; width: 46px; }
 .sc-iv { font-size: 11.5px; color: var(--text-hi); line-height: 1.45; min-width: 0;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sc-iv.empty { color: var(--text-ghost); font-style: italic; }
 .sc-status { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; }
 .sc-dot { width: 6px; height: 6px; border-radius: 50%; }
 .sc-status.st-pending { color: var(--accent); }           /* 构思中 */

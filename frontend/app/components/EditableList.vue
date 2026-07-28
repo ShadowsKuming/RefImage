@@ -76,6 +76,8 @@ function commit() {
   if (JSON.stringify(next) !== JSON.stringify(props.items)) emit('change', next)
 }
 function cancel() { editIndex.value = -1 }
+
+defineExpose({ startAdd })
 </script>
 
 <style scoped>

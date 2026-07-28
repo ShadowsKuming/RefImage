@@ -46,24 +46,41 @@ _EDITABLE_PATHS = {
     "logistics.crew.support",
     "technique.expression", "technique.composition", "technique.lighting",
 }
+# priority mirrors shot.json (canonical); callers must sync shot.json too
+_PRIORITY_PATH = "overview.priority"
+_PRIORITY_VALS = {"high", "mid", "low"}
 _EDITABLE_LISTS = {
     # dotted path → the value is a list[str] (whole-list replace)
     "overview.constraints", "overview.tags",
-    "logistics.equipment",
     "logistics.props.character",
     "technique.pose_tips", "technique.risks",
 }
 
 
+# aux gear is a list of {item, reason} objects — editing sends item-name strings
+_AUX_PATH = "logistics.props.aux"
+# equipment is a list of {name, purpose} objects — editing sends the objects
+_EQUIP_PATH = "logistics.equipment"
+
+
 def update_field(project_id: str, shot_id: str, path: str, value) -> dict:
-    """User edited one plan field. `path` is a dotted key; strings and known
-    list[str] fields are allowed (whitelist — no arbitrary structure writes)."""
-    if path not in _EDITABLE_PATHS and path not in _EDITABLE_LISTS:
+    """User edited one plan field. `path` is a dotted key; strings, known list[str]
+    fields, aux gear and equipment are allowed (whitelist — no arbitrary writes)."""
+    if path not in _EDITABLE_PATHS and path not in _EDITABLE_LISTS and path not in (_AUX_PATH, _EQUIP_PATH, _PRIORITY_PATH):
         raise ValueError(f"field not editable: {path}")
     plan = load_plan(project_id, shot_id)
     if plan is None:
         raise FileNotFoundError("plan not generated")
-    if path in _EDITABLE_LISTS:
+    if path == _PRIORITY_PATH:
+        value = str(value or "").strip()
+        if value not in _PRIORITY_VALS:
+            raise ValueError(f"bad priority: {value}")
+    elif path == _AUX_PATH:
+        value = [{"item": str(x).strip(), "reason": ""} for x in (value or []) if str(x).strip()]
+    elif path == _EQUIP_PATH:
+        value = [{"name": str(x.get("name", "")).strip(), "purpose": str(x.get("purpose", "")).strip()}
+                 for x in (value or []) if isinstance(x, dict) and str(x.get("name", "")).strip()]
+    elif path in _EDITABLE_LISTS:
         value = [str(x).strip() for x in (value or []) if str(x).strip()]
     else:
         value = str(value or "").strip()
@@ -130,8 +147,11 @@ _TOOL = {
                           "reason": {"type": "string", "description": "为什么这张需要它，简短"}},
                        "required": ["item", "reason"]},
                        "description": "只挑真正触发的 0-3 件；没有就空数组"},
-        "equipment":  {"type": "array", "items": {"type": "string"},
-                       "description": "拍摄设备要点，轻量，如 中焦压背景 / 一块反光板补暗面（0-2 条）"},
+        "equipment":  {"type": "array", "description": "拍摄设备（1-3 项）", "items": {
+                          "type": "object", "properties": {
+                              "name":    {"type": "string", "description": "设备名称，简短，别带'一块/一个'等量词，如 中焦镜头 / 反光板 / 三脚架 / 补光灯"},
+                              "purpose": {"type": "string", "description": "用途备注，简短，如 压缩背景突出人物 / 打亮暗面补暖光"},
+                          }, "required": ["name"]}},
         "expression": {"type": "string", "description": "表情要点：情绪 + 视线朝向"},
         "pose_tips":  {"type": "array", "items": {"type": "string"}, "description": "姿势要点：争取什么/避免什么（1-3 条）"},
         "composition_note": {"type": "string", "description": "构图补充：人物在三分线何处、留白方向等（镜头参数已知，这里只补建议）"},

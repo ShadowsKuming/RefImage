@@ -285,8 +285,20 @@ def get_project(project_id: str) -> dict:
                 shot.setdefault("essential", True)
                 # lifecycle helpers for the workspace card status (构思/探索/选定/完成)
                 shot["version_count"] = len(shot.get("versions") or [])
-                # 已完成 = the stage-3 shot plan has been extracted
-                shot["plan_done"] = (shot_dir / "plan.json").exists()
+                # 已完成 = the stage-3 shot plan has been extracted; surface its key
+                # fields so the workspace (cards / grouping / search) sees real data.
+                plan_file = shot_dir / "plan.json"
+                shot["plan_done"] = plan_file.exists()
+                if plan_file.exists():
+                    try:
+                        plan = json.loads(plan_file.read_text())
+                        sc = (plan.get("logistics") or {}).get("scene") or {}
+                        shot["scene"]      = sc.get("location") or sc.get("place") or shot.get("scene", "")
+                        shot["synopsis"]   = (plan.get("overview") or {}).get("synopsis", "")
+                        shot["tags"]       = (plan.get("overview") or {}).get("tags", [])
+                        shot["expression"] = (plan.get("technique") or {}).get("expression", "")
+                    except (json.JSONDecodeError, OSError):
+                        pass
                 shots.append(shot)
 
     return {
