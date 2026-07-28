@@ -5,12 +5,12 @@
     <div class="top-bar">
       <div class="breadcrumb">
         <button class="back-btn" @click="goBack">
-          <span class="back-chevron">‹</span>返回
+          <span class="back-chevron">‹</span>{{ t('common.back') }}
         </button>
         <span class="bc-sep">/</span>
         <span class="bc-item">{{ characterName }}</span>
         <span class="bc-sep">/</span>
-        <span v-if="!editingTitle" class="bc-current" title="点击重命名" @click="startRenameTitle">
+        <span v-if="!editingTitle" class="bc-current" :title="t('shotEditor.renameTitle')" @click="startRenameTitle">
           {{ shot.title }}{{ hasUnsavedChanges ? ' *' : '' }}<Pencil :size="13" class="bc-pencil" />
         </span>
         <input
@@ -26,14 +26,14 @@
         <span class="phase-badge" :class="phaseMeta.cls"><span class="ph-dot" />{{ phaseMeta.label }}</span>
       </div>
       <div class="tb-actions">
-        <span v-if="generating" class="tb-generating">✦ 生成中…</span>
+        <span v-if="generating" class="tb-generating">{{ t('shotEditor.generatingInline') }}</span>
         <template v-else-if="isRefined">
           <button class="hb-btn" :class="{ stale: sheetStale }" :disabled="compiling || !shotPlan" @click="compileSheet">
-            <Play :size="14" />{{ compiling ? '编译中…' : (compiled ? '重新编译' : '编译') }}
+            <Play :size="14" />{{ compiling ? t('shotEditor.compiling') : (compiled ? t('shotEditor.recompile') : t('shotEditor.compile')) }}
           </button>
-          <button class="hb-btn ghost" :disabled="!compiled" @click="previewOpen = true"><Eye :size="14" /> 预览</button>
+          <button class="hb-btn ghost" :disabled="!compiled" @click="previewOpen = true"><Eye :size="14" /> {{ t('shotEditor.preview') }}</button>
           <button class="hb-btn markdone" :class="{ on: shot.completed }" :disabled="!compiled" @click="toggleComplete">
-            <Check :size="14" />{{ shot.completed ? '已完成' : '标记完成' }}
+            <Check :size="14" />{{ shot.completed ? t('shotEditor.markedDone') : t('shotEditor.markDone') }}
           </button>
         </template>
       </div>
@@ -46,11 +46,11 @@
       <div class="ai-col" :class="{ dimmed: cameraPanel && !generating && !isRefined }" :style="{ width: leftWidth + 'px' }">
         <div class="ai-header">
           <span class="ai-mascot"><img v-if="charAvatar" :src="charAvatar" alt="" /><span v-else>🎬</span></span>
-          <span class="ai-htitle">AI 助理 · 拍摄构思</span>
+          <span class="ai-htitle">{{ t('shotEditor.aiHeader') }}</span>
         </div>
 
         <div class="ai-body">
-        <button v-if="!atChatBottom" class="scroll-bottom-btn" title="回到最新" @click="scrollChatBottom">
+        <button v-if="!atChatBottom" class="scroll-bottom-btn" :title="t('shotEditor.backToLatest')" @click="scrollChatBottom">
           <ArrowDown :size="18" />
         </button>
         <div class="ai-messages" ref="aiMsgContainer" @scroll="onChatScroll">
@@ -65,7 +65,7 @@
                 class="retry-btn"
                 :disabled="chatLoading"
                 @click="sendChat(msg.retryText)"
-              >重试</button>
+              >{{ t('shotEditor.retry') }}</button>
             </div>
           </div>
           <div v-if="chatLoading" class="ai-msg agent">
@@ -84,7 +84,7 @@
             :class="{ gen: op.includes('生成') }"
             @click="pickOption(op)"
           >
-            <span v-if="!op.includes('生成')" class="rec-tag" :class="{ ghost: oi !== 0 }">推荐</span>
+            <span v-if="!op.includes('生成')" class="rec-tag" :class="{ ghost: oi !== 0 }">{{ t('shotEditor.recommend') }}</span>
             <span class="opt-text">{{ op }}</span>
           </button>
         </div>
@@ -92,14 +92,14 @@
         </div>
 
         <div v-if="selectedRefIds.length > 0" class="selection-hint">
-          已选 {{ selectedRefIds.length }} 张参考图 · 将告知 AI 助手
+          {{ t('shotEditor.refSelectedHint', { n: selectedRefIds.length }) }}
         </div>
         <input ref="refFileInput" type="file" accept="image/*" style="display:none" @change="onRefFileInputChange" />
 
         <div class="ai-input-row">
           <div class="ai-inputbox" :class="{ disabled: generating || chatLoading || isRefined }">
             <input v-model="chatInput" class="ai-input"
-                   :placeholder="isRefined ? '已完善，解锁后可继续编辑' : '也可以直接输入你的想法…'"
+                   :placeholder="isRefined ? t('shotEditor.refinedLockedHint') : t('shotEditor.chatPlaceholder')"
                    :disabled="generating || chatLoading || isRefined"
                    @keydown.enter.exact="onChatInputEnter" />
             <button class="ai-send" :disabled="generating || chatLoading || isRefined || !chatInput.trim()" @click="sendChat">
@@ -118,7 +118,7 @@
         <!-- Fullscreen preview -->
         <Transition name="fs-fade">
           <div v-if="fullscreen && currentDisplayUrl" class="fs-overlay" @click="fullscreen = false">
-            <button class="fs-close" title="关闭" @click.stop="fullscreen = false"><X :size="22" /></button>
+            <button class="fs-close" :title="t('shotEditor.close')" @click.stop="fullscreen = false"><X :size="22" /></button>
             <img :src="currentDisplayUrl" class="fs-img" draggable="false" @click.stop />
           </div>
         </Transition>
@@ -126,7 +126,7 @@
         <!-- 拍摄手册页预览（编译后的快照） -->
         <Transition name="fs-fade">
           <div v-if="previewOpen && sheet" class="fs-overlay sheet-overlay" @click="previewOpen = false">
-            <button class="fs-close" title="关闭" @click.stop="previewOpen = false"><X :size="22" /></button>
+            <button class="fs-close" :title="t('shotEditor.close')" @click.stop="previewOpen = false"><X :size="22" /></button>
             <div class="sheet-frame" @click.stop>
               <ShotSheet :plan="sheet.plan" :image-url="currentDisplayUrl" :index="shotIndex" :title="shot.title" />
             </div>
@@ -138,8 +138,8 @@
           <div v-if="generating" class="gen-overlay">
             <div class="gen-overlay-card">
               <div class="gen-spinner"></div>
-              <span class="gen-label">参考图生成中</span>
-              <span class="gen-sub">大约需要 30–60 秒</span>
+              <span class="gen-label">{{ t('shotEditor.genOverlayTitle') }}</span>
+              <span class="gen-sub">{{ t('shotEditor.genOverlaySub') }}</span>
             </div>
           </div>
         </Transition>
@@ -149,38 +149,38 @@
         <Transition name="cam-pop">
           <div v-if="cameraPanel && !generating && !isRefined" class="cam-overlay">
             <div class="cam-panel">
-              <div class="cp-title"><b>定一下这张怎么拍</b></div>
-              <div class="cp-sub">确认镜头参数，就生成第一张参考图</div>
+              <div class="cp-title"><b>{{ t('shotEditor.camTitle') }}</b></div>
+              <div class="cp-sub">{{ t('shotEditor.camSub') }}</div>
               <div class="cp-group">
-                <div class="cp-head"><User :size="15" /> 景别</div>
+                <div class="cp-head"><User :size="15" /> {{ t('shotEditor.lblShot') }}</div>
                 <div class="cp-cards">
                   <button v-for="s in SHOT_OPTS" :key="s" class="cp-card" :class="{ on: cameraPanel.shot === s }" @click="cameraPanel.shot = s">
-                    <span class="cp-label">{{ s }}</span>
+                    <span class="cp-label">{{ pv(s) }}</span>
                     <Check v-if="cameraPanel.shot === s" :size="12" class="cp-check" />
                   </button>
                 </div>
               </div>
               <div class="cp-group">
-                <div class="cp-head"><ImageIcon :size="15" /> 画幅</div>
+                <div class="cp-head"><ImageIcon :size="15" /> {{ t('shotEditor.lblAspect') }}</div>
                 <div class="cp-cards">
                   <button v-for="a in ASPECT_OPTS" :key="a" class="cp-card wide" :class="{ on: cameraPanel.aspect === a }" @click="cameraPanel.aspect = a">
                     <component :is="a === '竖图' ? Smartphone : Monitor" :size="16" class="cp-ico" />
-                    <span class="cp-label">{{ a }}</span>
+                    <span class="cp-label">{{ pv(a) }}</span>
                     <Check v-if="cameraPanel.aspect === a" :size="12" class="cp-check" />
                   </button>
                 </div>
               </div>
               <div class="cp-group">
-                <div class="cp-head"><Camera :size="15" /> 机位</div>
+                <div class="cp-head"><Camera :size="15" /> {{ t('shotEditor.lblAngle') }}</div>
                 <div class="cp-cards">
                   <button v-for="a in ANGLE_OPTS" :key="a" class="cp-card" :class="{ on: cameraPanel.angle === a }" @click="cameraPanel.angle = a">
-                    <span class="cp-label">{{ a }}</span>
+                    <span class="cp-label">{{ pv(a) }}</span>
                     <Check v-if="cameraPanel.angle === a" :size="12" class="cp-check" />
                   </button>
                 </div>
               </div>
               <button class="cp-gen" :disabled="chatLoading" @click="generateFromPanel">
-                <Sparkles :size="16" /> 确认参数并生成
+                <Sparkles :size="16" /> {{ t('shotEditor.camGenerate') }}
               </button>
             </div>
           </div>
@@ -250,38 +250,38 @@
                 <!-- Toolbar below the image: crop + adjust-params + select-final -->
                 <template v-if="editMode !== 'crop'">
                   <div class="img-toolbar">
-                    <button class="tb-icon" @click.stop="toggleRatioPanel" :class="{ active: showRatioPanel }" title="裁剪">
+                    <button class="tb-icon" @click.stop="toggleRatioPanel" :class="{ active: showRatioPanel }" :title="t('shotEditor.crop')">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                         <path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>
                       </svg>
                     </button>
-                    <button class="tb-icon" :class="{ active: showGrid }" title="构图分割线" @click.stop="showGrid = !showGrid">
+                    <button class="tb-icon" :class="{ active: showGrid }" :title="t('shotEditor.gridLines')" @click.stop="showGrid = !showGrid">
                       <Grid3x3 :size="18" />
                     </button>
-                    <button class="tb-icon" title="全屏预览" @click.stop="fullscreen = true">
+                    <button class="tb-icon" :title="t('shotEditor.fullscreen')" @click.stop="fullscreen = true">
                       <Maximize2 :size="17" />
                     </button>
                     <button v-if="!isRefined" class="tb-icon"
                             :class="{ active: refinePanel?.versionId === node.id }"
-                            title="调参数，生成新版本" @click.stop="openRefinePanel(node)">
+                            :title="t('shotEditor.adjustParams')" @click.stop="openRefinePanel(node)">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                         <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>
                       </svg>
                     </button>
                   </div>
                   <button class="final-btn final-row" :class="{ done: isRefined }"
-                          :title="isRefined ? '已选为最终版本' : '选为最终版本 · 之后仍可继续调整'"
-                          @click.stop="!isRefined && guardAction(selectFinal)">{{ isRefined ? '✓ 已选为最终版本' : '✓ 选为最终' }}</button>
+                          :title="isRefined ? t('shotEditor.selectedFinalTitle') : t('shotEditor.selectFinalTitle')"
+                          @click.stop="!isRefined && guardAction(selectFinal)">{{ isRefined ? t('shotEditor.selectedFinal') : t('shotEditor.selectFinal') }}</button>
                   <div v-if="showRatioPanel" class="ratio-panel" @click.stop @mousedown.stop>
                     <button v-for="r in RATIOS" :key="r.label" class="ratio-chip" @click.stop="selectRatio(r.value)">{{ r.label }}</button>
                   </div>
                 </template>
 
                 <!-- Version badge — below the image -->
-                <div class="card-active-badge">v{{ node.index + 1 }} · 当前</div>
+                <div class="card-active-badge">v{{ node.index + 1 }} · {{ t('shotEditor.current') }}</div>
 
                 <!-- Delete button — hidden during crop to avoid accidental deletion -->
-                <button v-if="editMode !== 'crop'" class="card-delete" @click.stop="deleteVersionCard(node.id)" title="删除当前版本">×</button>
+                <button v-if="editMode !== 'crop'" class="card-delete" @click.stop="deleteVersionCard(node.id)" :title="t('shotEditor.deleteCurrentVersion')">×</button>
 
                 <!-- Resize handles — hidden during crop -->
                 <template v-if="editMode !== 'crop'">
@@ -302,8 +302,8 @@
               >
                 <img v-if="node.imageUrl" :src="node.imageUrl" class="gen-img" draggable="false" @load="onVersionImgLoad(node.id, $event)" />
                 <div class="card-label">v{{ node.index + 1 }}</div>
-                <button class="card-delete" @click.stop="deleteVersionCard(node.id)" title="删除此版本">×</button>
-                <div class="card-dblclick-hint">点击切换当前</div>
+                <button class="card-delete" @click.stop="deleteVersionCard(node.id)" :title="t('shotEditor.deleteThisVersion')">×</button>
+                <div class="card-dblclick-hint">{{ t('shotEditor.clickToSwitch') }}</div>
 
                 <!-- Resize handles -->
                 <div class="rh tl" @mousedown.stop="startVersionCardResize(node.id, 'tl', $event)" />
@@ -331,16 +331,15 @@
               <div class="blank-inner">
                 <template v-if="bn.isInitial">
                   <span class="eh-icon">{{ shot.icon }}</span>
-                  <span class="eh-text">在左侧输入描述，AI 生成例图</span>
-                  <span class="eh-sub">或点击 / 拖拽上传图片</span>
-                  <span class="eh-dbl">双击画布空白处可添加参考图框</span>
+                  <span class="eh-text">{{ t('shotEditor.emptyCanvas1') }}</span>
+                  <span class="eh-sub">{{ t('shotEditor.emptyCanvas2') }}</span>
                 </template>
                 <template v-else>
                   <span class="blank-icon">+</span>
-                  <span class="blank-hint">拖入或点击上传参考图</span>
+                  <span class="blank-hint">{{ t('shotEditor.dropUpload') }}</span>
                 </template>
               </div>
-              <button class="card-delete" @click.stop="removeBlankNode(bn.id)" title="移除">×</button>
+              <button class="card-delete" @click.stop="removeBlankNode(bn.id)" :title="t('shotEditor.remove')">×</button>
 
               <!-- Resize handles -->
               <div class="rh tl" @mousedown.stop="startBlankNodeResize(bi, 'tl', $event)" />
@@ -377,10 +376,10 @@
                 </div>
               </div>
               <div class="ref-badge">
-                <span v-if="!rn.type" class="ref-badge-label pending">待分类</span>
-                <span v-else class="ref-badge-label" :class="rn.type">{{ REF_TYPE_ZH[rn.type] || rn.type }}</span>
+                <span v-if="!rn.type" class="ref-badge-label pending">{{ t('shotEditor.refUnclassified') }}</span>
+                <span v-else class="ref-badge-label" :class="rn.type">{{ refTypeLabel(rn.type) }}</span>
               </div>
-              <button class="card-delete" @click.stop="deleteRef(rn.id)" title="删除参考图">×</button>
+              <button class="card-delete" @click.stop="deleteRef(rn.id)" :title="t('shotEditor.deleteRef')">×</button>
               <div class="rh tl" @mousedown.stop="startRefNodeResize(ri, 'tl', $event)" />
               <div class="rh tr" @mousedown.stop="startRefNodeResize(ri, 'tr', $event)" />
               <div class="rh bl" @mousedown.stop="startRefNodeResize(ri, 'bl', $event)" />
@@ -406,8 +405,8 @@
 
           <!-- Crop confirm bar -->
           <div v-if="editMode === 'crop'" class="crop-confirm-bar">
-            <button class="ccb-cancel" @click="cancelCrop">取消</button>
-            <button class="ccb-confirm" :disabled="!inlineCropValid" @click="applyCrop">确认裁剪</button>
+            <button class="ccb-cancel" @click="cancelCrop">{{ t('shotEditor.cancel') }}</button>
+            <button class="ccb-confirm" :disabled="!inlineCropValid" @click="applyCrop">{{ t('shotEditor.confirmCrop') }}</button>
           </div>
 
         </div>
@@ -421,15 +420,15 @@
            Hidden during exploration: the shot's only job then is landing a
            satisfying example image. Guides appear only after 选定/完善 (refined). -->
       <div v-if="isRefined" class="detail-col" :style="{ width: rightWidth + 'px' }">
-        <div class="col-header">拍摄方案</div>
+        <div class="col-header">{{ t('shotEditor.planTitle') }}</div>
 
         <!-- Auto-organizing (选定即整理) → loading; retry only if it failed -->
         <template v-if="!shotPlan">
           <div v-if="extracting" class="stage3-loading">
             <div class="s3-spinner" />
-            <span>正在整理这张的拍摄信息…（约 10 秒）</span>
+            <span>{{ t('shotEditor.organizing') }}</span>
           </div>
-          <button v-else class="extract-btn" @click="extractPlan">📋 重新整理</button>
+          <button v-else class="extract-btn" @click="extractPlan">{{ t('shotEditor.reorganize') }}</button>
         </template>
 
         <!-- Extracted → the shot plan, one class per tab (each can grow freely) -->
@@ -438,7 +437,7 @@
             <button v-for="tb in PLAN_TABS" :key="tb.key" class="hs-tab"
                     :class="{ active: planTab === tb.key }"
                     :style="planTab === tb.key ? { color: 'var(--accent)', boxShadow: 'inset 0 -2px 0 var(--accent)' } : {}"
-                    @click="planTab = tb.key">{{ tb.label }}</button>
+                    @click="planTab = tb.key">{{ t(tb.label) }}</button>
           </div>
 
           <div class="plan-body">
@@ -446,52 +445,52 @@
             <div v-if="planTab === 'overview'" class="plan-info">
               <!-- 标签 -->
               <div class="info-card col">
-                <div class="info-head"><div class="info-ico"><Tag :size="17" /></div><span class="info-title">标签</span>
-                  <button class="info-add txt" @click="startAddTag"><Plus :size="14" /> 添加标签</button></div>
+                <div class="info-head"><div class="info-ico"><Tag :size="17" /></div><span class="info-title">{{ t('shotEditor.tags') }}</span>
+                  <button class="info-add txt" @click="startAddTag"><Plus :size="14" /> {{ t('shotEditor.addTag') }}</button></div>
                 <div class="tag-grid">
                   <div v-for="(tg, i) in (shotPlan.overview.tags || [])" :key="i" class="tag-chip">
                     <span class="tag-txt">{{ tg }}</span>
-                    <button class="tag-x" title="删除" @click="removeTag(i)">×</button>
+                    <button class="tag-x" :title="t('shotEditor.delete')" @click="removeTag(i)">×</button>
                   </div>
-                  <input v-if="tagAdding" v-model="tagDraft" class="tag-input" placeholder="标签…" autofocus
+                  <input v-if="tagAdding" v-model="tagDraft" class="tag-input" :placeholder="t('shotEditor.tagPlaceholder')" autofocus
                          @blur="commitTag" @keydown.enter="commitTag" @keydown.esc="tagAdding = false" />
-                  <span v-if="!(shotPlan.overview.tags || []).length && !tagAdding" class="tag-empty">暂无标签</span>
+                  <span v-if="!(shotPlan.overview.tags || []).length && !tagAdding" class="tag-empty">{{ t('shotEditor.noTags') }}</span>
                 </div>
               </div>
 
               <!-- 优先级 -->
               <div class="info-card row">
-                <div class="info-head"><div class="info-ico"><Flag :size="17" /></div><span class="info-title">优先级</span></div>
+                <div class="info-head"><div class="info-ico"><Flag :size="17" /></div><span class="info-title">{{ t('shotEditor.priority') }}</span></div>
                 <div class="prio-dd">
                   <button class="prio-cur" @click="prioOpen = !prioOpen">
-                    {{ PRIO_LABEL[shotPlan.overview.priority] || '想拍' }}<ChevronDown :size="13" :class="{ up: prioOpen }" />
+                    {{ pv(PRIO_LABEL[shotPlan.overview.priority] || '想拍') }}<ChevronDown :size="13" :class="{ up: prioOpen }" />
                   </button>
                   <div v-if="prioOpen" class="prio-back" @click="prioOpen = false" />
                   <div v-if="prioOpen" class="prio-menu">
                     <button v-for="p in PRIO_ORDER" :key="p" class="prio-item"
                             :class="{ on: (shotPlan.overview.priority || 'mid') === p }"
-                            @click="setPriority(p); prioOpen = false">{{ PRIO_LABEL[p] }}</button>
+                            @click="setPriority(p); prioOpen = false">{{ pv(PRIO_LABEL[p]) }}</button>
                   </div>
                 </div>
               </div>
 
               <!-- 概述 -->
               <div class="info-card">
-                <div class="info-head"><div class="info-ico"><FileText :size="17" /></div><span class="info-title">概述</span></div>
+                <div class="info-head"><div class="info-ico"><FileText :size="17" /></div><span class="info-title">{{ t('shotEditor.overview') }}</span></div>
                 <div class="info-body"><EditableText :model-value="shotPlan.overview.synopsis" multiline placeholder="—" @save="saveField('overview.synopsis', $event)" /></div>
               </div>
 
               <!-- 拍摄目标 -->
               <div class="info-card">
-                <div class="info-head"><div class="info-ico"><Target :size="17" /></div><span class="info-title">拍摄目标</span></div>
-                <div class="info-body"><EditableText :model-value="shotPlan.overview.goal" multiline placeholder="点击填写摄影目标…" @save="saveField('overview.goal', $event)" /></div>
+                <div class="info-head"><div class="info-ico"><Target :size="17" /></div><span class="info-title">{{ t('shotEditor.shootGoal') }}</span></div>
+                <div class="info-body"><EditableText :model-value="shotPlan.overview.goal" multiline :placeholder="t('shotEditor.goalPlaceholder')" @save="saveField('overview.goal', $event)" /></div>
               </div>
 
               <!-- 限制条件 -->
               <div class="info-card col">
-                <div class="info-head"><div class="info-ico"><ShieldCheck :size="17" /></div><span class="info-title">限制条件</span>
+                <div class="info-head"><div class="info-ico"><ShieldCheck :size="17" /></div><span class="info-title">{{ t('shotEditor.constraints') }}</span>
                   <button class="info-add" @click="constraintsRef?.startAdd()"><Plus :size="15" /></button></div>
-                <div class="info-constraints"><EditableList ref="constraintsRef" :items="shotPlan.overview.constraints || []" add-placeholder="添加限制…" @change="saveField('overview.constraints', $event)" /></div>
+                <div class="info-constraints"><EditableList ref="constraintsRef" :items="shotPlan.overview.constraints || []" :add-placeholder="t('shotEditor.addConstraintPlaceholder')" @change="saveField('overview.constraints', $event)" /></div>
               </div>
             </div>
 
@@ -501,38 +500,38 @@
               <div class="lg-card">
                 <div class="lg-ico"><Home :size="18" /></div>
                 <div class="lg-main">
-                  <div class="lg-k">场景</div>
+                  <div class="lg-k">{{ t('shotEditor.scene') }}</div>
                   <div class="lg-v"><EditableText :model-value="shotPlan.logistics.scene.place" placeholder="—" @save="saveField('logistics.scene.place', $event)" /></div>
                 </div>
-                <span class="lg-io">{{ shotPlan.logistics.scene.indoor_outdoor }}</span>
+                <span class="lg-io">{{ pv(shotPlan.logistics.scene.indoor_outdoor) }}</span>
               </div>
 
               <!-- 取景地：项目共享，必选 -->
               <div class="lg-card">
                 <div class="lg-ico"><MapPin :size="18" /></div>
                 <div class="lg-main">
-                  <div class="lg-k">取景地</div>
+                  <div class="lg-k">{{ t('shotEditor.location') }}</div>
                   <div class="lg-v" v-if="shotPlan.logistics.scene.location && !locPicking">
                     <span class="pill loc-on">{{ shotPlan.logistics.scene.location }}</span>
                   </div>
                   <div class="lg-v" v-else>
-                    <div class="loc-hint">选一个取景地（同类镜头尽量复用，方便排场地）</div>
+                    <div class="loc-hint">{{ t('shotEditor.locHint') }}</div>
                     <span v-for="c in shotPlan.logistics.scene.candidates" :key="c" class="pill loc-pick" @click="pickLocation(c)">{{ c }}</span>
                     <span class="loc-custom">
-                      <input v-model="locCustom" placeholder="或自己填一个…" @keydown.enter="pickLocation(locCustom)" />
-                      <button v-if="locCustom.trim()" @click="pickLocation(locCustom)">加</button>
+                      <input v-model="locCustom" :placeholder="t('shotEditor.locCustomPlaceholder')" @keydown.enter="pickLocation(locCustom)" />
+                      <button v-if="locCustom.trim()" @click="pickLocation(locCustom)">{{ t('shotEditor.locAdd') }}</button>
                     </span>
                   </div>
                 </div>
-                <button v-if="shotPlan.logistics.scene.location && !locPicking" class="lg-aside" @click="locPicking = true">换一个 ›</button>
+                <button v-if="shotPlan.logistics.scene.location && !locPicking" class="lg-aside" @click="locPicking = true">{{ t('shotEditor.locChange') }}</button>
               </div>
 
               <!-- 时间 / 天气 -->
               <div class="lg-card">
                 <div class="lg-ico"><Clock :size="18" /></div>
                 <div class="lg-crew">
-                  <div class="lg-crow"><span class="lg-ck">时间</span><span class="lg-cv"><EditableText :model-value="shotPlan.logistics.timing.best_time" placeholder="—" @save="saveField('logistics.timing.best_time', $event)" /></span></div>
-                  <div class="lg-crow"><span class="lg-ck">天气</span><span class="lg-cv"><EditableText :model-value="shotPlan.logistics.timing.weather" placeholder="点击填写…" @save="saveField('logistics.timing.weather', $event)" /></span></div>
+                  <div class="lg-crow"><span class="lg-ck">{{ t('shotEditor.time') }}</span><span class="lg-cv"><EditableText :model-value="shotPlan.logistics.timing.best_time" placeholder="—" @save="saveField('logistics.timing.best_time', $event)" /></span></div>
+                  <div class="lg-crow"><span class="lg-ck">{{ t('shotEditor.weather') }}</span><span class="lg-cv"><EditableText :model-value="shotPlan.logistics.timing.weather" :placeholder="t('shotEditor.weatherPlaceholder')" @save="saveField('logistics.timing.weather', $event)" /></span></div>
                 </div>
               </div>
 
@@ -540,28 +539,28 @@
               <div class="lg-card">
                 <div class="lg-ico"><Users :size="18" /></div>
                 <div class="lg-crew">
-                  <div class="lg-crow"><span class="lg-ck">coser</span><span class="lg-cv">{{ shotPlan.logistics.crew.cosers.join('、') }} · {{ shotPlan.logistics.crew.cosers.length }} 人</span></div>
-                  <div class="lg-crow"><span class="lg-ck">摄影</span><span class="lg-cv">1 人</span></div>
-                  <div class="lg-crow"><span class="lg-ck">后勤</span>
-                    <span class="lg-cv" v-if="!shotPlan.logistics.crew.support || shotPlan.logistics.crew.support === '不需要'">0 人</span>
-                    <span class="lg-cv help" v-else :title="shotPlan.logistics.crew.support">需后勤 <span class="q">?</span></span>
+                  <div class="lg-crow"><span class="lg-ck">{{ t('shotEditor.crewCoser') }}</span><span class="lg-cv">{{ shotPlan.logistics.crew.cosers.join(t('common.listSeparator')) }} · {{ shotPlan.logistics.crew.cosers.length }} {{ t('shotEditor.personUnit') }}</span></div>
+                  <div class="lg-crow"><span class="lg-ck">{{ t('shotEditor.crewPhoto') }}</span><span class="lg-cv">1 {{ t('shotEditor.personUnit') }}</span></div>
+                  <div class="lg-crow"><span class="lg-ck">{{ t('shotEditor.crewLogistics') }}</span>
+                    <span class="lg-cv" v-if="!shotPlan.logistics.crew.support || shotPlan.logistics.crew.support === '不需要'">0 {{ t('shotEditor.personUnit') }}</span>
+                    <span class="lg-cv help" v-else :title="shotPlan.logistics.crew.support">{{ t('shotEditor.needLogistics') }} <span class="q">?</span></span>
                   </div>
                 </div>
               </div>
 
               <!-- 物品准备 -->
               <div class="lg-card col">
-                <div class="lg-chead"><div class="lg-ico"><ShoppingBag :size="18" /></div><span class="lg-ctitle">物品准备</span></div>
-                <div class="lg-item"><span class="lg-ik">角色道具</span><span class="lg-iv block"><EditableList :items="shotPlan.logistics.props.character || []" @change="saveField('logistics.props.character', $event)" /></span></div>
-                <div class="lg-item"><span class="lg-ik">辅助道具</span><span class="lg-iv block"><EditableList :items="(shotPlan.logistics.props.aux || []).map(a => a.item)" @change="saveField('logistics.props.aux', $event)" /></span></div>
+                <div class="lg-chead"><div class="lg-ico"><ShoppingBag :size="18" /></div><span class="lg-ctitle">{{ t('shotEditor.props') }}</span></div>
+                <div class="lg-item"><span class="lg-ik">{{ t('shotEditor.charProps') }}</span><span class="lg-iv block"><EditableList :items="shotPlan.logistics.props.character || []" @change="saveField('logistics.props.character', $event)" /></span></div>
+                <div class="lg-item"><span class="lg-ik">{{ t('shotEditor.auxProps') }}</span><span class="lg-iv block"><EditableList :items="(shotPlan.logistics.props.aux || []).map(a => a.item)" @change="saveField('logistics.props.aux', $event)" /></span></div>
               </div>
 
               <!-- 摄影设备 — each item its own card -->
-              <div class="lg-eqlabel"><Camera :size="14" /> 摄影设备</div>
+              <div class="lg-eqlabel"><Camera :size="14" /> {{ t('shotEditor.equipment') }}</div>
               <template v-for="(e, i) in (shotPlan.logistics.equipment || [])" :key="i">
                 <div v-if="eqEdit === i" class="eq-edit2">
-                  <input v-model="eqName" class="eq-in-name" placeholder="名称（如 中焦镜头）" @keydown.enter="commitEq" />
-                  <input v-model="eqPurpose" class="eq-in-purpose" placeholder="用途备注" @keydown.enter="commitEq" @blur="commitEq" />
+                  <input v-model="eqName" class="eq-in-name" :placeholder="t('shotEditor.eqNamePlaceholder')" @keydown.enter="commitEq" />
+                  <input v-model="eqPurpose" class="eq-in-purpose" :placeholder="t('shotEditor.eqPurposePlaceholder')" @keydown.enter="commitEq" @blur="commitEq" />
                 </div>
                 <div v-else class="eq-card" @click="startEqEdit(i)">
                   <div class="lg-ico"><component :is="equipIcon(e)" :size="18" /></div>
@@ -573,31 +572,36 @@
                 </div>
               </template>
               <div v-if="eqEdit === (shotPlan.logistics.equipment || []).length" class="eq-edit2">
-                <input v-model="eqName" class="eq-in-name" placeholder="名称（如 中焦镜头）" @keydown.enter="commitEq" />
-                <input v-model="eqPurpose" class="eq-in-purpose" placeholder="用途备注" @keydown.enter="commitEq" @blur="commitEq" />
+                <input v-model="eqName" class="eq-in-name" :placeholder="t('shotEditor.eqNamePlaceholder')" @keydown.enter="commitEq" />
+                <input v-model="eqPurpose" class="eq-in-purpose" :placeholder="t('shotEditor.eqPurposePlaceholder')" @keydown.enter="commitEq" @blur="commitEq" />
               </div>
-              <button v-else class="eq-add" @click="addEquip">＋ 加设备</button>
+              <button v-else class="eq-add" @click="addEquip">{{ t('shotEditor.addEquip') }}</button>
             </div>
 
             <!-- C. 拍摄要点 — 三块：模特 / 摄影 / 风险 -->
             <div v-else class="plan-sec tech">
               <div class="tech-block model">
-                <div class="tb-head"><span class="tb-ico">🎭</span>模特指引<span class="tb-for">给 coser</span></div>
-                <div class="plan-line"><span class="pk">表情</span><span class="pv"><EditableText :model-value="shotPlan.technique.expression" placeholder="—" @save="saveField('technique.expression', $event)" /></span></div>
-                <div class="plan-line"><span class="pk">视线</span><span class="pv">{{ shotPlan.technique.params.gaze }}</span></div>
-                <div class="plan-line"><span class="pk">姿势</span><span class="pv block"><EditableList :items="shotPlan.technique.pose_tips || []" @change="saveField('technique.pose_tips', $event)" /></span></div>
+                <div class="tb-head"><span class="tb-ico">🎭</span>{{ t('shotEditor.modelGuide') }}<span class="tb-for">{{ t('shotEditor.forCoser') }}</span></div>
+                <div class="plan-line"><span class="pk">{{ t('shotEditor.exprLabel') }}</span><span class="pv"><EditableText :model-value="shotPlan.technique.expression" placeholder="—" @save="saveField('technique.expression', $event)" /></span></div>
+                <div class="plan-line"><span class="pk">{{ t('shotEditor.gazeLabel') }}</span><span class="pv">{{ pv(shotPlan.technique.params.gaze) }}</span></div>
+                <div class="plan-line"><span class="pk">{{ t('shotEditor.poseLabel') }}</span><span class="pv block"><EditableList :items="shotPlan.technique.pose_tips || []" @change="saveField('technique.pose_tips', $event)" /></span></div>
               </div>
 
               <div class="tech-block photo">
-                <div class="tb-head"><span class="tb-ico">🎬</span>拍摄指引<span class="tb-for">给摄影</span></div>
-                <div class="plan-line snap"><span class="pk">镜头</span><span class="pv"><span v-for="(v,k) in { 景别: shotPlan.technique.params.shot, 机位: shotPlan.technique.params.angle, 画幅: shotPlan.technique.params.aspect, 朝向: shotPlan.technique.params.facing }" :key="k" class="chip">{{ k }} <b>{{ v }}</b></span></span></div>
-                <div class="plan-line"><span class="pk">构图</span><span class="pv"><EditableText :model-value="shotPlan.technique.composition" multiline placeholder="点击填写构图补充…" @save="saveField('technique.composition', $event)" /></span></div>
-                <div class="plan-line"><span class="pk">布光</span><span class="pv"><EditableText :model-value="shotPlan.technique.lighting" multiline placeholder="点击填写布光建议…" @save="saveField('technique.lighting', $event)" /></span></div>
-                <div class="plan-line snap"><span class="pk">色调</span><span class="pv"><span class="chip">冷暖 <b>{{ shotPlan.technique.params.temp }}</b></span><span class="chip">氛围 <b>{{ shotPlan.technique.params.mood }}</b></span></span></div>
+                <div class="tb-head"><span class="tb-ico">🎬</span>{{ t('shotEditor.photoGuide') }}<span class="tb-for">{{ t('shotEditor.forPhoto') }}</span></div>
+                <div class="plan-line snap"><span class="pk">{{ t('shotEditor.lensLabel') }}</span><span class="pv"><span v-for="c in [
+                  { l: t('shotEditor.lblShot'), v: shotPlan.technique.params.shot },
+                  { l: t('shotEditor.lblAngle'), v: shotPlan.technique.params.angle },
+                  { l: t('shotEditor.lblAspect'), v: shotPlan.technique.params.aspect },
+                  { l: t('shotEditor.lblFacing'), v: shotPlan.technique.params.facing },
+                ]" :key="c.l" class="chip">{{ c.l }} <b>{{ pv(c.v) }}</b></span></span></div>
+                <div class="plan-line"><span class="pk">{{ t('shotEditor.compLabel') }}</span><span class="pv"><EditableText :model-value="shotPlan.technique.composition" multiline :placeholder="t('shotEditor.compPlaceholder')" @save="saveField('technique.composition', $event)" /></span></div>
+                <div class="plan-line"><span class="pk">{{ t('shotEditor.lightingLabel') }}</span><span class="pv"><EditableText :model-value="shotPlan.technique.lighting" multiline :placeholder="t('shotEditor.lightingPlaceholder')" @save="saveField('technique.lighting', $event)" /></span></div>
+                <div class="plan-line snap"><span class="pk">{{ t('shotEditor.toneLabel') }}</span><span class="pv"><span class="chip">{{ t('shotEditor.warmCoolLabel') }} <b>{{ pv(shotPlan.technique.params.temp) }}</b></span><span class="chip">{{ t('shotEditor.moodLabel') }} <b>{{ pv(shotPlan.technique.params.mood) }}</b></span></span></div>
               </div>
 
               <div class="tech-block risk-block">
-                <div class="tb-head"><span class="tb-ico">⚠</span>风险提示</div>
+                <div class="tb-head"><span class="tb-ico">⚠</span>{{ t('shotEditor.risks') }}</div>
                 <div class="plan-line"><span class="pv block"><EditableList :items="shotPlan.technique.risks || []" @change="saveField('technique.risks', $event)" /></span></div>
               </div>
             </div>
@@ -610,17 +614,17 @@
         <div class="refine-head">
           <span class="rf-head-ico"><Camera :size="18" /></span>
           <div class="rf-head-txt">
-            <div class="rf-head-title">调整视觉参数</div>
-            <div class="rf-head-sub">选择或组合参数，生成新版本</div>
+            <div class="rf-head-title">{{ t('shotEditor.refineTitle') }}</div>
+            <div class="rf-head-sub">{{ t('shotEditor.refineSub') }}</div>
           </div>
-          <button class="refine-close" @click="refinePanel = null" title="关闭">×</button>
+          <button class="refine-close" @click="refinePanel = null" :title="t('shotEditor.close')">×</button>
         </div>
         <div class="refine-body">
           <div v-for="g in REFINE_GROUPS" :key="g.title" class="rf-grp">
-            <div class="rf-grp-title">{{ g.title }}</div>
+            <div class="rf-grp-title">{{ lbl(g.title) }}</div>
             <div v-for="c in g.ctrls" :key="c.key" class="rf-ctrl"
                  :class="{ changed: (refinePanel.params[c.key]||'') !== (refinePanel.base[c.key]||'') }">
-              <div class="rf-label"><component :is="RF_ICONS[c.key]" :size="13" class="rf-ico" />{{ c.label }}<span class="rf-dot" /></div>
+              <div class="rf-label"><component :is="RF_ICONS[c.key]" :size="13" class="rf-ico" />{{ lbl(c.label) }}<span class="rf-dot" /></div>
 
               <input v-if="c.type === 'text'" class="rf-text"
                      :value="refinePanel.params[c.key]" :placeholder="c.placeholder"
@@ -631,23 +635,23 @@
                 <input type="range" min="0" max="4" step="1" class="rf-temp-range"
                        :value="TEMP_LEVELS.indexOf(refinePanel.params[c.key] || '中性')"
                        @input="setRefine(c.key, TEMP_LEVELS[+($event.target as HTMLInputElement).value])" />
-                <div class="rf-temp-labels"><span>冷色调</span><span>{{ refinePanel.params[c.key] }}</span><span>暖色调</span></div>
+                <div class="rf-temp-labels"><span>{{ t('shotEditor.coolTone') }}</span><span>{{ pv(refinePanel.params[c.key]) }}</span><span>{{ t('shotEditor.warmTone') }}</span></div>
               </div>
 
               <!-- 整体色调：风格卡片 -->
               <div v-else-if="c.type === 'cards'" class="rf-cards">
                 <button v-for="o in c.opts" :key="o" class="rf-scard"
-                        :class="{ on: refinePanel.params[c.key] === o }" @click="setRefine(c.key, o)">{{ o }}</button>
+                        :class="{ on: refinePanel.params[c.key] === o }" @click="setRefine(c.key, o)">{{ pv(o) }}</button>
               </div>
 
               <!-- 主色：色块 + 自定义色轮 -->
               <div v-else-if="c.type === 'color'" class="rf-colors">
-                <button class="rf-color none" :class="{ on: !refinePanel.params[c.key] }" title="不指定" @click="setRefine(c.key, '')">∅</button>
+                <button class="rf-color none" :class="{ on: !refinePanel.params[c.key] }" :title="t('shotEditor.notSpecified')" @click="setRefine(c.key, '')">∅</button>
                 <button v-for="mc in MAIN_COLORS" :key="mc.name" class="rf-color"
                         :class="{ on: refinePanel.params[c.key] === mc.name }"
-                        :style="{ background: mc.hex }" :title="mc.name" @click="setRefine(c.key, mc.name)" />
+                        :style="{ background: mc.hex }" :title="pv(mc.name)" @click="setRefine(c.key, mc.name)" />
                 <label class="rf-color custom" :class="{ on: refinePanel.params[c.key]?.startsWith('#') }"
-                       :style="refinePanel.params[c.key]?.startsWith('#') ? { background: refinePanel.params[c.key] } : {}" title="自定义颜色">
+                       :style="refinePanel.params[c.key]?.startsWith('#') ? { background: refinePanel.params[c.key] } : {}" :title="t('shotEditor.customColor')">
                   <Aperture v-if="!refinePanel.params[c.key]?.startsWith('#')" :size="14" />
                   <input type="color" class="rf-color-input"
                          :value="refinePanel.params[c.key]?.startsWith('#') ? refinePanel.params[c.key] : '#f4a6c0'"
@@ -658,9 +662,9 @@
               <div v-else-if="c.type === 'segcustom'" class="rf-seg">
                 <button v-for="o in c.opts" :key="o" class="rf-btn"
                         :class="{ on: refinePanel.params[c.key] === o }"
-                        @click="setRefine(c.key, o); customOpen[c.key] = false">{{ o }}</button>
-                <button class="rf-btn" :class="{ on: customOpen[c.key] }" @click="customOpen[c.key] = !customOpen[c.key]">✏️ 自定义</button>
-                <input v-if="customOpen[c.key]" class="rf-text" style="margin-top:6px" :placeholder="`自己描述${c.label}…`"
+                        @click="setRefine(c.key, o); customOpen[c.key] = false">{{ pv(o) }}</button>
+                <button class="rf-btn" :class="{ on: customOpen[c.key] }" @click="customOpen[c.key] = !customOpen[c.key]">✏️ {{ t('shotEditor.customToggle') }}</button>
+                <input v-if="customOpen[c.key]" class="rf-text" style="margin-top:6px" :placeholder="t('shotEditor.customDescribe', { label: lbl(c.label) })"
                        :value="refinePanel.params[c.key]" @input="setRefine(c.key, ($event.target as HTMLInputElement).value)" />
               </div>
 
@@ -668,7 +672,7 @@
                 <button v-for="o in c.opts" :key="o" class="rf-btn"
                         :class="{ on: refinePanel.params[c.key] === o, ratio: c.key === 'aspect' }"
                         @click="setRefine(c.key, o)">
-                  {{ o }}<small v-if="c.key === 'aspect'">{{ ASPECT_RATIO[o] }}</small>
+                  {{ pv(o) }}<small v-if="c.key === 'aspect'">{{ ASPECT_RATIO[o] }}</small>
                 </button>
               </div>
             </div>
@@ -676,10 +680,10 @@
         </div>
         <div class="refine-foot">
           <button class="rf-reset" :disabled="refineChangeCount === 0" @click="resetRefine">
-            <RotateCcw :size="15" /> 重置本页
+            <RotateCcw :size="15" /> {{ t('shotEditor.resetPage') }}
           </button>
           <button class="rf-gen" :disabled="refineChangeCount === 0" @click="generateRefine">
-            <Sparkles :size="16" /> 生成新版本<span v-if="refineChangeCount > 0" class="rf-gen-n">{{ refineChangeCount }}</span>
+            <Sparkles :size="16" /> {{ t('shotEditor.genNewVersion') }}<span v-if="refineChangeCount > 0" class="rf-gen-n">{{ refineChangeCount }}</span>
           </button>
         </div>
       </div>
@@ -694,12 +698,12 @@
   <Teleport to="body">
     <div v-if="unsavedDialog" class="ud-backdrop">
       <div class="ud-modal">
-        <div class="ud-title">有未保存的修改</div>
-        <div class="ud-body">图片已编辑但尚未保存，是否保存？</div>
+        <div class="ud-title">{{ t('shotEditor.unsavedTitle') }}</div>
+        <div class="ud-body">{{ t('shotEditor.unsavedBody') }}</div>
         <div class="ud-actions">
-          <button class="ud-btn ud-cancel"  @click="unsavedDialog = null">取消</button>
-          <button class="ud-btn ud-discard" @click="unsavedDialog.onDiscard()">不保存</button>
-          <button class="ud-btn ud-save"    @click="unsavedDialog.onSave()">保存</button>
+          <button class="ud-btn ud-cancel"  @click="unsavedDialog = null">{{ t('shotEditor.cancel') }}</button>
+          <button class="ud-btn ud-discard" @click="unsavedDialog.onDiscard()">{{ t('shotEditor.discard') }}</button>
+          <button class="ud-btn ud-save"    @click="unsavedDialog.onSave()">{{ t('shotEditor.save') }}</button>
         </div>
       </div>
     </div>
@@ -720,6 +724,19 @@ definePageMeta({ ssr: false })
 
 const route = useRoute()
 const api   = useApi()
+const { t } = useLocale()
+// param value → localized display label (stored/sent value stays canonical zh)
+const pv = (v: string): string => (v ? t('shotEditor.pv.' + v) : v)
+// group / control label (canonical zh) → localized display
+const _LBL_KEY: Record<string, string> = {
+  镜头: 'grpLens', 构图: 'grpComp', 人物: 'grpPerson', 色调: 'grpTone',
+  景别: 'lblShot', 机位: 'lblAngle', 朝向: 'lblFacing', 画幅: 'lblAspect',
+  人物位置: 'lblPos', 主体大小: 'lblScale', 背景: 'lblBg',
+  表情: 'lblExpr', 表情强度: 'lblEmphasis', 视线: 'lblGaze', 姿势: 'lblPose',
+  色温: 'lblTemp', 整体色调: 'lblGrade', 主色: 'lblMaincolor', 氛围: 'lblMood',
+}
+const lbl = (s: string): string => (_LBL_KEY[s] ? t('shotEditor.' + _LBL_KEY[s]) : s)
+const refTypeLabel = (type: string): string => (type ? t('shotEditor.refType.' + type) : type)
 const { public: { apiBase: BASE_URL } } = useRuntimeConfig()
 
 const projectId = computed(() =>
@@ -745,14 +762,14 @@ const isRefined = computed(() => shot.value.status === 'refined')
 // Lifecycle phase for the header badge (mirrors the workspace card status)
 const phaseMeta = computed(() => {
   const st = shot.value.status
-  if (generating.value)  return { label: '生成中', cls: 'ph-explore' }
-  if (st === 'error')    return { label: '生成失败', cls: 'ph-error' }
+  if (generating.value)  return { label: t('shotEditor.genBadge'), cls: 'ph-explore' }
+  if (st === 'error')    return { label: t('shotEditor.genFailed'), cls: 'ph-error' }
   if (st === 'refined')  return shot.value.completed
-    ? { label: '已完成', cls: 'ph-done' }
-    : { label: '已选定', cls: 'ph-selected' }
+    ? { label: t('shotEditor.phaseDone'), cls: 'ph-done' }
+    : { label: t('shotEditor.phaseSelected'), cls: 'ph-selected' }
   return versions.value.length > 0
-    ? { label: '探索中', cls: 'ph-explore' }
-    : { label: '构思中', cls: 'ph-ideating' }
+    ? { label: t('shotEditor.phaseExploring'), cls: 'ph-explore' }
+    : { label: t('shotEditor.phaseIdeating'), cls: 'ph-ideating' }
 })
 
 // ── Inline title rename ───────────────────────────────────
@@ -1553,9 +1570,9 @@ async function setPriority(p: string) {
   } catch (e) { console.error('setPriority', e) }
 }
 const PLAN_TABS = [
-  { key: 'overview',  label: '相关信息' },
-  { key: 'logistics', label: '拍摄物流' },
-  { key: 'technique', label: '拍摄要点' },
+  { key: 'overview',  label: 'shotEditor.tabOverview' },
+  { key: 'logistics', label: 'shotEditor.tabLogistics' },
+  { key: 'technique', label: 'shotEditor.tabTechnique' },
 ] as const
 const PRIO_LABEL: Record<string, string> = { high: '必拍', mid: '想拍', low: '可选' }
 
@@ -1938,7 +1955,7 @@ async function generateRefine() {
     const { generating: gen } = await api.refineVersion(projectId.value, shotId.value, versionId, params)
     if (gen) { generating.value = true; pollUntilDone() }
   } catch {
-    aiMessages.value.push({ role: 'agent', text: '调整生成失败，请重试。' })
+    aiMessages.value.push({ role: 'agent', text: t('shotEditor.refineError') })
   }
 }
 
@@ -2013,7 +2030,7 @@ async function sendChat(retryText?: string) {
     if (stage === 'camera') openCameraPanel(camera); else cameraPanel.value = null
     if (gen) { generating.value = true; pollUntilDone() }
   } catch {
-    aiMessages.value.push({ role: 'agent', text: '出了点问题，请稍后重试。', retryText: text })
+    aiMessages.value.push({ role: 'agent', text: t('shotEditor.chatError'), retryText: text })
   } finally {
     // Guaranteed to run even if something above throws unexpectedly —
     // the input/send button must never stay stuck disabled.

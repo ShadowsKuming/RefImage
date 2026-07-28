@@ -10,15 +10,15 @@
     <div class="sh-mid">
       <div class="sh-imgwrap">
         <img v-if="imageUrl" :src="imageUrl" class="sh-img" draggable="false" />
-        <div v-else class="sh-img ph">无图</div>
+        <div v-else class="sh-img ph">{{ t('shotEditor.sheetNoImage') }}</div>
       </div>
       <div class="sh-side">
         <div class="sh-block">
-          <div class="sh-h">拍摄意图</div>
+          <div class="sh-h">{{ t('shotEditor.sheetIntent') }}</div>
           <p class="sh-p">{{ intent }}</p>
         </div>
         <div class="sh-block">
-          <div class="sh-h">姿势与表情</div>
+          <div class="sh-h">{{ t('shotEditor.sheetPoseExpr') }}</div>
           <ul class="sh-ul">
             <li v-for="(p, i) in poseLines" :key="i">{{ p }}</li>
           </ul>
@@ -45,21 +45,24 @@ const props = defineProps<{
   title?: string
 }>()
 
+const { t } = useLocale()
+const pv = (v: string): string => (v ? t('shotEditor.pv.' + v) : v)
+
 const PRIO: Record<string, string> = { high: '必拍', mid: '想拍', low: '可选' }
 const ov = computed(() => props.plan?.overview || {})
 const lg = computed(() => props.plan?.logistics || {})
 const te = computed(() => props.plan?.technique || {})
 const pm = computed(() => te.value.params || {})
 
-const prioLabel = computed(() => PRIO[ov.value.priority] || '想拍')
+const prioLabel = computed(() => pv(PRIO[ov.value.priority] || '想拍'))
 const scene = computed(() => (lg.value.scene || {}).location || (lg.value.scene || {}).place || '')
-const headTitle = computed(() => props.title || scene.value || '拍摄卡')
+const headTitle = computed(() => props.title || scene.value || t('shotEditor.sheetCard'))
 const intent = computed(() => ov.value.goal || ov.value.synopsis || '—')
 
 const poseLines = computed(() => {
   const out = [...(te.value.pose_tips || [])]
-  if (pm.value.gaze) out.push(`视线：${pm.value.gaze}`)
-  if (te.value.expression) out.push(`表情：${te.value.expression}`)
+  if (pm.value.gaze) out.push(`${t('shotEditor.gazeLabel')}：${pv(pm.value.gaze)}`)
+  if (te.value.expression) out.push(`${t('shotEditor.exprLabel')}：${te.value.expression}`)
   return out.length ? out : ['—']
 })
 
@@ -70,14 +73,14 @@ const props_all = computed(() => {
 })
 
 const fields = computed(() => [
-  { k: '场景',   v: scene.value || '—' },
-  { k: '机位',   v: pm.value.angle || '—' },
-  { k: '景别',   v: pm.value.shot || '—' },
-  { k: '构图',   v: te.value.composition || '—' },
-  { k: '光线',   v: te.value.lighting || '—' },
-  { k: '道具',   v: props_all.value },
-  { k: '时间',   v: (lg.value.timing || {}).best_time || '—' },
-  { k: '备用方案', v: (te.value.risks || []).join('；') || '—' },
+  { k: t('shotEditor.scene'),        v: scene.value || '—' },
+  { k: t('shotEditor.lblAngle'),     v: pv(pm.value.angle) || '—' },
+  { k: t('shotEditor.lblShot'),      v: pv(pm.value.shot) || '—' },
+  { k: t('shotEditor.compLabel'),    v: te.value.composition || '—' },
+  { k: t('shotEditor.sheetLight'),   v: te.value.lighting || '—' },
+  { k: t('shotEditor.sheetProps'),   v: props_all.value },
+  { k: t('shotEditor.time'),         v: (lg.value.timing || {}).best_time || '—' },
+  { k: t('shotEditor.sheetBackup'),  v: (te.value.risks || []).join('；') || '—' },
 ])
 </script>
 
