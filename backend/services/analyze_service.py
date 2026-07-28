@@ -16,7 +16,7 @@ Step 2 — profile chat:
 """
 import uuid
 from agents.character_extractor import (
-    FIELDS, extract_features, verify_same_character, is_null_value,
+    FIELDS, extract_features, verify_same_character, is_null_value, VisionParseError,
 )
 from agents.character_chat import chat as _character_chat
 from tools.translate import translate_visual_spec
@@ -198,7 +198,23 @@ def start_or_continue(image_bytes: bytes, session_id: str | None) -> dict:
         }
 
     missing = _missing(session["extracted"])
-    result  = extract_features(image_bytes, session["history"], missing)
+    try:
+        result = extract_features(image_bytes, session["history"], missing)
+    except VisionParseError:
+        # Model refused / returned non-JSON (moderation, or not an anime character).
+        # Don't 500 — tell the user plainly and let them upload a clearer image.
+        return {
+            "session_id":     session_id,
+            "done":           False,
+            "gender":         session["gender"],
+            "message":        "没能从这张图识别出角色特征——可能图片不够清晰，或不是动漫角色。"
+                              "换一张更清晰的动漫角色参考图再试试。",
+            "visual_spec":    None,
+            "extracted":      session["extracted"],
+            "extracted_i18n": None,
+            "missing_fields": missing,
+            "unrecognized":   True,
+        }
 
     # Merge: only fill previously-null English fields
     for field, value in result["updates"].items():

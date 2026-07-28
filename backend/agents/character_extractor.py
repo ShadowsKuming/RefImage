@@ -115,7 +115,21 @@ def verify_same_character(image_bytes: bytes, existing_extracted: dict, reply_la
 
     system = VERIFY_SYSTEM + f"\n\nreason 字段请用{_LANG_NAMES.get(reply_lang, '中文')}书写。"
     raw = vision.call(messages, system)
-    return _parse(raw)
+    try:
+        return _parse(raw)
+    except VisionParseError:
+        return {"same": True, "reason": ""}   # fail open — never block the user on a refusal
+
+
+class VisionParseError(ValueError):
+    """The vision model returned something we can't parse as JSON — usually a
+    moderation refusal ("I'm sorry, I can't help with that.") or a plain-text
+    apology instead of the requested JSON. Callers should degrade gracefully
+    (friendly message / fail-open), never 500."""
+
+    def __init__(self, raw: str):
+        self.raw = raw
+        super().__init__(f"Could not parse response as JSON: {raw[:200]}")
 
 
 def _parse(text: str) -> dict:
@@ -125,8 +139,11 @@ def _parse(text: str) -> dict:
         start = text.find("{")
         end = text.rfind("}") + 1
         if start != -1 and end > start:
-            return json.loads(text[start:end])
-        raise ValueError(f"Could not parse response as JSON: {text[:200]}")
+            try:
+                return json.loads(text[start:end])
+            except json.JSONDecodeError:
+                pass   # embedded braces but still malformed/truncated → refusal-ish
+        raise VisionParseError(text)
 
 
 def extract_features(image_bytes: bytes, history: list, missing_fields: list[str]) -> dict:
