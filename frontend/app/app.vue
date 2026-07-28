@@ -392,6 +392,20 @@ body {
   font-size: 13px;
 }
 
+/* Minimal overlay scrollbar — thin rounded thumb, no track/border (project-wide) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 45%, transparent) transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 40%, transparent);
+  border-radius: 999px; border: 2px solid transparent; background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--text-muted) 65%, transparent); background-clip: padding-box; }
+*::-webkit-scrollbar-corner { background: transparent; }
+
 .canvas-page { display: flex; flex-direction: column; height: 100vh; }
 
 .toolbar {

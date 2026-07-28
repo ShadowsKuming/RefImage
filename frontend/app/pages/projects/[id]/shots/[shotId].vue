@@ -11,7 +11,7 @@
         <span class="bc-item">{{ characterName }}</span>
         <span class="bc-sep">/</span>
         <span v-if="!editingTitle" class="bc-current" title="点击重命名" @click="startRenameTitle">
-          {{ shot.title }}{{ hasUnsavedChanges ? ' *' : '' }}
+          {{ shot.title }}{{ hasUnsavedChanges ? ' *' : '' }}<Pencil :size="13" class="bc-pencil" />
         </span>
         <input
           v-else
@@ -22,7 +22,8 @@
           @keydown.enter="onTitleInputEnter"
           @keydown.escape.prevent="cancelRename"
         />
-        <span class="shot-mood-badge">{{ shot.mood }}</span>
+        <span v-if="shot.mood" class="shot-mood-badge">{{ shot.mood }}</span>
+        <span class="phase-badge" :class="phaseMeta.cls"><span class="ph-dot" />{{ phaseMeta.label }}</span>
       </div>
       <div class="tb-actions">
         <span v-if="generating" class="tb-generating">✦ 生成中…</span>
@@ -37,12 +38,21 @@
     <div class="main-layout">
 
       <!-- ── Left: AI generation panel ── -->
-      <div class="ai-col" :style="{ width: leftWidth + 'px' }">
-        <div class="col-header">AI 生成助手</div>
+      <div class="ai-col" :class="{ dimmed: cameraPanel && !generating && !isRefined }" :style="{ width: leftWidth + 'px' }">
+        <div class="ai-header">
+          <span class="ai-mascot"><img v-if="charAvatar" :src="charAvatar" alt="" /><span v-else>🎬</span></span>
+          <span class="ai-htitle">AI 助理 · 拍摄构思</span>
+        </div>
 
-        <div class="ai-messages" ref="aiMsgContainer">
+        <div class="ai-body">
+        <button v-if="!atChatBottom" class="scroll-bottom-btn" title="回到最新" @click="scrollChatBottom">
+          <ArrowDown :size="18" />
+        </button>
+        <div class="ai-messages" ref="aiMsgContainer" @scroll="onChatScroll">
           <div v-for="(msg, i) in aiMessages" :key="i" class="ai-msg" :class="msg.role">
-            <div v-if="msg.role === 'agent'" class="ai-avatar">AI</div>
+            <div v-if="msg.role === 'agent'" class="ai-avatar">
+              <img v-if="charAvatar" :src="charAvatar" alt="" /><span v-else>🎬</span>
+            </div>
             <div class="ai-bubble">
               {{ msg.text }}
               <button
@@ -54,39 +64,26 @@
             </div>
           </div>
           <div v-if="chatLoading" class="ai-msg agent">
-            <div class="ai-avatar">AI</div>
+            <div class="ai-avatar"><img v-if="charAvatar" :src="charAvatar" alt="" /><span v-else>🎬</span></div>
             <div class="ai-bubble typing"><span /><span /><span /></div>
           </div>
+        </div>
 
-          <div v-if="lastAgentOptions.length && !cameraPanel" class="ai-chips">
-            <button
-              v-for="(op, oi) in lastAgentOptions"
-              :key="oi"
-              class="ai-chip"
-              :class="{ primary: op.includes('生成') }"
-              @click="pickOption(op)"
-            >{{ op }}</button>
-          </div>
+        <!-- ── Options zone: a distinct band above the input (not in the chat flow),
+             so it's clear these are quick picks AND that you can also just type. ── -->
+        <div v-if="lastAgentOptions.length && !cameraPanel && !isRefined" class="ai-options">
+          <button
+            v-for="(op, oi) in lastAgentOptions"
+            :key="oi"
+            class="ai-opt"
+            :class="{ gen: op.includes('生成') }"
+            @click="pickOption(op)"
+          >
+            <span v-if="!op.includes('生成')" class="rec-tag" :class="{ ghost: oi !== 0 }">推荐</span>
+            <span class="opt-text">{{ op }}</span>
+          </button>
+        </div>
 
-          <!-- Photography step: direct-control panel, not chat -->
-          <div v-if="cameraPanel && !generating && !isRefined" class="cam-panel">
-            <div class="cam-row">
-              <span class="cam-label">景别</span>
-              <button v-for="s in SHOT_OPTS" :key="s" class="cam-btn"
-                      :class="{ on: cameraPanel.shot === s }" @click="cameraPanel.shot = s">{{ s }}</button>
-            </div>
-            <div class="cam-row">
-              <span class="cam-label">画幅</span>
-              <button v-for="a in ASPECT_OPTS" :key="a" class="cam-btn"
-                      :class="{ on: cameraPanel.aspect === a }" @click="cameraPanel.aspect = a">{{ a }}</button>
-            </div>
-            <div class="cam-row">
-              <span class="cam-label">机位</span>
-              <button v-for="a in ANGLE_OPTS" :key="a" class="cam-btn"
-                      :class="{ on: cameraPanel.angle === a }" @click="cameraPanel.angle = a">{{ a }}</button>
-            </div>
-            <button class="cam-gen" :disabled="chatLoading" @click="generateFromPanel">👍 就这样，生成 →</button>
-          </div>
         </div>
 
         <div v-if="selectedRefIds.length > 0" class="selection-hint">
@@ -95,11 +92,15 @@
         <input ref="refFileInput" type="file" accept="image/*" style="display:none" @change="onRefFileInputChange" />
 
         <div class="ai-input-row">
-          <input v-model="chatInput" class="ai-input"
-                 :placeholder="isRefined ? '已完善，解锁后可继续编辑' : '点上面的选项，或直接打字…'"
-                 :disabled="generating || chatLoading || isRefined"
-                 @keydown.enter.exact="onChatInputEnter" />
-          <button class="ai-send" :disabled="generating || chatLoading || isRefined" @click="sendChat">↑</button>
+          <div class="ai-inputbox" :class="{ disabled: generating || chatLoading || isRefined }">
+            <input v-model="chatInput" class="ai-input"
+                   :placeholder="isRefined ? '已完善，解锁后可继续编辑' : '也可以直接输入你的想法…'"
+                   :disabled="generating || chatLoading || isRefined"
+                   @keydown.enter.exact="onChatInputEnter" />
+            <button class="ai-send" :disabled="generating || chatLoading || isRefined || !chatInput.trim()" @click="sendChat">
+              <Send :size="15" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -116,6 +117,48 @@
               <div class="gen-spinner"></div>
               <span class="gen-label">参考图生成中</span>
               <span class="gen-sub">大约需要 30–60 秒</span>
+            </div>
+          </div>
+        </Transition>
+
+        <!-- Photography step: the camera panel floats centered on the canvas (it's a
+             decision panel, not a chat option) — the chat dims to background. -->
+        <Transition name="cam-pop">
+          <div v-if="cameraPanel && !generating && !isRefined" class="cam-overlay">
+            <div class="cam-panel">
+              <div class="cp-title"><b>定一下这张怎么拍</b></div>
+              <div class="cp-sub">确认镜头参数，就生成第一张参考图</div>
+              <div class="cp-group">
+                <div class="cp-head"><User :size="15" /> 景别</div>
+                <div class="cp-cards">
+                  <button v-for="s in SHOT_OPTS" :key="s" class="cp-card" :class="{ on: cameraPanel.shot === s }" @click="cameraPanel.shot = s">
+                    <span class="cp-label">{{ s }}</span>
+                    <Check v-if="cameraPanel.shot === s" :size="12" class="cp-check" />
+                  </button>
+                </div>
+              </div>
+              <div class="cp-group">
+                <div class="cp-head"><ImageIcon :size="15" /> 画幅</div>
+                <div class="cp-cards">
+                  <button v-for="a in ASPECT_OPTS" :key="a" class="cp-card wide" :class="{ on: cameraPanel.aspect === a }" @click="cameraPanel.aspect = a">
+                    <component :is="a === '竖图' ? Smartphone : Monitor" :size="16" class="cp-ico" />
+                    <span class="cp-label">{{ a }}</span>
+                    <Check v-if="cameraPanel.aspect === a" :size="12" class="cp-check" />
+                  </button>
+                </div>
+              </div>
+              <div class="cp-group">
+                <div class="cp-head"><Camera :size="15" /> 机位</div>
+                <div class="cp-cards">
+                  <button v-for="a in ANGLE_OPTS" :key="a" class="cp-card" :class="{ on: cameraPanel.angle === a }" @click="cameraPanel.angle = a">
+                    <span class="cp-label">{{ a }}</span>
+                    <Check v-if="cameraPanel.angle === a" :size="12" class="cp-check" />
+                  </button>
+                </div>
+              </div>
+              <button class="cp-gen" :disabled="chatLoading" @click="generateFromPanel">
+                <Sparkles :size="16" /> 确认参数并生成
+              </button>
             </div>
           </div>
         </Transition>
@@ -378,8 +421,10 @@
             <!-- A. 相关信息 -->
             <div v-if="planTab === 'overview'" class="plan-sec">
               <div class="plan-line"><span class="pk">梗概</span><span class="pv"><EditableText :model-value="shotPlan.overview.synopsis" multiline placeholder="—" @save="saveField('overview.synopsis', $event)" /></span></div>
-              <div class="plan-line"><span class="pk">目标</span><span class="pv"><EditableText :model-value="shotPlan.overview.goal" placeholder="点击填写目标…" @save="saveField('overview.goal', $event)" /></span></div>
+              <div class="plan-line"><span class="pk">目标</span><span class="pv"><EditableText :model-value="shotPlan.overview.goal" multiline placeholder="点击填写摄影目标…" @save="saveField('overview.goal', $event)" /></span></div>
               <div class="plan-line"><span class="pk">优先级</span><span class="pv"><span class="p-pill">{{ PRIO_LABEL[shotPlan.overview.priority] || '想拍' }}</span></span></div>
+              <div class="plan-line"><span class="pk">限制</span><span class="pv"><EditableList :items="shotPlan.overview.constraints || []" @change="saveField('overview.constraints', $event)" /></span></div>
+              <div class="plan-line"><span class="pk">标签</span><span class="pv"><EditableList :items="shotPlan.overview.tags || []" @change="saveField('overview.tags', $event)" /></span></div>
             </div>
 
             <!-- B. 拍摄物流（核心，汇入项目） -->
@@ -518,6 +563,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { Send, ArrowDown, User, Image as ImageIcon, Camera, Smartphone, Monitor, Check, Sparkles, Pencil } from 'lucide-vue-next'
 import { useRoute, onBeforeRouteLeave } from 'vue-router'
 import { useApi } from '~/composables/useApi'
 
@@ -545,6 +591,19 @@ const shot = computed(() => ({
   status: shotData.value?.status ?? 'pending',
 }))
 const isRefined = computed(() => shot.value.status === 'refined')
+
+// Lifecycle phase for the header badge (mirrors the workspace card status)
+const phaseMeta = computed(() => {
+  const st = shot.value.status
+  if (generating.value)  return { label: '生成中', cls: 'ph-explore' }
+  if (st === 'error')    return { label: '生成失败', cls: 'ph-error' }
+  if (st === 'refined')  return shotPlan.value
+    ? { label: '已完成', cls: 'ph-done' }
+    : { label: '已选定', cls: 'ph-selected' }
+  return versions.value.length > 0
+    ? { label: '探索中', cls: 'ph-explore' }
+    : { label: '构思中', cls: 'ph-ideating' }
+})
 
 // ── Inline title rename ───────────────────────────────────
 const editingTitle  = ref(false)
@@ -1462,9 +1521,25 @@ async function pollUntilDone() {
 
 // ── AI chat ───────────────────────────────────────────────
 const aiMsgContainer = ref<HTMLElement | null>(null)
+const atChatBottom   = ref(true)
+function onChatScroll() {
+  const el = aiMsgContainer.value
+  if (el) atChatBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+}
+async function scrollChatBottom() {
+  await nextTick()
+  const el = aiMsgContainer.value
+  if (el) el.scrollTop = el.scrollHeight
+  // re-scroll after avatars/images settle (they change height after first paint)
+  setTimeout(() => { const e = aiMsgContainer.value; if (e) e.scrollTop = e.scrollHeight; atChatBottom.value = true }, 120)
+}
 const chatInput      = ref('')
 const chatLoading    = ref(false)
 const aiMessages     = ref<{ role: string; text: string; retryText?: string; options?: string[] }[]>([])
+const charAvatar     = computed(() => {
+  const a = projectData.value?.avatar
+  return a ? BASE_URL + a : null
+})
 
 // Hidden opener that kicks off the interview when a shot has no chat yet.
 // It's sent as a user turn to the assistant but never shown as a user bubble
@@ -1498,7 +1573,7 @@ function pickOption(op: string) {
 }
 
 // ── Camera panel (photography step = direct controls, not chat) ──
-const SHOT_OPTS  = ['特写', '近景', '半身', '全身']
+const SHOT_OPTS  = ['特写', '近景', '半身', '全身', '远景']
 const ANGLE_OPTS = ['平视', '俯视', '仰视']
 const ASPECT_OPTS = ['竖图', '横图']
 const cameraPanel = ref<{ shot: string; aspect: string; angle: string } | null>(null)
@@ -1674,6 +1749,8 @@ onMounted(async () => {
     // Blank shot → assistant greets with the first funnel question + chips.
     if (aiMessages.value.length === 0 && shotData.value?.status !== 'generating' && !isRefined.value) {
       kickoff()
+    } else {
+      scrollChatBottom()   // existing history → rest the view at the latest message
     }
     if (isRefined.value) initPlan()
   } catch (e) { console.error('mount error', e) }
@@ -1706,8 +1783,19 @@ onUnmounted(() => {
 .back-chevron { font-size: 18px; line-height: 1; margin-top: -1px; }
 .bc-sep { color: var(--border-md); }
 .bc-item { color: var(--text-dim); }
-.bc-current { color: var(--text-accent); font-weight: 600; cursor: text; border-radius: 4px; padding: 1px 4px; }
+.bc-current { display: inline-flex; align-items: center; gap: 3px; color: var(--text-accent); font-weight: 600; cursor: text; border-radius: 4px; padding: 1px 4px; }
 .bc-current:hover { background: var(--surface-inset); }
+.bc-pencil { color: var(--text-sub); opacity: .7; transition: opacity .12s; }
+.bc-current:hover .bc-pencil { opacity: 1; color: var(--accent); }
+
+/* lifecycle status badge */
+.phase-badge { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+.phase-badge .ph-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.phase-badge.ph-ideating { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.phase-badge.ph-explore  { color: #c98a2e; background: color-mix(in srgb, #c98a2e 14%, transparent); }
+.phase-badge.ph-selected { color: #3b82c4; background: color-mix(in srgb, #3b82c4 14%, transparent); }
+.phase-badge.ph-done     { color: var(--badge-done-text, #3fae6a); background: color-mix(in srgb, #3fae6a 14%, transparent); }
+.phase-badge.ph-error    { color: var(--error); background: color-mix(in srgb, var(--error) 14%, transparent); }
 .bc-title-input { color: var(--text-accent); font-weight: 600; font-size: 13px; font-family: inherit; background: var(--surface-inset); border: 1px solid var(--accent-dim); border-radius: 4px; padding: 1px 6px; outline: none; min-width: 80px; max-width: 260px; }
 .shot-mood-badge { padding: 2px 8px; background: var(--surface-2); border-radius: 10px; font-size: 10px; color: var(--text-muted); margin-left: 4px; }
 .tb-actions { display: flex; gap: 8px; }
@@ -1945,11 +2033,17 @@ onUnmounted(() => {
 .version-count { font-size: 11px; color: var(--text-ghost); }
 
 /* ── AI chat ── */
-.ai-messages { flex: 1; overflow-y: auto; padding: 14px 14px 8px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+/* Body holds the scrolling messages + floating options/camera overlay, so the
+   message area keeps a CONSTANT height whether or not options are showing. */
+.ai-body { position: relative; flex: 1; min-height: 0; }
+.ai-messages { position: absolute; inset: 0; overflow-y: auto; scroll-behavior: smooth; padding: 14px 14px 328px; display: flex; flex-direction: column; gap: 10px; }
+.ai-messages > * { flex-shrink: 0; }
 .ai-msg { display: flex; gap: 8px; align-items: flex-start; }
 .ai-msg.user { flex-direction: row-reverse; }
-.ai-avatar { width: 24px; height: 24px; border-radius: 6px; background: var(--avatar-bg); color: var(--avatar-text); font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.ai-bubble { max-width: 84%; padding: 7px 10px; border-radius: 8px; font-size: 11px; line-height: 1.55; background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); }
+.ai-avatar { width: 28px; height: 28px; border-radius: 50%; overflow: hidden; background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ai-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.ai-bubble { max-width: 84%; padding: 8px 11px; border-radius: 12px; border-top-left-radius: 4px; font-size: 11.5px; line-height: 1.6; background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); }
+.ai-msg.user .ai-bubble { border-top-left-radius: 12px; border-top-right-radius: 4px; }
 .ai-msg.user .ai-bubble { background: var(--bubble-user-bg); border-color: var(--bubble-user-bdr); color: var(--bubble-user-text); }
 .retry-btn {
   display: block; margin-top: 6px;
@@ -1965,25 +2059,57 @@ onUnmounted(() => {
 .typing span:nth-child(3) { animation-delay: .4s; }
 @keyframes dot { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-5px)} }
 
-.ai-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 2px 4px 32px; }
-.ai-chip {
-  background: var(--surface-2); border: 1px solid var(--border-md); border-radius: 999px;
-  color: var(--text-hi); font-size: 11px; line-height: 1.3; padding: 6px 11px;
+/* AI panel header — mascot avatar + title */
+.ai-header { display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.ai-mascot { width: 26px; height: 26px; border-radius: 50%; overflow: hidden; background: var(--surface-2); border: 1px solid var(--border); display: grid; place-items: center; font-size: 14px; flex-shrink: 0; }
+.ai-mascot img { width: 100%; height: 100%; object-fit: cover; }
+.ai-htitle { font-size: 13px; font-weight: 600; color: var(--text-hi); }
+
+/* Options overlay — floats at the bottom of the message area (absolute, no layout
+   space) so showing/hiding it never pushes the conversation up. A gradient fades
+   the messages behind it. */
+.ai-options { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 6px; padding: 26px 14px 10px; max-height: 60%; overflow-y: auto;
+  background: linear-gradient(to bottom, transparent, var(--surface) 22px); }
+.ai-opt {
+  display: flex; align-items: center; gap: 7px; text-align: left; width: 100%;
+  background: var(--surface); border: 1px solid var(--border-md); border-radius: 10px;
+  color: var(--text-hi); font-size: 12px; line-height: 1.4; padding: 9px 12px;
   cursor: pointer; font-family: inherit; transition: all .13s ease;
 }
-.ai-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--surface-raised); }
-.ai-chip.primary { background: var(--accent-dim); border-color: var(--accent); color: #fff; font-weight: 600; }
-.ai-chip.primary:hover { background: var(--accent); color: #fff; }
+.ai-opt:hover { border-color: var(--accent); background: var(--surface-2); }
+.ai-opt .opt-text { flex: 1; }
+.ai-opt .rec-tag { font-size: 9.5px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 5px; padding: 1px 6px; flex-shrink: 0; }
+.ai-opt .rec-tag.ghost { visibility: hidden; }
+.ai-opt.gen { background: var(--accent-dim); border-color: var(--accent); color: #fff; font-weight: 600; justify-content: center; }
+.ai-opt.gen:hover { background: var(--accent); }
 
-.cam-panel { margin: 4px 2px 4px 32px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 8px; }
-.cam-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.cam-label { font-size: 11px; color: var(--text-sub); width: 28px; flex-shrink: 0; }
-.cam-btn { background: var(--bg); border: 1px solid var(--border-md); border-radius: 7px; color: var(--text-hi); font-size: 11px; padding: 5px 11px; cursor: pointer; font-family: inherit; transition: all .12s ease; }
-.cam-btn:hover { border-color: var(--accent); color: var(--accent); }
-.cam-btn.on { background: var(--accent-dim); border-color: var(--accent); color: #fff; font-weight: 600; }
-.cam-gen { margin-top: 2px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 12px; font-weight: 600; padding: 8px; cursor: pointer; font-family: inherit; transition: opacity .12s; }
-.cam-gen:hover:not(:disabled) { opacity: .9; }
-.cam-gen:disabled { opacity: .5; cursor: not-allowed; }
+/* Camera panel — floats centered on the canvas (a decision panel, not a chat option) */
+.cam-overlay { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 8%, rgba(40,10,25,.14)); backdrop-filter: blur(1.5px); padding: 24px; }
+.cam-panel { width: 460px; max-width: 100%; max-height: calc(100% - 16px); overflow-y: auto; padding: 22px 22px 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; box-shadow: 0 24px 60px var(--shadow); display: flex; flex-direction: column; gap: 15px; }
+.cp-title { font-size: 15px; font-weight: 700; color: var(--text-hi); }
+.cp-sub { font-size: 12px; color: var(--text-muted); margin-top: -11px; }
+.cp-group { display: flex; flex-direction: column; gap: 9px; }
+.cp-head { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--text-hi); }
+.cp-head svg { color: var(--accent); }
+.cp-cards { display: flex; flex-wrap: wrap; gap: 9px; }
+.cp-card { position: relative; flex: 1 1 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 14px 8px; background: var(--surface-2); border: 1.5px solid var(--border); border-radius: 13px; color: var(--text-hi); font-size: 13px; cursor: pointer; font-family: inherit; transition: all .14s ease; }
+.cp-card.wide { flex-direction: row; gap: 8px; padding: 16px; }
+.cp-card:hover { border-color: var(--border-md); transform: translateY(-1px); }
+.cp-card.on { background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 72%, #6f2340)); border-color: transparent; color: #fff; font-weight: 600; box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 40%, transparent); }
+.cp-ico { opacity: .9; }
+.cp-check { position: absolute; top: 7px; right: 7px; color: #fff; background: rgba(255,255,255,.28); border-radius: 50%; padding: 2px; }
+.cp-gen { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 4px; padding: 15px; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 66%, #6f2340)); border: none; border-radius: 14px; color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; transition: opacity .13s; box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 38%, transparent); }
+.cp-gen:hover:not(:disabled) { opacity: .93; }
+.cp-gen:disabled { opacity: .6; cursor: wait; }
+
+/* dim the chat while the camera panel is up */
+.ai-col.dimmed { opacity: .45; pointer-events: none; transition: opacity .2s; }
+
+/* camera panel pop transition */
+.cam-pop-enter-active, .cam-pop-leave-active { transition: opacity .18s ease; }
+.cam-pop-enter-from, .cam-pop-leave-to { opacity: 0; }
+.cam-pop-enter-active .cam-panel, .cam-pop-leave-active .cam-panel { transition: transform .2s cubic-bezier(.2,.8,.3,1); }
+.cam-pop-enter-from .cam-panel, .cam-pop-leave-to .cam-panel { transform: scale(.94); }
 
 
 /* Refine panel (right column) */
@@ -2019,14 +2145,20 @@ onUnmounted(() => {
 
 .selection-hint { margin: 0 14px 4px; padding: 5px 10px; background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 6px; font-size: 11px; color: var(--accent); text-align: center; flex-shrink: 0; }
 
-.ai-input-row { display: flex; gap: 6px; padding: 10px 14px 14px; border-top: 1px solid var(--border); flex-shrink: 0; }
-.ai-input { flex: 1; background: var(--bg); border: 1px solid var(--border-md); border-radius: 8px; color: var(--text-hi); font-size: 12px; padding: 7px 10px; font-family: inherit; transition: border-color .15s; }
-.ai-input:focus { outline: none; border-color: var(--accent-dim); }
+/* Input row: one rounded pill with the send button tucked inside on the right */
+.ai-input-row { padding: 10px 14px 14px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.ai-inputbox { display: flex; align-items: center; gap: 6px; background: var(--bg); border: 1px solid var(--border-md); border-radius: 999px; padding: 4px 5px 4px 15px; transition: border-color .15s; }
+.ai-inputbox:focus-within { border-color: var(--accent); }
+.ai-inputbox.disabled { opacity: .55; }
+.ai-input { flex: 1; min-width: 0; background: transparent; border: none; color: var(--text-hi); font-size: 12.5px; padding: 6px 0; font-family: inherit; outline: none; }
 .ai-input::placeholder { color: var(--text-ghost); }
-.ai-input:disabled { opacity: .5; cursor: not-allowed; }
-.ai-send { width: 32px; height: 32px; background: var(--accent-dim); border: none; border-radius: 8px; color: white; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s; }
-.ai-send:hover:not(:disabled) { background: var(--accent); }
-.ai-send:disabled { background: var(--border-md); cursor: not-allowed; }
+.ai-send { width: 32px; height: 32px; flex-shrink: 0; background: var(--accent); border: none; border-radius: 999px; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: opacity .15s, background .15s; }
+.ai-send:hover:not(:disabled) { opacity: .9; }
+.ai-send:disabled { background: var(--border-md); color: var(--text-ghost); cursor: not-allowed; }
+
+/* Floating "back to latest" button — shows when scrolled up from the bottom */
+.scroll-bottom-btn { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 6; width: 34px; height: 34px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border-md); color: var(--text-hi); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 10px var(--shadow); transition: all .13s; }
+.scroll-bottom-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ── Spinner ── */
 .spinner { width: 16px; height: 16px; border: 2px solid var(--border-md); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
