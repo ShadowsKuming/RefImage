@@ -95,6 +95,7 @@ export default {
     scCountUnit: 'カット', groupNone: 'グループなし', groupScene: 'シーン別', groupStatus: 'ステータス別', groupPriority: '優先度別',
     refined: '仕上げ済み', genError: '生成エラー', errorBadge: 'エラー', delete: '削除',
     addShot: 'カット追加', newShotName: '新規カット {n}',
+    emptyShotsTitle: 'カットがまだありません', emptyShotsSub: '各カットは撮りたい一枚の画面です。最初の一つを作って、一緒に考えていきましょう。', emptyShotsCta: '最初のカットを作成',
     scMood: '表現', scStatus: 'ステータス', scScene: 'シーン',
     stPending: '計画中', stRefined: '計画完了', stDone: '計画完了', stError: '生成エラー',
     stIdeating: '構想中', stExploring: '探索中', stSelected: '選定済み', stCompleted: '完了',

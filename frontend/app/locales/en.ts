@@ -95,6 +95,7 @@ export default {
     scCountUnit: 'shots', groupNone: 'No grouping', groupScene: 'By scene', groupStatus: 'By status', groupPriority: 'By priority',
     refined: 'Refined', genError: 'Generation error', errorBadge: 'Error', delete: 'Delete',
     addShot: 'New Shot', newShotName: 'Shot {n}',
+    emptyShotsTitle: 'No shots yet', emptyShotsSub: 'Each shot is one frame you want to capture. Create your first and let\'s plan it out together.', emptyShotsCta: 'Create your first shot',
     scMood: 'Expression', scStatus: 'Status', scScene: 'Scene',
     stPending: 'Planning', stRefined: 'Planned', stDone: 'Planned', stError: 'Error',
     stIdeating: 'Ideating', stExploring: 'Exploring', stSelected: 'Selected', stCompleted: 'Completed',

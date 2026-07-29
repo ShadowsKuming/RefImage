@@ -93,6 +93,7 @@ const zh = {
     scCountUnit: '个镜头', groupNone: '不分组', groupScene: '按场景', groupStatus: '按状态', groupPriority: '按优先级',
     refined: '已完善', genError: '生成出错', errorBadge: '错误', delete: '删除',
     addShot: '新增拍摄', newShotName: '新分镜 {n}',
+    emptyShotsTitle: '还没有分镜', emptyShotsSub: '每个分镜是一张要拍的画面。创建第一个，我们一起把它构思出来吧。', emptyShotsCta: '创建第一个分镜',
     scMood: '表现', scStatus: '状态', scScene: '场景',
     stPending: '计划中', stRefined: '完成计划', stDone: '完成计划', stError: '生成出错',
     stIdeating: '构思中', stExploring: '探索中', stSelected: '已选定', stCompleted: '已完成',

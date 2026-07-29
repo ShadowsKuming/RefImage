@@ -72,8 +72,18 @@
               </div>
             </div>
 
+            <!-- Empty state: brand-new project, no shots yet -->
+            <div v-if="!shots.length" class="shots-empty">
+              <Clapperboard class="se-ico" />
+              <div class="se-title">{{ t('projectCanvas.emptyShotsTitle') }}</div>
+              <div class="se-sub">{{ t('projectCanvas.emptyShotsSub') }}</div>
+              <button class="se-btn" :disabled="shotAdding" @click="quickAddShot">
+                <span class="se-plus">{{ shotAdding ? '…' : '+' }}</span>{{ t('projectCanvas.emptyShotsCta') }}
+              </button>
+            </div>
+
             <!-- Grid view (grouped by scene when selected) -->
-            <div v-if="viewMode === 'grid'" class="shots-grid-wrap">
+            <div v-else-if="viewMode === 'grid'" class="shots-grid-wrap">
              <template v-for="(g, gi) in shotGroups" :key="g.key">
               <div v-if="g.label" class="shots-group-head">
                 <component :is="groupMode === 'scene' ? MapPin : groupMode === 'priority' ? Star : CircleDot" class="sgh-ico" />
@@ -1768,7 +1778,6 @@ onMounted(async () => {
     loadMoments()
     syncRelations()
     syncKeyEvents()
-    seedMockShots()               // TEMP MOCK — remove with SHOTS_MOCK
     autoGrabCoverIfMissing()      // one-time: grab a cover if the project has none
     autoGenerateMomentsIfMissing()  // one-time: silently generate 名场面 in the background
     autoGenerateWardrobeIfMissing() // one-time: silently generate 服装道具 from appearance
@@ -1778,22 +1787,7 @@ onMounted(async () => {
 })
 
 // ── Shots ─────────────────────────────────────────────────
-// ⚠️ TEMP MOCK — fake shots so we can iterate on the card design without real
-// shots. Renders ONLY when the project has no real shots. Interactions are
-// local-only (guarded by ._mock). Remove when done — search "SHOTS_MOCK".
-const SHOTS_MOCK = ref<any[]>([])
-function seedMockShots() {
-  const img = projectData.value?.refs?.[0] || ''   // raw path; BASE_URL prepended in template
-  SHOTS_MOCK.value = [
-    { shot_id: 'mock-1', title: '音乐教室 贝斯练习', scene: '音乐教室',       description: '认真练习贝斯，专注而安静', priority: 'high', status: 'pending', image_url: img, _mock: true },
-    { shot_id: 'mock-2', title: '与乐队互动',       scene: '音乐教室',       description: '与队友交流，微笑自然',   priority: 'mid',  status: 'refined', image_url: img, _mock: true },
-    { shot_id: 'mock-3', title: '窗边独处 阅读歌词', scene: '教室 / 窗边',    description: '安静阅读歌词，思考旋律', priority: 'low',  status: 'pending', image_url: '',  _mock: true },
-  ]
-}
-const shots    = computed<any[]>(() => {
-  const real = projectData.value?.shots ?? []
-  return real.length ? real : SHOTS_MOCK.value   // TEMP MOCK fallback
-})
+const shots    = computed<any[]>(() => projectData.value?.shots ?? [])
 const viewMode = ref<'grid' | 'list'>('grid')
 const shotAdding = ref(false)
 
@@ -1848,10 +1842,6 @@ async function quickAddShot() {
 }
 
 async function removeShot(shotId: string) {
-  if (shotId.startsWith('mock-')) {   // TEMP MOCK — local only
-    SHOTS_MOCK.value = SHOTS_MOCK.value.filter(s => s.shot_id !== shotId)
-    return
-  }
   try {
     await api.deleteShot(projectId.value, shotId)
     if (projectData.value) {
@@ -1902,15 +1892,12 @@ const openShotMenu = ref<string | null>(null)
 function toggleShotMenu(id: string) { openShotMenu.value = openShotMenu.value === id ? null : id }
 if (typeof window !== 'undefined') window.addEventListener('click', () => { openShotMenu.value = null })
 
-// open shot editor (mock shots have no real page → no-op, for design iteration)
 function openShot(shot: any) {
-  if (shot._mock) return
   navigateTo(`/projects/${projectId.value}/shots/${shot.shot_id}`)
 }
 async function setShotAttr(shot: any, attrs: { priority?: string; essential?: boolean }) {
   Object.assign(shot, attrs)   // optimistic
   openShotMenu.value = null
-  if (shot._mock) return       // TEMP MOCK — local only
   try {
     await api.setShotAttrs(projectId.value, shot.shot_id, attrs)
   } catch (e) {
@@ -2193,6 +2180,25 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 .st-select:hover { border-color: var(--accent-dim); }
 .st-select:focus { outline: none; border-color: var(--accent); }
 .st-chev { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 13px; height: 13px; color: var(--text-quiet); pointer-events: none; }
+
+/* empty state — brand-new project, no shots */
+.shots-empty {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: 8px; padding: 56px 24px; border: 1.5px dashed var(--border-md); border-radius: 16px;
+  background: color-mix(in srgb, var(--accent) 3%, transparent);
+}
+.se-ico { width: 40px; height: 40px; color: var(--accent-dim); margin-bottom: 2px; }
+.se-title { font-size: 15px; font-weight: 700; color: var(--text-hi); }
+.se-sub { font-size: 12.5px; color: var(--text-muted); max-width: 340px; line-height: 1.6; }
+.se-btn {
+  margin-top: 10px; display: inline-flex; align-items: center; gap: 7px;
+  background: var(--accent); color: #fff; border: none; border-radius: 9px;
+  padding: 10px 18px; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer;
+  transition: opacity .12s;
+}
+.se-btn:hover:not(:disabled) { opacity: .9; }
+.se-btn:disabled { opacity: .6; cursor: wait; }
+.se-plus { font-size: 16px; line-height: 1; }
 
 /* grouped grid + scene group headers */
 .shots-grid-wrap { display: flex; flex-direction: column; gap: 12px; }
