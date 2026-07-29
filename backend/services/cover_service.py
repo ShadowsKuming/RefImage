@@ -13,6 +13,8 @@ not part of the offline unit-test suite.
 import json
 from pathlib import Path
 
+import concurrent.futures
+
 import requests
 
 from tools import vision
@@ -90,7 +92,7 @@ def _gather_candidates(series: str, world: dict, want: int = 6) -> list[dict]:
 
 def _download(url: str) -> tuple[bytes, str] | None:
     try:
-        r = requests.get(url, headers=_UA, timeout=15)
+        r = requests.get(url, headers=_UA, timeout=8)
     except Exception:
         return None
     if not r.ok or len(r.content) < 3000:
@@ -111,13 +113,14 @@ def _pick(series: str, downloaded: list[tuple[dict, bytes, str]]) -> int:
         f"请选出最适合的一张：能代表作品的世界观/氛围、画面干净、"
         f"无明显文字水印或商品包装、构图完整。按顺序编号 0..{len(downloaded)-1}，"
         f"只返回 JSON：{{\"best\": <编号>, \"reason\": \"...\"}}"}]
-    for i, (_, data, _ext) in enumerate(downloaded):
+    for i, (_, data, _ext) in enumerate(downloaded[:4]):   # cap images so the pick stays fast
         b64, mt = vision.encode_image(data)
         content.append({"type": "text", "text": f"图 {i}："})
         content.append({"type": "image", "source": {"type": "base64", "media_type": mt, "data": b64}})
     try:
         out = vision.call([{"role": "user", "content": content}],
-                          system="你是资深视觉编辑，负责挑选作品封面。只输出 JSON。")
+                          system="你是资深视觉编辑，负责挑选作品封面。只输出 JSON。",
+                          timeout=25)
         j = json.loads(out[out.find("{"):out.rfind("}") + 1])
         idx = int(j.get("best", 0))
         return idx if 0 <= idx < len(downloaded) else 0
@@ -134,11 +137,20 @@ def grab_cover(project_id: str) -> dict:
     series = proj.get("series") or proj.get("character") or ""
     world = (proj.get("world") or {}).get("worldSetting") or {}
 
+    # Download candidates concurrently with a hard wall-clock budget — sequential
+    # downloads (6 × 8s) used to blow past the client's 90s timeout and hang.
+    candidates = _gather_candidates(series, world)
     downloaded: list[tuple[dict, bytes, str]] = []
-    for im in _gather_candidates(series, world):
-        got = _download(im["imageUrl"])
-        if got:
-            downloaded.append((im, got[0], got[1]))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+        fut_map = {ex.submit(_download, im["imageUrl"]): im for im in candidates}
+        done, _pending = concurrent.futures.wait(fut_map, timeout=12)
+        for fut in done:
+            try:
+                got = fut.result()
+            except Exception:
+                got = None
+            if got:
+                downloaded.append((fut_map[fut], got[0], got[1]))
 
     if not downloaded:
         raise RuntimeError("没有可用的候选封面图（搜索无结果或全部下载失败）")

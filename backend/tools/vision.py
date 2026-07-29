@@ -52,7 +52,7 @@ def _to_openai_messages(messages: list[dict]) -> list[dict]:
 
 # ── Providers ─────────────────────────────────────────────────────────────────
 
-def _call_claude(messages: list, system: str) -> str:
+def _call_claude(messages: list, system: str, timeout: float | None = None) -> str:
     import anthropic
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     response = client.messages.create(
@@ -60,11 +60,12 @@ def _call_claude(messages: list, system: str) -> str:
         max_tokens=2000,
         system=system,
         messages=messages,
+        timeout=timeout,
     )
     return response.content[0].text
 
 
-def _call_openai(messages: list, system: str | None) -> str:
+def _call_openai(messages: list, system: str | None, timeout: float | None = None) -> str:
     from openai import OpenAI
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     sys_msgs = [{"role": "system", "content": system}] if system else []
@@ -72,6 +73,7 @@ def _call_openai(messages: list, system: str | None) -> str:
         model=VISION_MODEL["openai"],
         max_tokens=2000,
         messages=sys_msgs + _to_openai_messages(messages),
+        timeout=timeout,
     )
     return response.choices[0].message.content
 
@@ -81,9 +83,11 @@ def _call_openai(messages: list, system: str | None) -> str:
 _PROVIDERS = {"claude": _call_claude, "openai": _call_openai}
 
 
-def call(messages: list, system: str) -> str:
-    """Call the configured vision LLM. Messages use Anthropic canonical format."""
+def call(messages: list, system: str, timeout: float | None = None) -> str:
+    """Call the configured vision LLM. Messages use Anthropic canonical format.
+    timeout (seconds) caps the request so callers can't hang indefinitely on the
+    SDK's ~10-minute default (the cover-grab pick was hanging on this)."""
     fn = _PROVIDERS.get(PROVIDER)
     if not fn:
         raise ValueError(f"Unknown VISION_PROVIDER: '{PROVIDER}'. Choose from: {list(_PROVIDERS)}")
-    return fn(messages, system)
+    return fn(messages, system, timeout)

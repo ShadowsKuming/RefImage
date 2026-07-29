@@ -48,7 +48,32 @@ def source_path(project_id: str, cid: str) -> Path | None:
         p = _dir(project_id) / f"{cid}_src.{meta['src_ext']}"
         if p.exists():
             return p
-    return None
+    # No dedicated avatar source (older/edge projects) → materialize one by copying
+    # the character's reference image into the avatar source slot, ONCE. From then on
+    # it's a real {cid}_src file that display / crop / auto-recognize all share — no
+    # read-time fallback that can diverge between callers.
+    return _materialize_source_from_ref(project_id, cid)
+
+
+def _materialize_source_from_ref(project_id: str, cid: str) -> Path | None:
+    refs_dir = STORAGE_ROOT / project_id / "context" / "refs"
+    if not refs_dir.exists():
+        return None
+    refs = sorted(f for f in refs_dir.iterdir() if f.is_file())
+    if not refs:
+        return None
+    ref = refs[0]
+    ext = ref.suffix.lstrip(".").lower()
+    ext = ext if ext in _EXT_BY_TYPE.values() else "jpg"
+    d = _dir(project_id)
+    d.mkdir(parents=True, exist_ok=True)
+    dest = d / f"{cid}_src.{ext}"
+    if not dest.exists():
+        dest.write_bytes(ref.read_bytes())          # copy the ref into the avatar source slot
+        meta = _read_meta(project_id, cid) or {}
+        meta["src_ext"] = ext
+        _meta_path(project_id, cid).write_text(json.dumps(meta, ensure_ascii=False, indent=2))
+    return dest
 
 
 def avatar_path(project_id: str, cid: str) -> Path | None:

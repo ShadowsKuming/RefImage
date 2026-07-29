@@ -67,7 +67,7 @@ def image_search(query: str, num: int = 10, lang: str = "ja") -> list[dict]:
         SERPER_IMAGES_URL,
         headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
         json={"q": query, "num": num, **lang_params},
-        timeout=15,
+        timeout=10,
     )
     resp.raise_for_status()
 
