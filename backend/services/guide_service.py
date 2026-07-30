@@ -39,11 +39,13 @@ def planning_chat(project_id: str, message: str, history: list[dict], reply_lang
     result = _planning_chat(message, llm_history, project, project_id, reply_lang)
     reply = result["reply"]
     brief = result["brief"]
+    options = result.get("options") or []
 
-    # Persist updated chat history
+    # Persist updated chat history. Options ride on the agent turn so quick-reply
+    # chips survive a reload (the frontend restores them from the last agent msg).
     updated_history = list(history) + [
         {"role": "user",  "text": message},
-        {"role": "agent", "text": reply},
+        {"role": "agent", "text": reply, "options": options},
     ]
     project_service.save_chat_history(project_id, updated_history)
 
@@ -55,6 +57,7 @@ def planning_chat(project_id: str, message: str, history: list[dict], reply_lang
     # them this turn (already persisted by the services), else None.
     return {
         "reply": reply, "brief": brief,
+        "options": result.get("options", []),
         "plan": result.get("plan"),
         "wardrobe": result.get("wardrobe"),
         "moments": result.get("moments"),

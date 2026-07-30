@@ -235,7 +235,8 @@ def shot_chat(
         raise HTTPException(status_code=404, detail="Project or shot not found")
     return {"reply": result["reply"], "generating": result["generating"],
             "options": result.get("options", []),
-            "stage": result.get("stage", "chat"), "camera": result.get("camera")}
+            "stage": result.get("stage", "chat"), "camera": result.get("camera"),
+            "title": result.get("title")}
 
 
 @router.post("/{project_id}/shots/{shot_id}/versions/{version_id}/refine")

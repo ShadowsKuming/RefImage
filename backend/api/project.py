@@ -41,6 +41,11 @@ class ChatRequest(BaseModel):
     reply_lang: str = "zh"
 
 
+class StepRequest(BaseModel):
+    message: str = ""      # empty on first entry → engine emits the greeting
+    reply_lang: str = "zh"
+
+
 @router.post("/create")
 async def create(
     images:         list[UploadFile] = File(...),
@@ -438,7 +443,23 @@ def project_chat(
         raise HTTPException(status_code=404, detail="Project not found")
     return {
         "reply": result["reply"], "brief": result["brief"],
+        "options": result.get("options", []),
         "plan": result.get("plan"),
         "wardrobe": result.get("wardrobe"),
         "moments": result.get("moments"),
     }
+
+
+@router.post("/{project_id}/chat/step")
+def project_chat_step(
+    project_id: str,
+    req: StepRequest,
+    user_id: str = Depends(get_current_user),
+):
+    """One turn of the state-machine planning agent (agents/planning_flow)."""
+    _check_owner(project_id, user_id)
+    from agents import planning_flow
+    try:
+        return planning_flow.run_step(project_id, req.message, req.reply_lang)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")

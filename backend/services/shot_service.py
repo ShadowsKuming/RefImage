@@ -5,9 +5,19 @@ Handles per-shot AI conversation (which decides when to generate the reference i
 Image generation is kicked off as a FastAPI BackgroundTask so the chat response
 returns immediately while generation runs in the background.
 """
+import re
 from fastapi import BackgroundTasks
 from agents.shot_chat import chat as _shot_chat
 from services import project_service, generate_service
+
+
+# Default shot titles (zh/en/ja: "新分镜 N" / "Shot N" / "新規カット N"). We only
+# auto-name a shot from the AI's concept while it's still one of these placeholders.
+_DEFAULT_TITLE_RE = re.compile(r"^\s*(新分镜|新規カット|Shot)\s*\d*\s*$", re.IGNORECASE)
+
+
+def _is_default_title(title: str) -> bool:
+    return not title.strip() or bool(_DEFAULT_TITLE_RE.match(title))
 
 
 def shot_chat(
@@ -63,6 +73,7 @@ def shot_chat(
             project_id, shot_id, cr["ref_id"], cr["ref_type"],
         )
 
+    new_title = None
     if result["generating"] and result["prompt_parts"]:
         background_tasks.add_task(
             generate_service.generate_shot_image,
@@ -70,10 +81,16 @@ def shot_chat(
             parent_version_ids or [],
             result.get("params") or {},
         )
+        # The AI already knows what this shot is from the funnel chat — name it,
+        # but only if the user hasn't titled it yet (still the default placeholder).
+        if result.get("title") and _is_default_title(shot.get("title", "")):
+            new_title = result["title"]
+            project_service.rename_shot(project_id, shot_id, new_title)
 
     return {"reply": result["reply"], "generating": result["generating"],
             "options": result.get("options", []),
-            "stage": result.get("stage", "chat"), "camera": result.get("camera")}
+            "stage": result.get("stage", "chat"), "camera": result.get("camera"),
+            "title": new_title}
 
 
 def refine_version(

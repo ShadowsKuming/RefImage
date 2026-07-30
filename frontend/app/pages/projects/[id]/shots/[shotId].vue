@@ -45,7 +45,7 @@
       <!-- ── Left: AI generation panel ── -->
       <div class="ai-col" :class="{ dimmed: cameraPanel && !generating && !isRefined }" :style="{ width: leftWidth + 'px' }">
         <div class="ai-header">
-          <span class="ai-mascot"><img v-if="charAvatar" :src="charAvatar" alt="" /><span v-else>🎬</span></span>
+          <span class="ai-mascot"><img :src="mascotHeadSrc" alt="AI" /></span>
           <span class="ai-htitle">{{ t('shotEditor.aiHeader') }}</span>
         </div>
 
@@ -56,7 +56,7 @@
         <div class="ai-messages" ref="aiMsgContainer" @scroll="onChatScroll">
           <div v-for="(msg, i) in aiMessages" :key="i" class="ai-msg" :class="msg.role">
             <div v-if="msg.role === 'agent'" class="ai-avatar">
-              <img v-if="charAvatar" :src="charAvatar" alt="" /><span v-else>🎬</span>
+              <img src="/mascot/head-normal.png" alt="AI" />
             </div>
             <div class="ai-bubble">
               {{ msg.text }}
@@ -69,7 +69,7 @@
             </div>
           </div>
           <div v-if="chatLoading" class="ai-msg agent">
-            <div class="ai-avatar"><img v-if="charAvatar" :src="charAvatar" alt="" /><span v-else>🎬</span></div>
+            <div class="ai-avatar"><img src="/mascot/head-normal.png" alt="AI" /></div>
             <div class="ai-bubble typing"><span /><span /><span /></div>
           </div>
         </div>
@@ -420,7 +420,7 @@
            Hidden during exploration: the shot's only job then is landing a
            satisfying example image. Guides appear only after 选定/完善 (refined). -->
       <div v-if="isRefined" class="detail-col" :style="{ width: rightWidth + 'px' }">
-        <div class="col-header">{{ t('shotEditor.planTitle') }}</div>
+        <div class="col-header"><FileText :size="15" :stroke-width="2" class="col-header-icon" />{{ t('shotEditor.planTitle') }}</div>
 
         <!-- Auto-organizing (选定即整理) → loading; retry only if it failed -->
         <template v-if="!shotPlan">
@@ -1848,6 +1848,17 @@ function pickOption(op: string) {
   sendChat()
 }
 
+// Assistant mascot mood (head-crop for the compact AI column):
+//   cry = last turn errored · question = waiting for the user to pick · normal otherwise.
+const mascotMood = computed<'normal' | 'question' | 'cry'>(() => {
+  if (chatLoading.value || generating.value) return 'normal'
+  const last = aiMessages.value[aiMessages.value.length - 1]
+  if (last && last.role === 'agent' && last.retryText) return 'cry'
+  if (lastAgentOptions.value.length) return 'question'
+  return 'normal'
+})
+const mascotHeadSrc = computed(() => `/mascot/head-${mascotMood.value}.png`)
+
 // ── Camera panel (photography step = direct controls, not chat) ──
 const SHOT_OPTS  = ['特写', '近景', '半身', '全身', '远景']
 const ANGLE_OPTS = ['平视', '俯视', '仰视']
@@ -2025,11 +2036,14 @@ async function sendChat(retryText?: string) {
   await nextTick()
   if (aiMsgContainer.value) aiMsgContainer.value.scrollTop = aiMsgContainer.value.scrollHeight
   try {
-    const { reply, generating: gen, options, stage, camera } = await withRetry(() => api.shotChat(
+    const { reply, generating: gen, options, stage, camera, title } = await withRetry(() => api.shotChat(
       projectId.value, shotId.value, text, [], selectedRefIds.value,
     ))
     if (reply) aiMessages.value.push({ role: 'agent', text: reply, options })
     if (stage === 'camera') openCameraPanel(camera); else cameraPanel.value = null
+    // AI named the shot from the funnel chat → adopt it (backend only sends a
+    // title when the shot was still default-named).
+    if (title && shotData.value) shotData.value.title = title
     if (gen) { generating.value = true; pollUntilDone() }
   } catch {
     aiMessages.value.push({ role: 'agent', text: t('shotEditor.chatError'), retryText: text })
@@ -2139,7 +2153,8 @@ onUnmounted(() => {
 .canvas-col { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; position: relative; }
 .detail-col { flex-shrink: 0; display: flex; flex-direction: column; background: var(--surface); overflow: hidden; min-width: 180px; border-left: 1px solid var(--border); box-shadow: -4px 0 20px var(--shadow); z-index: 2; }
 .resizer { width: 10px; flex-shrink: 0; background: transparent; cursor: col-resize; z-index: 3; }
-.col-header { height: 44px; display: flex; align-items: center; padding: 0 18px; font-size: 12px; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.col-header { height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 18px; font-size: 12px; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.col-header-icon { color: var(--accent); flex-shrink: 0; }
 
 /* ── Guide tabs ── */
 .hs-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; overflow-x: auto; }

@@ -10,9 +10,10 @@ The caller (guide_service) handles persisting the brief and returning it to the 
 """
 import json
 from pathlib import Path
-from tools.llm import call_agent
+from tools.llm import call_agent, call_with_tools
 from tools.search import web_search as _web_search
 from services import plan_service, wardrobe_service, moments_service
+from config import LLM_PROVIDER, FAST_LLM_MODEL_BY_PROVIDER
 
 STORAGE_ROOT = Path(__file__).parent.parent / "storage" / "projects"
 
@@ -94,6 +95,29 @@ TOOLS = [
                 },
             },
             "required": ["locations", "equipment", "best_time", "props"],
+        },
+    },
+    {
+        "name": "propose_shot",
+        "description": (
+            "当用户想【真正开始做/落地某一个具体分镜】时调用（比如聊到某个画面聊得差不多了、"
+            "或用户说『就拍这个』『去做下一个分镜』）。这会给用户一个按钮，点了就带着这个概念跳进分镜编辑器细化。"
+            "项目级只负责定方向、挑要拍哪些分镜；具体一张怎么摆拍（姿势/光线/构图/景别）不在这里聊，交给分镜编辑器。"
+            "所以一旦锁定了一个分镜想法，就调用它把话题交出去，别在这儿继续抠细节。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "这个分镜的简短标题，如「趴桌子戴耳机」"},
+                "concept": {"type": "string", "description": (
+                    "给分镜编辑器的【完整交接】——把你俩在项目级已经聊定的、和这张分镜相关的一切都写进来，"
+                    "这样分镜里的助手一看就懂、不用重新问一遍。至少涵盖：场景/地点、画面概念（她在做什么）、"
+                    "情绪与氛围基调、以及已经聊到的光线/构图/色调倾向。示例："
+                    "「场景：卧室桌边（民宿卧室，日式，木地板）。画面：后藤独趴在桌上戴耳机听音乐，专注放空、慵懒治愈。"
+                    "氛围：宅家独处的温柔安静，带点松弛。光线：自然光靠窗 + 暖色台灯混合，写实感。」"
+                )},
+            },
+            "required": ["title", "concept"],
         },
     },
 ]
@@ -377,14 +401,16 @@ def _build_system(project: dict, project_id: str) -> str:
     )
 
     lines = [
-        "你是这个 cosplay 拍摄项目的创意总监，全面掌控项目的拍摄规划。",
+        "你是这位用户的拍摄搭档——一个懂行、靠谱、语气温柔的伙伴，陪 ta 一起把这次 cosplay 拍摄一点点构思出来。",
+        "你说话像一个走在 ta 身边的人，而不是发号施令的总监：多用'我们'，先照顾 ta 的感受和想法，再自然地把你专业的判断给出去。",
         "你拥有项目的完整信息：角色资料、已规划的所有 shots 及其 guide 数据。",
         "",
         "工作方式：",
         "你有两种模式，务必分清：",
-        "【聊天/建议】——这里尽管主动。回复前先过一遍整个项目，主动发现问题和缺口、"
-        "直接给出可执行的具体建议（不说'我建议你可以考虑'这类软话），需要查资料就直接用 web_search。"
-        "想到用户没提的补充（比如'还缺个补光灯''要不要加一段黄昏日程'），就在文字回复里问/提，不要直接动手改。",
+        "【聊天/建议】——尽管主动，但用陪伴的方式。回复前先过一遍整个项目，帮 ta 发现问题和缺口，需要查资料就直接用 web_search。"
+        "给建议时内容要具体、可执行（别只说'挺好的''都可以'这种没营养的话），但把它包在温柔、一起商量的语气里——"
+        "像'我们不如…''我觉得这里加个…会更稳，你觉得呢?'这样，而不是冷冰冰下命令。"
+        "想到 ta 没提的补充（比如'是不是还缺个补光灯''要不要加一段黄昏日程'），就在文字里轻轻提一句、问问 ta 的意思，不要直接动手改。",
         "",
         "【编辑数据】——调用增删工具（add_/remove_ 等）时必须克制，严格遵守：",
         "1. 只做用户这一条消息里明确点名要改的那几项。用户没点名的，一律不碰——哪怕你觉得该加也只在文字里建议。",
@@ -400,6 +426,54 @@ def _build_system(project: dict, project_id: str) -> str:
         "- update_brief 只用于'帮我总结/更新总结'这类明确请求，或核心场地/风格已定时提交一次总结；不要频繁调。",
         "- 场地卡片和室内外标签由日程自动生成，改日程即可，不用单独维护；地点实际地址只有用户知道，不要编造。",
         "- 如果话题跑偏，自然引导回拍摄规划。",
+        "",
+        "【★ 你是项目级助手：聊的是『基调』，不是具体分镜】",
+        "你和用户聊的是【整组作品】的大方向——想表达什么、角色的核心解读、整体情绪与视觉气质，是给整组定调子的北极星。",
+        "【具体某一张怎么拍】——什么姿势、什么构图、什么镜头、哪个具体动作/瞬间——那是【分镜级】的事，"
+        "由每个 shot 自己的编辑器去细化，不归你管。",
+        "所以当用户聊『作品想表达什么』或『对角色的理解』时，请停在【方向与气质】这一层：帮他把整组的情绪基调、"
+        "核心解读、视觉大方向说清楚就够了。不要跳进去替他设计具体分镜——别抛出『拍她独自坐在排练室拨吉他、阳光打在身上』"
+        "这种单张画面方案，也别给『独自拨吉他 / 抱吉他紧张 / 指尖特写』这类具体镜头选项。",
+        "★【聊基调要果断收尾、回弹，别无限复述】：这类基调对话聊 2-3 个来回、你已能用一句话概括整组方向时，就【立刻收尾】。"
+        "特别注意：当用户开始用『对 / 挺好 / 就这样 / 嗯』这类【认同】来回应，说明调子已经定了——你【绝不能再把方向复述第二遍】，必须马上收尾。"
+        "收尾【必须】落在一个明确的二选一提问上，基本照这句给用户选择：『那这次的调子我大概摸到了～要不要带着这个感觉去构思第一个分镜？还是想再换个方向聊聊？』"
+        "——没有给出这个『去构思分镜 / 换个方向』的二选一，就等于没收尾、算失败。"
+        "那些『具体怎么摆拍』的细节，留到分镜里展开，你别在这儿包办。",
+        "",
+        "【开场规划对话（项目早期、拍摄计划大多还空着时）】",
+        "如果现在还没几个 shot、计划面板大多是空的，你的首要任务不是急着出整套方案，而是像朋友一样在轻松的聊天里，"
+        "一点点把这次拍摄的基本盘摸清楚、并顺手记进计划面板。你心里要收集的有四样——"
+        "拍摄时间、场地、摄影师、假发/服装/道具准备——但这是【你自己的待办清单，绝对不要一次性列给用户看】。",
+        "★【一轮正确的样子，请照抄这个极简风格】：用户说『9月中旬』→ 你【只】做两件事：① update_overview(shoot_date='9月中旬')；"
+        "② 回一句『好，9月中旬先记下了～那你想好大概在哪拍了吗？』。就这么多。这一轮【绝不】顺手写主题、【绝不】填 crew、【绝不】add_note、【绝不】加场地——"
+        "每一样都【只在用户亲口说到那一项时】才记。反面教材（严禁）：用户才说了个时间，你却一口气把主题、人手、一堆注意事项、几个场地全填了。务必遵守：",
+        "1. ★【每条消息只问一个问题】。绝不把待办罗列出来甩给用户——不许出现『1. 2. 3. 4.』这样的清单，"
+        "也不许说『我们要先弄清楚这几点』『先搭个大框架』之类的话。用户在你任何一条消息里，都只应该看到【一个】要回答的问题；"
+        "问完这一件、等用户答了，下一轮再问下一件。",
+        "2. ★ 开场别铺垫、别啰嗦：最多一句轻轻回应用户上一句，然后【直接】问第一个问题（一般从『大概什么时候拍』开始）。"
+        "不要写『我先接住你的想法』『帮你搭个大框架』『按照拍摄流程』这类元叙述和客套。",
+        "3. 提议 ≠ 替用户决定。涉及创意选择的（尤其场地、主题），先在【文字里】给出你的提议再问『你觉得行吗，还是有别的想法』，等用户点头，才用工具记下来。"
+        "★★【场地绝不批量添加、绝不凭角色/原作设定脑补地点】：只有用户明确选定了某个地点，才 add_schedule_segment 记【一条】；"
+        "绝不一次加好几个地点，也绝不把原作里的排练室/live house 等场景自动填进去。主题(theme)同理——收集阶段别自动写一长串，等整组方向聊清楚了再记、而且要短。",
+        "4. 用户给了答案，就【当场】用对应工具记进计划，对号入座、别记错也别漏："
+        "  ·时间→update_overview(shoot_date)：【按用户原话记】，他说『9月中旬』就记『9月中旬』，绝不自己编成某月某日、更不能写错年份；"
+        "  ·主题→update_overview(theme)；  ·场地→add_schedule_segment(scene=那个地点)；"
+        "  ·摄影/人手→update_overview(crew)：用户说找到摄影了，就立刻记 crew.photographers=1（主角 coser 一般 cosers=1）；"
+        "  ·假发/服装/道具【某样没到位】→add_note 记一条实物待办（title 如『服装待做』『假发待买』，phase='pre'）。",
+        "5. ★★【add_note 只记『用户提到的实物准备待办』，绝不记你自己的议程】：add_note 只在用户明确说某样东西还没到位时加，一条对应一件实物。"
+        "【严禁】把『确定摄影师』『场地待讨论』『设备清单待规划』『整体风格商量』『拍摄日程待安排』这类【你接下来要问/要想的事】写进 add_note——"
+        "那是你脑子里的流程，不是用户的注意事项，写进去会把面板搞成一团垃圾。宁可不记，也不要记这种议程条目。",
+        "6. 摄影风格（日系/暗调等）没有对应字段，记在心里、用来指导后面画面设计即可，不用硬塞进 crew，也不要为它 add_note。",
+        "★ 准备情况必须问、绝不能替用户假设：下面『角色服装/道具』列表是角色的造型设计，不代表用户实体已备齐——"
+        "永远不要说『你准备得很全了/很齐了』这类话。假发、衣服、道具到没到位，只有问了用户、用户回答了才知道，没问就是未知。",
+        "7. ★【绝不重复问同一件事】：用户对某一项说了『还没定 / 不知道 / 看情况 / 随便』，就【立刻把该字段记成『待定』并跳到下一个还没问过的项】——"
+        "绝不许换个说法把同一件事再问一遍（这是最让用户抓狂的死循环）。同一件事最多问一次。也能根据上一个答案跳过没意义的追问（没找到摄影就别问风格）。",
+        "8. 收尾要【果断】：这四样（时间/场地/摄影/准备）每样【各问过一遍】就算收集完——别再往细枝末节里钻"
+        "（例如别一件件追问百褶裙、白袜、乐福鞋、发带这种服装配件；那些等要拍了自然会清点）。用户连着两次说『还没定』也立刻收尾。"
+        "收尾时用一句话说你大概了解情况了，把选择权交回给他——问他想直接去『构思第一个分镜』，还是换个方向聊聊。",
+        "一旦计划已经比较充实，就回到正常的聊天/建议模式，别反复追问这些基本信息。",
+        "9. ★ 每一轮【不管你调了几个工具】，最后都必须给用户一句自然的话——绝不能只调工具、不说话（那样用户看到的是空白气泡）。"
+        "而且一轮别调一大堆工具：通常只记 0-1 项、跟一个问题就够，别一口气填一堆。",
         "",
         "═══ 角色资料 ═══",
         f"角色：{char_name}（{series_name}）",
@@ -486,6 +560,54 @@ def _build_system(project: dict, project_id: str) -> str:
     return "\n".join(lines)
 
 
+# ── Quick-reply options (fast-model, forced tool) ─────────────────────────────
+
+_SUBMIT_OPTIONS_TOOL = {
+    "name": "submit_options",
+    "description": "提交用户此刻最可能点的快捷回答。",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "options": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "2-4 个快捷回答，第一人称、简短（≤14字）；助手在问句里列了几个候选就给全那几个，别漏",
+            },
+        },
+        "required": ["options"],
+    },
+}
+
+
+def _suggest_options(char_name: str, messages: list[dict], reply_lang: str = "zh") -> list[str]:
+    """2-4 quick-reply chips answering the assistant's last message. Cheap fast-model
+    call with a forced tool so output is structured and consistent with the convo.
+    Returns [] on any failure — chips are a nicety, never block the reply."""
+    system = (
+        f"这是一个 cosplay 拍摄规划对话，角色是 {char_name}。\n"
+        "你的唯一任务：给用户几个能【一键回答助手最后那条消息】的快捷选项（2-4 个，第一人称、短，≤14字）。\n"
+        "规则：\n"
+        "1. 必须是对『助手最后那个问题』的直接回答，同一层级、同一主题，别跨层。\n"
+        "2. 如果助手列了候选（如「清晨、午后、傍晚」），就把每一个都做成选项、逐字照用、别漏。\n"
+        "3. 选项之间有区分度；其中通常留一个『还没定/还不确定』这类的兜底答案。\n"
+        "4. 和用户已经说过的保持一致，绝不矛盾。\n"
+        "5. 扎在这个角色/这次拍摄的设定里，别用通用模板。\n"
+        "整理好调用 submit_options。"
+    )
+    fast_model = FAST_LLM_MODEL_BY_PROVIDER.get(LLM_PROVIDER)
+    try:
+        res = call_with_tools(
+            messages=messages, system=system, tools=[_SUBMIT_OPTIONS_TOOL],
+            max_tokens=300, force_tool="submit_options", model=fast_model,
+        )
+    except Exception:
+        return []
+    call = next((c for c in res.get("tool_calls", []) if c.get("name") == "submit_options"), None)
+    if not call:
+        return []
+    return [str(o).strip() for o in (call.get("input", {}).get("options") or []) if str(o).strip()][:4]
+
+
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 def chat(message: str, history: list[dict], project: dict, project_id: str,
@@ -517,6 +639,7 @@ def chat(message: str, history: list[dict], project: dict, project_id: str,
     # this avoids the empty-bubble bug caused by passthrough tools that
     # return no text when using OpenAI's chat completion format.
     captured_brief: dict = {}
+    captured_shot: dict = {}
     state = {"plan_dirty": False}
 
     def _execute_update_brief(inp: dict) -> str:
@@ -526,6 +649,11 @@ def chat(message: str, history: list[dict], project: dict, project_id: str,
             "请在你的回复中告诉用户：右侧「拍摄总结」栏已更新，"
             "可以开始点击「+」添加具体的拍摄计划卡片了。"
         )
+
+    def _execute_propose_shot(inp: dict) -> str:
+        captured_shot.update({"title": inp.get("title", ""), "concept": inp.get("concept", "")})
+        return ("已准备好把这个分镜交给分镜编辑器细化。"
+                "请在回复里简短地告诉用户：那我们就带着这个想法去构思这个分镜吧（一句话即可）。")
 
     # Plan mutation executors: mutate plan.json via plan_service, flag dirty so
     # the caller reloads and returns the fresh plan to the frontend.
@@ -553,7 +681,22 @@ def chat(message: str, history: list[dict], project: dict, project_id: str,
             return f"没找到 id 为 {inp['id']} 的设备，可能已被删除。"
         return _dirty(f"已删除设备「{r['name']}」。")
 
+    # Code-level guard: gpt-4.1 keeps trying to dump its own planning agenda into
+    # 注意事项 ("器材清单需列出" / "场地预约须沟通" / "后勤协助可酌情加人"). Drop titles
+    # that reference the planning PROCESS rather than a concrete prep todo, no matter
+    # what the prompt says. Real prep todos ("服装待做" / "假发待买") have none of these.
+    _NOTE_AGENDA_WORDS = ("清单", "进度", "预约", "沟通", "统筹", "规划", "协助", "酌情",
+                          "列出", "讨论", "商量", "安排", "对接", "联系", "试穿", "补光",
+                          "设备", "完善", "确认")
+
     def _ex_add_note(inp: dict) -> str:
+        title = str(inp.get("title", ""))
+        if any(w in title for w in _NOTE_AGENDA_WORDS):
+            return (f"「{title}」看起来是流程议程、不是用户提到的实物准备待办，已【跳过不记】。"
+                    "注意事项只记用户说的『某样东西没到位』（如服装待做/假发待买）。")
+        existing = {n.get("title") for n in plan_service.load_plan_data(project_id).get("notes", [])}
+        if title in existing:
+            return f"注意事项「{title}」已经在列表里了，无需重复添加。"
         item = plan_service.add_note(
             project_id, title=inp["title"], desc=inp.get("desc"),
             phase=inp.get("phase", "pre"), priority=inp.get("priority", "mid"),
@@ -567,12 +710,19 @@ def chat(message: str, history: list[dict], project: dict, project_id: str,
         return _dirty(f"已删除注意事项「{r['title']}」。")
 
     def _ex_add_schedule(inp: dict) -> str:
+        # Code-level guard: the model likes to dump every canonical location at once
+        # (排练室 + 音乐教室 + STARRY + 后藤家). Only the venue the user actually chose
+        # should land — cap to one add per turn.
+        if state.get("sched_added", 0) >= 1:
+            return ("这一轮已经加过一个场地了，别一次批量加多个地点——一个场地就够，"
+                    "其余等用户明确选了再加。已跳过这次。")
         item = plan_service.add_schedule_segment(
             project_id, scene=inp["scene"], time=inp.get("time"),
             content=inp.get("content"), duration=inp.get("duration"),
             light=inp.get("light"), priority=inp.get("priority"),
             shot_ids=inp.get("shot_ids"),
         )
+        state["sched_added"] = state.get("sched_added", 0) + 1
         return _dirty(f"已添加拍摄时段「{item['scene']}」（id {item['id']}）。")
 
     def _ex_remove_schedule(inp: dict) -> str:
@@ -650,6 +800,7 @@ def chat(message: str, history: list[dict], project: dict, project_id: str,
     tool_executor = {
         "web_search":   lambda inp: _web_search(inp["query"], lang=inp.get("lang", "zh-cn")),
         "update_brief": _execute_update_brief,
+        "propose_shot": _execute_propose_shot,
         **{name: _dedup(name, fn) for name, fn in mutation_executors.items()},
     }
 
@@ -662,9 +813,18 @@ def chat(message: str, history: list[dict], project: dict, project_id: str,
         max_tokens=1000,
     )
 
+    char_name = project.get("character_data", {}).get("character", "角色")
+    options = _suggest_options(
+        char_name,
+        messages + [{"role": "assistant", "content": result["text"]}],
+        reply_lang,
+    )
+
     return {
         "reply": result["text"],
+        "options": options,
         "brief": captured_brief if captured_brief else None,
+        "proposed_shot": captured_shot if captured_shot else None,
         "plan":     plan_service.load_plan_data(project_id) if state["plan_dirty"] else None,
         "wardrobe": wardrobe_service.load_wardrobe(project_id) if state.get("wardrobe_dirty") else None,
         "moments":  moments_service.load_moments(project_id, cid)["moments"] if state.get("moments_dirty") else None,

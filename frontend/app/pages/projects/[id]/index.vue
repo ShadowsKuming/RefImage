@@ -768,20 +768,23 @@
             class="ai-msg"
             :class="msg.role"
           >
-            <div v-if="msg.role === 'agent'" class="ai-avatar">AI</div>
+            <div v-if="msg.role === 'agent'" class="ai-avatar"><img src="/mascot/head-normal.png" alt="AI" /></div>
             <div class="ai-bubble">
               {{ msg.text }}
               <button
                 v-if="msg.retryText"
                 class="retry-btn"
                 :disabled="aiLoading"
-                @click="sendAiMessage(msg.retryText)"
+                @click="sendStep(msg.retryText)"
               >{{ t('projectCanvas.retry') }}</button>
             </div>
           </div>
           <div v-if="aiLoading" class="ai-msg agent">
-            <div class="ai-avatar">AI</div>
+            <div class="ai-avatar"><img src="/mascot/head-normal.png" alt="AI" /></div>
             <div class="ai-bubble typing"><span /><span /><span /></div>
+          </div>
+          <div v-if="aiOptions.length && !aiLoading" class="ai-onboard-chips">
+            <button v-for="(o, oi) in aiOptions" :key="oi" class="ai-chip" :class="{ primary: o.action === 'go_shot' }" @click="pickChip(o)">{{ chipLabel(o) }}</button>
           </div>
         </div>
         <div class="ai-widget-input-row">
@@ -792,7 +795,7 @@
             :disabled="aiLoading"
             @keydown.enter.exact="onAiInputEnter"
           />
-          <button class="ai-send" :disabled="!aiInput.trim() || aiLoading" @click="sendAiMessage()">↑</button>
+          <button class="ai-send" :disabled="!aiInput.trim() || aiLoading" @click="sendTyped('main')">↑</button>
         </div>
       </div>
 
@@ -805,16 +808,28 @@
             v-if="latestAgentMessage.retryText"
             class="retry-btn"
             :disabled="aiLoading"
-            @click="sendAiMessage(latestAgentMessage.retryText)"
+            @click="sendStep(latestAgentMessage.retryText)"
           >{{ t('projectCanvas.retry') }}</button>
+        </div>
+        <div v-if="aiOptions.length && !aiLoading" class="ai-onboard-chips">
+          <button v-for="(o, oi) in aiOptions" :key="oi" class="ai-chip" :class="{ primary: o.action === 'go_shot' }" @click="pickChip(o)">{{ chipLabel(o) }}</button>
+        </div>
+        <div v-if="!aiLoading" class="ai-custom-row">
+          <input
+            v-model="customText"
+            class="ai-input"
+            :placeholder="t('projectCanvas.aiOptionCustomPh')"
+            @keydown.enter.exact="sendTyped('inline')"
+          />
         </div>
       </template>
 
       <button
         class="ai-widget-avatar"
+        :class="'mood-' + mascotMood"
         @pointerdown="aiDrag.onPointerDown"
         @click="aiDrag.consumeClick() || (aiExpanded = !aiExpanded)"
-      ><span>AI</span></button>
+      ><img :src="mascotSrc" class="ai-mascot-img" alt="AI" draggable="false" /></button>
     </div>
 
     <!-- Lightbox -->
@@ -1769,9 +1784,17 @@ async function doExport() {
 onMounted(async () => {
   try {
     projectData.value = await api.getProject(projectId.value)
-    const savedHistory: { role: string; text: string }[] = projectData.value?.plan?.chat_history ?? []
+    // The state-machine agent (server-driven): restore the message log + current
+    // state, or kick off the flow if this is a brand-new conversation.
+    const savedHistory: { role: string; text: string; options?: any[] }[] = projectData.value?.plan?.chat_history ?? []
+    agentState.value = projectData.value?.agent_state?.state ?? null
     if (savedHistory.length > 0) {
       aiMessages.value = savedHistory
+      // Mid-stage check-in: if a shot was just completed, the mascot congratulates
+      // + summarizes progress; otherwise the server returns nothing (no-op).
+      if (shots.value.length) sendStep('__resume')
+    } else {
+      sendStep('')   // first entry → server emits the greeting (greet or mid-stage)
     }
     syncPlanFromData()
     loadWardrobe()
@@ -1824,13 +1847,15 @@ const shotGroups = computed(() => {
   return keys.map(k => ({ key: k, label: _groupLabel(k), shots: map.get(k)! }))
 })
 
-async function quickAddShot() {
+async function quickAddShot(scene = '') {
   if (shotAdding.value) return
   shotAdding.value = true
   const n = (projectData.value?.shots?.length ?? 0) + 1
   const title = t('projectCanvas.newShotName', { n })
   try {
-    const shot = await api.createShot(projectId.value, title, '')
+    // scene seeds the new shot's description → the shot AI gets the location as
+    // context, and reusing a prior scene keeps the plan's 场地/日程 consistent.
+    const shot = await api.createShot(projectId.value, title, '', scene)
     if (projectData.value) {
       projectData.value.shots = [...(projectData.value.shots ?? []), shot]
     }
@@ -1847,6 +1872,7 @@ async function removeShot(shotId: string) {
     if (projectData.value) {
       projectData.value.shots = projectData.value.shots.filter((s: any) => s.shot_id !== shotId)
     }
+    sendStep('__resume')   // shot count changed → mascot silently refreshes its check-in
   } catch (e) {
     console.error('Failed to delete shot', e)
   }
@@ -1907,15 +1933,101 @@ async function setShotAttr(shot: any, attrs: { priority?: string; essential?: bo
 
 
 // ── AI assistant ──────────────────────────────────────────
-const GREETING = t('projectCanvas.aiGreeting')
 const aiContainer = ref<HTMLElement | null>(null)
 const aiInput     = ref('')
 const aiLoading   = ref(false)
 const aiExpanded  = ref(false)   // floating widget: collapsed (latest reply) vs full log
 const aiDrag = useDraggableCorner('workspace-ai-pos')   // drag the avatar to reposition
-const aiMessages  = ref<{ role: string; text: string; retryText?: string }[]>([
-  { role: 'agent', text: GREETING },
-])
+const aiMessages  = ref<{ role: string; text: string; retryText?: string; options?: any[] }[]>([])
+
+// ── Server-driven state machine (agents/planning_flow) ────────────────────────
+// The widget is a thin renderer: it shows the latest reply + the options the
+// server sent, and sends the user's pick/typing back to /chat/step. All flow
+// control (which state, what to record, when to transition) lives server-side.
+const agentState = ref<string | null>(null)
+const onbName = computed(() => projectData.value?.character || t('projectCanvas.aiOnboardName'))
+const customText = ref('')
+
+const aiOptions = computed<any[]>(() => {
+  if (aiLoading.value) return []
+  const last = aiMessages.value[aiMessages.value.length - 1]
+  return (last && last.role === 'agent' && Array.isArray(last.options)) ? last.options : []
+})
+// Menu options carry an `action` (localized here); slot/tone options carry a
+// server-generated `label` (already in the user's language).
+function chipLabel(o: any): string {
+  if (o.label) return o.label
+  const m: Record<string, string> = {
+    go_shot:    t('projectCanvas.aiOnboardShot'),
+    new_shot:   t('projectCanvas.aiMidNewShot'),
+    chat:       t('projectCanvas.aiOnboardChat'),
+    switch:     t('projectCanvas.aiOnboardSwitch'),
+    topic_feel: t('projectCanvas.aiOnboardTopicFeel'),
+    topic_plan: t('projectCanvas.aiOnboardTopicPlan'),
+    topic_take: t('projectCanvas.aiOnboardTopicTake', { name: onbName.value }),
+  }
+  return m[o.action as string] ?? o.action ?? ''
+}
+function pickChip(o: any) {
+  if (aiLoading.value) return
+  if (o.action === 'go_shot') { quickAddShot(); return }                 // onboarding first shot
+  if (o.action === 'new_shot') { newShotFlow(); return }                 // mid-stage: ask scene first
+  if (o.action === 'make_shot') { quickAddShot(o.value || ''); return }  // scene picked → seed it
+  sendStep(o.value ?? o.label ?? '', chipLabel(o))
+}
+// Before building the next shot, offer to reuse a scene from an existing shot —
+// keeps the plan (场地/日程) consistent and gives the new shot AI its location.
+function newShotFlow() {
+  const scenes = [...new Set((projectData.value?.shots ?? []).map((s: any) => s.scene).filter(Boolean))] as string[]
+  if (!scenes.length) { quickAddShot(); return }
+  aiMessages.value.push({
+    role: 'agent',
+    text: t('projectCanvas.sceneReuseQuestion'),
+    options: [
+      ...scenes.map(s => ({ label: s, value: s, action: 'make_shot' })),
+      { label: t('projectCanvas.sceneUnsure'), value: '', action: 'make_shot' },
+    ],
+  })
+}
+async function sendStep(message: string, displayLabel?: string) {
+  if (aiLoading.value) return
+  const isGoto = message.startsWith('__goto:')
+  if (message && (!isGoto || displayLabel)) {
+    aiMessages.value.push({ role: 'user', text: displayLabel ?? message })
+  }
+  aiLoading.value = true
+  await nextTick()
+  if (aiContainer.value) aiContainer.value.scrollTop = aiContainer.value.scrollHeight
+  try {
+    const { reply, options, state, plan, replace } = await withRetry(() => api.chatStep(projectId.value, message))
+    agentState.value = state
+    if (reply) {
+      const last = aiMessages.value[aiMessages.value.length - 1]
+      // replace = silently refresh our own last check-in (kept in sync with edits)
+      if (replace && last && last.role === 'agent') aiMessages.value[aiMessages.value.length - 1] = { role: 'agent', text: reply, options }
+      else aiMessages.value.push({ role: 'agent', text: reply, options })
+    }
+    if (plan && projectData.value) {
+      projectData.value.plan = { ...projectData.value.plan, data: plan }
+      syncPlanFromData()
+      triggerCheer()
+    }
+  } catch {
+    aiMessages.value.push({ role: 'agent', text: t('projectCanvas.aiError'), retryText: message })
+  } finally {
+    aiLoading.value = false
+  }
+  await nextTick()
+  if (aiContainer.value) aiContainer.value.scrollTop = aiContainer.value.scrollHeight
+}
+// Free-text input is always available — chips are just shortcuts.
+function sendTyped(src: 'main' | 'inline') {
+  const v = (src === 'main' ? aiInput.value : customText.value).trim()
+  if (!v || aiLoading.value) return
+  if (src === 'main') aiInput.value = ''
+  else customText.value = ''
+  sendStep(v)
+}
 // Collapsed bubble shows only the assistant's side — the user's own sent text
 // lives in the expanded log.
 const latestAgentMessage = computed(() => {
@@ -1925,54 +2037,30 @@ const latestAgentMessage = computed(() => {
   return null
 })
 
+// Mascot mood: the floating AI figure reacts to widget state.
+//   cry = last turn errored · cheer = just filled the plan (transient) ·
+//   question = waiting for the user to pick/answer · normal = idle/thinking.
+const mascotCheer = ref(false)
+let cheerTimer: ReturnType<typeof setTimeout> | null = null
+function triggerCheer() {
+  mascotCheer.value = true
+  if (cheerTimer) clearTimeout(cheerTimer)
+  cheerTimer = setTimeout(() => { mascotCheer.value = false }, 2600)
+}
+const mascotMood = computed<'normal' | 'cheer' | 'question' | 'cry'>(() => {
+  if (aiLoading.value) return 'normal'
+  if (latestAgentMessage.value?.retryText) return 'cry'
+  if (mascotCheer.value) return 'cheer'
+  if (['plan_wrap', 'tone_wrap', 'midstage'].includes(agentState.value ?? '')) return 'cheer'
+  if (aiOptions.value.length) return 'question'
+  return 'normal'
+})
+const mascotSrc = computed(() => `/mascot/${mascotMood.value}.png`)
+
 function onAiInputEnter(e: KeyboardEvent) {
   if (e.isComposing) return
   e.preventDefault()
-  sendAiMessage()
-}
-
-async function sendAiMessage(retryText?: string) {
-  const text = retryText ?? aiInput.value.trim()
-  if (!text || aiLoading.value) return
-  // history = all messages before this new one
-  const history = [...aiMessages.value]
-  if (retryText === undefined) {
-    aiInput.value = ''
-    aiMessages.value.push({ role: 'user', text })
-  }
-  aiLoading.value = true
-  await nextTick()
-  if (aiContainer.value) aiContainer.value.scrollTop = aiContainer.value.scrollHeight
-  try {
-    const { reply, brief, plan: newPlan, wardrobe: newWardrobe, moments: newMoments } =
-      await withRetry(() => api.projectChat(projectId.value, text, history))
-    aiMessages.value.push({ role: 'agent', text: reply })
-    if (brief && projectData.value) {
-      projectData.value.plan = { ...projectData.value.plan, brief }
-    }
-    // AI edited the plan panel this turn → adopt the fresh data + re-sync the UI.
-    if (newPlan && projectData.value) {
-      projectData.value.plan = { ...projectData.value.plan, data: newPlan }
-      syncPlanFromData()
-    }
-    // AI edited 服装/道具 or 名场面 (设定 tab) → adopt fresh data + re-sync.
-    if (newWardrobe && projectData.value) {
-      projectData.value.wardrobe = newWardrobe
-      loadWardrobe()
-    }
-    if (newMoments && selectedChar.value) {
-      selectedChar.value.moments = newMoments
-      loadMoments()
-    }
-  } catch {
-    aiMessages.value.push({ role: 'agent', text: t('projectCanvas.aiError'), retryText: text })
-  } finally {
-    // Guaranteed to run even if something above throws unexpectedly —
-    // the input/send button must never stay stuck disabled.
-    aiLoading.value = false
-  }
-  await nextTick()
-  if (aiContainer.value) aiContainer.value.scrollTop = aiContainer.value.scrollHeight
+  sendTyped('main')
 }
 
 // ── Dock layout ───────────────────────────────────────────
@@ -3110,13 +3198,14 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 .ai-input::placeholder { color: var(--text-ghost); }
 .ai-input:disabled     { opacity: 0.6; cursor: not-allowed; }
 .ai-send {
-  width: 32px; height: 32px; background: var(--accent-dim); border: none;
-  border-radius: 8px; color: white; font-size: 14px; cursor: pointer;
+  width: 30px; height: 30px; background: var(--accent); border: none;
+  border-radius: 50%; color: white; font-size: 15px; line-height: 1; cursor: pointer;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-  transition: background 0.15s;
+  box-shadow: 0 2px 8px var(--shadow, rgba(0,0,0,0.15));
+  transition: background 0.15s, transform 0.1s;
 }
-.ai-send:hover:not(:disabled) { background: var(--accent); }
-.ai-send:disabled { opacity: 0.5; cursor: not-allowed; }
+.ai-send:hover:not(:disabled) { background: var(--accent-dim); transform: translateY(-1px); }
+.ai-send:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 
 /* ══ Floating AI planning assistant ══ */
 .ai-widget {
@@ -3124,29 +3213,54 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
   display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
 }
 .ai-widget-avatar {
-  width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0;
-  background: var(--accent); border: none; color: white;
-  font-size: 12px; font-weight: 700; cursor: grab; touch-action: none;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 6px 20px var(--shadow, rgba(0,0,0,0.18));
-  transition: transform 0.15s;
+  flex-shrink: 0; background: none; border: none; padding: 0;
+  cursor: grab; touch-action: none; display: block; line-height: 0;
+  filter: drop-shadow(0 8px 14px var(--shadow, rgba(0,0,0,0.25)));
+  transition: transform 0.18s ease;
 }
-.ai-widget-avatar:hover { transform: scale(1.06); }
+.ai-widget-avatar:hover { transform: scale(1.05) translateY(-2px); }
 .ai-widget-avatar:active { cursor: grabbing; }
+.ai-widget-avatar.mood-cheer { animation: mascot-bounce 0.9s ease infinite; }
+.ai-mascot-img {
+  height: 140px; width: auto; display: block;
+  user-select: none; -webkit-user-drag: none; pointer-events: none;
+}
+@keyframes mascot-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@media (prefers-reduced-motion: reduce) { .ai-widget-avatar.mood-cheer { animation: none; } }
 
 /* collapsed: bare speech bubble showing the latest reply */
 .ai-widget-bubble {
-  width: 300px; max-width: calc(100vw - 56px);
+  width: 280px; max-width: calc(100vw - 56px);
+  max-height: 46vh; overflow-y: auto;
   background: var(--surface); border: 1px solid var(--border-md);
-  border-radius: 14px; padding: 10px 14px;
+  border-radius: 12px; padding: 9px 12px;
   box-shadow: 0 8px 24px var(--shadow, rgba(0,0,0,0.15));
-  font-size: 12.5px; line-height: 1.6; color: var(--text-hi);
+  font-size: 11.5px; line-height: 1.55; color: var(--text-hi);
 }
 .ai-widget-bubble.typing { display: flex; gap: 4px; align-items: center; width: auto; }
 
+/* first-entry onboarding chips (under the greeting) */
+.ai-onboard-chips { display: flex; flex-direction: column; gap: 5px; width: 280px; max-width: calc(100vw - 56px); margin-top: 7px; }
+.ai-chip {
+  text-align: left; background: var(--surface); border: 1px solid var(--border-md);
+  border-radius: 9px; padding: 7px 11px; font-size: 11.5px; font-weight: 600;
+  color: var(--text-hi); cursor: pointer; font-family: inherit;
+  box-shadow: 0 3px 10px var(--shadow, rgba(0,0,0,0.08)); transition: border-color .12s, background .12s, transform .08s;
+}
+.ai-chip:hover { border-color: var(--accent-dim); transform: translateY(-1px); }
+.ai-chip.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ai-chip.primary:hover { background: var(--accent-dim); }
+.ai-chip.custom { color: var(--text-sub); border-style: dashed; box-shadow: none; }
+.ai-chip.custom:hover { color: var(--text-hi); }
+.ai-custom-row { display: flex; gap: 7px; width: 100%; align-items: center; }
+.ai-custom-row .ai-input { flex: 1; }
+
 /* expanded: full history panel + input (the only place input appears) */
 .ai-widget-panel {
-  width: 300px; max-width: calc(100vw - 56px);
+  width: 280px; max-width: calc(100vw - 56px);
   background: var(--surface); border: 1px solid var(--border-md); border-radius: 14px;
   box-shadow: 0 12px 32px var(--shadow, rgba(0,0,0,0.2));
   padding: 10px;

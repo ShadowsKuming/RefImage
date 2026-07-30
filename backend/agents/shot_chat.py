@@ -263,6 +263,13 @@ TOOLS = [
                         ("shot", "angle", "facing", "aspect", "pos", "scale", "bg", "expr", "emphasis", "gaze", "pose", "temp", "grade", "maincolor", "mood")
                     },
                 },
+                "title": {
+                    "type": "string",
+                    "description": (
+                        "这张分镜的简短标题（中文，4-10字，概括画面内容/情绪），"
+                        "如「蜷缩抱吉他自闭」「天台黄昏独奏」。你在对话里已经清楚这张要拍什么，直接凝练成一个标题。"
+                    ),
+                },
             },
             "required": ["atmosphere", "scene", "pose", "composition", "orientation"],
         },
@@ -367,6 +374,13 @@ def _build_system(project: dict, shot: dict, shot_refs: list[dict] | None = None
         lines.append(f"氛围：{mood}")
     if desc:
         lines.append(f"备注：{desc}")
+        lines.append(
+            "★ 上面的【备注】是用户在项目级已经和你聊定的交接内容（场景/画面/氛围/光线等）。"
+            "请【直接采纳、别把里面已经写明的再从头问一遍】——顺着它往下推进，只补它没覆盖的那几层"
+            "（比如备注已给了场景和氛围，你就直接从表情/构图这类还没定的细节聊起）。"
+            "★ 别复述备注、别说『我收到了 / 这张是想拍…』这类开场白——用户刚点进来当然知道自己选了什么，"
+            "直接顺着已知方向问下一个还没定的细节就好，就像你俩本来就在聊这张一样自然。"
+        )
 
     # ── r-node context ────────────────────────────────────────────
     _type_zh = {
@@ -439,6 +453,8 @@ def chat(
         }
         from services.shot_params import normalize as _norm_params
         captured["params"] = _norm_params(inp.get("params") or {})
+        if inp.get("title"):
+            captured["title"] = str(inp["title"]).strip()
         return "生成指令已收到，正在生成参考例图，请在回复中告知用户稍等片刻。"
 
     def _execute_classify_ref(inp: dict) -> str:
@@ -491,5 +507,6 @@ def chat(
         "generating":   generating,
         "prompt_parts": captured.get("prompt_parts"),
         "params":       captured.get("params"),
+        "title":        captured.get("title"),
         "classify_ref": captured.get("classify_ref"),
     }

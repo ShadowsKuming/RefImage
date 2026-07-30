@@ -322,6 +322,7 @@ def get_project(project_id: str) -> dict:
         "shots": shots,
         "logistics_rollup": aggregate_shot_logistics(project_id),
         "schedule_rollup": aggregate_schedule(project_id),
+        "agent_state": agent_state_service.load_state(project_id),
     }
 
 
@@ -800,6 +801,7 @@ def activate_version(project_id: str, shot_id: str, version_id: str) -> None:
 from services.plan_service import load_plan_data, save_plan_data  # noqa: E402
 from services import wardrobe_service  # noqa: E402
 from services import cover_service  # noqa: E402
+from services import agent_state_service  # noqa: E402
 from services import avatar_service  # noqa: E402
 from services import moments_service  # noqa: E402
 

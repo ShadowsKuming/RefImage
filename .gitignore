@@ -57,3 +57,6 @@ node_modules/
 frontend/.output/
 frontend/.nuxt/
 frontend/.cache/
+
+# Large PSD source assets (derived PNGs live in frontend/public/mascot/)
+agent character/

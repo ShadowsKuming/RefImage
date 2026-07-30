@@ -202,23 +202,33 @@ def _agent_openai(messages, system, tools, tool_executor, max_turns, max_tokens)
         )
         msg = response.choices[0].message
         final_text = msg.content or ""
-        exec_calls = []
+        exec_calls: list = []   # (tc, parsed_input) to run
+        bad_calls:  list = []   # tc whose args wouldn't parse (often max_tokens truncation)
         for tc in (msg.tool_calls or []):
-            name       = tc.function.name
-            tool_input = json.loads(tc.function.arguments)
+            name = tc.function.name
+            try:
+                tool_input = json.loads(tc.function.arguments or "{}")
+            except (json.JSONDecodeError, TypeError, ValueError):
+                # Truncated / malformed arguments — don't crash the whole turn.
+                # Feed an error back so the model can retry with a shorter arg.
+                bad_calls.append(tc)
+                continue
             if name in tool_executor:
-                exec_calls.append(tc)
+                exec_calls.append((tc, tool_input))
             else:
                 # Passthrough tool (e.g. update_profile): collect and stop looping
                 final_tool_calls.append({"name": name, "input": tool_input})
 
-        if not exec_calls:
+        if not exec_calls and not bad_calls:
             break
 
         msgs.append(msg)
-        for tc in exec_calls:
-            result = tool_executor[tc.function.name](json.loads(tc.function.arguments))
+        for tc, tool_input in exec_calls:
+            result = tool_executor[tc.function.name](tool_input)
             msgs.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+        for tc in bad_calls:
+            msgs.append({"role": "tool", "tool_call_id": tc.id,
+                         "content": "参数解析失败（可能过长被截断）。已忽略这次调用；请用更短的参数重试，或直接用文字回复用户。"})
 
     return {"text": final_text, "tool_calls": final_tool_calls}
 

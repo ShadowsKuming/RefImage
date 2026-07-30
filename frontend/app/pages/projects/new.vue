@@ -117,7 +117,7 @@
               class="chat-msg"
               :class="msg.role"
             >
-              <div v-if="msg.role === 'agent'" class="agent-avatar-sm">AI</div>
+              <div v-if="msg.role === 'agent'" class="agent-avatar-sm"><img src="/mascot/head-normal.png" alt="AI" /></div>
               <div class="msg-bubble">
                 {{ msg.text }}
                 <button
@@ -129,7 +129,7 @@
               </div>
             </div>
             <div v-if="chatLoading" class="chat-msg agent">
-              <div class="agent-avatar-sm">AI</div>
+              <div class="agent-avatar-sm"><img src="/mascot/head-normal.png" alt="AI" /></div>
               <div class="msg-bubble busy">
                 {{ chatStatusText }}<span class="inline-dots"><span /><span /><span /></span>
               </div>
@@ -200,10 +200,11 @@
 
         <button
           class="assistant-avatar"
+          :class="'mood-' + mascotMood"
           @pointerdown="assistantDrag.onPointerDown"
           @click="assistantDrag.consumeClick() || (widgetExpanded = !widgetExpanded)"
         >
-          <span>AI</span>
+          <img :src="mascotSrc" class="assistant-mascot-img" alt="AI" draggable="false" />
         </button>
       </div>
 
@@ -309,6 +310,16 @@ const chatStatusText = computed(() =>
 // Once the profile is actually built, the "next step" CTA sits right under
 // the message that announced it instead of a separate page-wide footer.
 const showNextStepCta = computed(() => analysisComplete.value && !!personality.value && !chatLoading.value)
+
+// Mascot mood: cry on error · cheer when the profile's built (ready to go) ·
+// question while waiting on the user's confirm/correct · normal otherwise.
+const mascotMood = computed<'normal' | 'cheer' | 'question' | 'cry'>(() => {
+  if (latestAgentMessage.value?.retryText) return 'cry'
+  if (showNextStepCta.value) return 'cheer'
+  if (needsUserReply.value) return 'question'
+  return 'normal'
+})
+const mascotSrc = computed(() => `/mascot/${mascotMood.value}.png`)
 
 // project creation progress
 const projectCreating = ref(false)
@@ -806,15 +817,20 @@ onUnmounted(() => {
   gap: 10px;
 }
 .assistant-avatar {
-  width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0;
-  background: var(--accent); border: none; color: white;
-  font-size: 12px; font-weight: 700; cursor: grab; touch-action: none;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 6px 20px var(--shadow);
-  transition: transform 0.15s;
+  flex-shrink: 0; background: none; border: none; padding: 0;
+  cursor: grab; touch-action: none; display: block; line-height: 0;
+  filter: drop-shadow(0 8px 14px var(--shadow));
+  transition: transform 0.18s ease;
 }
-.assistant-avatar:hover { transform: scale(1.06); }
+.assistant-avatar:hover { transform: scale(1.05) translateY(-2px); }
 .assistant-avatar:active { cursor: grabbing; }
+.assistant-avatar.mood-cheer { animation: mascot-bounce 0.9s ease infinite; }
+.assistant-mascot-img {
+  height: 140px; width: auto; display: block;
+  user-select: none; -webkit-user-drag: none; pointer-events: none;
+}
+@keyframes mascot-bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .assistant-avatar.mood-cheer { animation: none; } }
 
 /* Bare speech bubble — the default, no chat-box chrome around it */
 .assistant-bubble {
@@ -882,11 +898,11 @@ onUnmounted(() => {
 .chat-msg.user { flex-direction: row-reverse; }
 
 .agent-avatar-sm {
-  width: 22px; height: 22px; border-radius: 50%;
+  width: 22px; height: 22px; border-radius: 50%; overflow: hidden;
   background: var(--surface-raised); border: 1px solid var(--border-focus);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 8px; font-weight: 700; color: var(--accent); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
+.agent-avatar-sm img { width: 100%; height: 100%; object-fit: cover; }
 
 .msg-bubble {
   max-width: 82%; padding: 8px 11px; border-radius: 10px;

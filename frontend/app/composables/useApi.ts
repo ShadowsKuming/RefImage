@@ -228,11 +228,23 @@ export const useApi = () => {
     projectId: string,
     message: string,
     history: { role: string; text: string }[],
-  ): Promise<{ reply: string; brief: Record<string, any> | null; plan: Record<string, any> | null; wardrobe: Record<string, any> | null; moments: any[] | null }> {
-    return api<{ reply: string; brief: Record<string, any> | null; plan: Record<string, any> | null; wardrobe: Record<string, any> | null; moments: any[] | null }>(`/projects/${projectId}/chat`, {
+  ): Promise<{ reply: string; options: string[]; brief: Record<string, any> | null; plan: Record<string, any> | null; wardrobe: Record<string, any> | null; moments: any[] | null }> {
+    return api<{ reply: string; options: string[]; brief: Record<string, any> | null; plan: Record<string, any> | null; wardrobe: Record<string, any> | null; moments: any[] | null }>(`/projects/${projectId}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, history, reply_lang: useLocale().locale.value }),
+    })
+  }
+
+  interface ChipOption { label?: string; value?: string; action?: string }
+  function chatStep(
+    projectId: string,
+    message: string,
+  ): Promise<{ reply: string; options: ChipOption[]; state: string; plan: Record<string, any> | null; replace?: boolean }> {
+    return api(`/projects/${projectId}/chat/step`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, reply_lang: useLocale().locale.value }),
     })
   }
 
@@ -276,8 +288,8 @@ export const useApi = () => {
     message: string,
     selectedVersionIds: string[] = [],
     selectedRefIds: string[] = [],
-  ): Promise<{ reply: string; generating: boolean; options: string[]; stage: string; camera: { shot: string; aspect: string; angle: string } | null }> {
-    return api<{ reply: string; generating: boolean; options: string[]; stage: string; camera: { shot: string; aspect: string; angle: string } | null }>(
+  ): Promise<{ reply: string; generating: boolean; options: string[]; stage: string; camera: { shot: string; aspect: string; angle: string } | null; title: string | null }> {
+    return api<{ reply: string; generating: boolean; options: string[]; stage: string; camera: { shot: string; aspect: string; angle: string } | null; title: string | null }>(
       `/projects/${projectId}/shots/${shotId}/chat`,
       {
         method: 'POST',
@@ -489,6 +501,7 @@ export const useApi = () => {
     exportProject,
     importProject,
     projectChat,
+    chatStep,
     addExtraRef,
     createShot,
     setShotAttrs,
