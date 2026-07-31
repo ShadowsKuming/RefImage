@@ -91,11 +91,13 @@
       <div v-if="data.backups.length" class="hb-page"><div class="doc">
         <div class="doc-eyebrow">{{ t('handbook.secBackup') }}</div>
         <div class="bk-table">
-          <div class="bk-row bk-head"><span class="bk-c1">{{ t('handbook.problem') }}</span><span class="bk-c2">{{ t('handbook.solution') }}</span></div>
-          <template v-for="b in data.backups" :key="b.label">
-            <div v-if="b.backup" class="bk-row"><span class="bk-c1"><b>{{ b.label }}</b> {{ b.title }}</span><span class="bk-c2">{{ b.backup }}</span></div>
-            <div v-for="(r, i) in b.risks" :key="b.label + i" class="bk-row"><span class="bk-c1"><b>{{ b.label }}</b> {{ t('handbook.risk') }}</span><span class="bk-c2">{{ r }}</span></div>
-          </template>
+          <div v-for="b in data.backups" :key="b.label" class="bk-row">
+            <span class="bk-c1"><b>{{ b.label }}</b> {{ b.title }}</span>
+            <div class="bk-c2">
+              <div v-if="b.backup" class="bk-item"><span class="bk-tag">{{ t('handbook.solution') }}</span><span>{{ b.backup }}</span></div>
+              <div v-for="(r, i) in b.risks" :key="i" class="bk-item"><span class="bk-tag note">{{ t('handbook.risk') }}</span><span>{{ r }}</span></div>
+            </div>
+          </div>
         </div>
         <div class="doc-h onsite">{{ t('handbook.onsiteNotes') }}</div>
         <div class="onsite-lines"><span /><span /><span /></div>
@@ -158,7 +160,12 @@ const prepCols = computed(() => [
 ])
 const hasPrep = computed(() => prepCols.value.some(c => c.items.length))
 
-function goBack() { navigateTo(`/projects/${projectId}`) }
+function goBack() {
+  // let the project page know we came back from the handbook → the mascot can
+  // offer to lock in whatever's still undetermined.
+  try { sessionStorage.setItem('refimg_from_handbook', projectId) } catch {}
+  navigateTo(`/projects/${projectId}`)
+}
 function printNow() { window.print() }
 
 onMounted(async () => {
@@ -245,11 +252,13 @@ onMounted(async () => {
 
 /* backup */
 .bk-table { display: flex; flex-direction: column; border: 1px solid #e6c6da; border-radius: 6px; overflow: hidden; }
-.bk-row { display: flex; border-top: 1px solid #efdce8; }
+.bk-row { display: flex; align-items: stretch; border-top: 1px solid #efdce8; }
 .bk-row:first-child { border-top: none; }
-.bk-head { background: #f3e3ee; font-weight: 700; color: #a2295c; }
-.bk-c1 { flex: 0 0 38%; padding: .5em .8em; border-right: 1px solid #efdce8; }
-.bk-c2 { flex: 1; padding: .5em .8em; color: #4a4350; }
+.bk-c1 { flex: 0 0 32%; padding: .6em .8em; border-right: 1px solid #efdce8; background: #faf1f7; }
+.bk-c2 { flex: 1; padding: .55em .8em; color: #4a4350; display: flex; flex-direction: column; gap: .45em; }
+.bk-item { display: flex; gap: .55em; align-items: baseline; }
+.bk-tag { flex: 0 0 auto; font-size: .72em; font-weight: 700; padding: .12em .5em; border-radius: 4px; background: #efd6e5; color: #a2295c; white-space: nowrap; }
+.bk-tag.note { background: #f0e6d2; color: #9a6a1f; }
 .doc-h.onsite { margin-top: 1em; }
 .onsite-lines { display: flex; flex-direction: column; gap: 1.4em; }
 .onsite-lines span { border-bottom: 1px dashed #d9b6cb; }
