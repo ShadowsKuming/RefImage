@@ -130,12 +130,13 @@ TOOLS = [
 _PLAN_TOOLS = [
     {
         "name": "update_overview",
-        "description": "更新拍摄计划总览：主题 theme、拍摄日期 shoot_date、参与人数 crew。只传你要改动的字段，未传的保持不变。",
+        "description": "更新拍摄计划总览：主题 theme、拍摄日期 shoot_date、大概开始时段 shoot_time、参与人数 crew。只传你要改动的字段，未传的保持不变。",
         "input_schema": {
             "type": "object",
             "properties": {
                 "theme":      {"type": "string", "description": "拍摄主题"},
-                "shoot_date": {"type": "string", "description": "拍摄日期，如 2026/08/15"},
+                "shoot_date": {"type": "string", "description": "拍摄日期，只放日期本身，如 2026/08/15 或 9月中旬，不要把时段/时间揉进这一项"},
+                "shoot_time": {"type": "string", "description": "大概的开始时段/几点，如 下午2点起、傍晚、晚上八点——和 shoot_date 分开记，绝不拼进 shoot_date 字符串里"},
                 "crew": {
                     "type": "object", "description": "参与人数（各角色人数）",
                     "properties": {
@@ -198,32 +199,11 @@ _PLAN_TOOLS = [
             "required": ["id"],
         },
     },
-    {
-        "name": "add_schedule_segment",
-        "description": "往拍摄日程添加一个时段（一个场景对应一段）。场地/光线信息随日程走。",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "scene":    {"type": "string", "description": "场景/地点名，如 音乐教室窗边"},
-                "time":     {"type": "string", "description": "时间段，如 14:00–14:40"},
-                "content":  {"type": "string", "description": "这一段拍什么，如 日常练习与互动"},
-                "duration": {"type": "string", "description": "时长，如 40 分钟"},
-                "light":    {"type": "string", "description": "光线，如 自然光 / 灯光为主"},
-                "priority": {"type": "string", "enum": ["high", "mid", "low"],
-                             "description": "优先级（高＝必拍）"},
-            },
-            "required": ["scene"],
-        },
-    },
-    {
-        "name": "remove_schedule_segment",
-        "description": "按 id 删除一个拍摄时段（id 形如 sg_xxxx）。修改＝先删后加。",
-        "input_schema": {
-            "type": "object",
-            "properties": {"id": {"type": "string", "description": "日程时段 id"}},
-            "required": ["id"],
-        },
-    },
+    # NOTE: no add_schedule_segment/remove_schedule_segment here — the workspace's
+    # 拍摄日程 panel reads schedule_rollup, which is aggregated from each SHOT's own
+    # plan.json (shots are the source of truth). A project-level schedule-segment
+    # tool would write to a field the UI never displays again, silently no-op-ing
+    # from the user's perspective. Per-scene timing/content belongs on the shot.
 ]
 
 # 服装/道具 + 名场面工具(角色设定层,和 plan 一样只增删,不整段重写)。
@@ -421,7 +401,9 @@ def _build_system(project: dict, project_id: str) -> str:
         "",
         "可编辑的范围：",
         "- 拍摄计划：设备 add_equipment/remove_equipment，注意事项 add_note/remove_note，"
-        "拍摄日程 add_schedule_segment/remove_schedule_segment，总览 update_overview。",
+        "总览 update_overview（主题/拍摄日期/大概开始时段/人手）。",
+        "- 具体场景/场地和每段的拍摄安排，属于每个分镜（shot）自己的拍摄方案，不归你管、也没有对应工具——"
+        "用户提到具体某个地点时，自然接话即可，别去记录它。",
         "- 角色服装/道具 add_costume/add_prop/remove_wardrobe_item；名场面 add_moment/remove_moment。",
         "- update_brief 只用于'帮我总结/更新总结'这类明确请求，或核心场地/风格已定时提交一次总结；不要频繁调。",
         "- 场地卡片和室内外标签由日程自动生成，改日程即可，不用单独维护；地点实际地址只有用户知道，不要编造。",
@@ -442,22 +424,23 @@ def _build_system(project: dict, project_id: str) -> str:
         "",
         "【开场规划对话（项目早期、拍摄计划大多还空着时）】",
         "如果现在还没几个 shot、计划面板大多是空的，你的首要任务不是急着出整套方案，而是像朋友一样在轻松的聊天里，"
-        "一点点把这次拍摄的基本盘摸清楚、并顺手记进计划面板。你心里要收集的有四样——"
-        "拍摄时间、场地、摄影师、假发/服装/道具准备——但这是【你自己的待办清单，绝对不要一次性列给用户看】。",
+        "一点点把这次拍摄的基本盘摸清楚、并顺手记进计划面板。你心里要收集的有三样——"
+        "拍摄时间(日期+大概几点)、摄影师、假发/服装/道具准备——但这是【你自己的待办清单，绝对不要一次性列给用户看】。"
+        "具体去哪儿拍，是每个分镜自己的事，这里不问、也不记。",
         "★【一轮正确的样子，请照抄这个极简风格】：用户说『9月中旬』→ 你【只】做两件事：① update_overview(shoot_date='9月中旬')；"
-        "② 回一句『好，9月中旬先记下了～那你想好大概在哪拍了吗？』。就这么多。这一轮【绝不】顺手写主题、【绝不】填 crew、【绝不】add_note、【绝不】加场地——"
-        "每一样都【只在用户亲口说到那一项时】才记。反面教材（严禁）：用户才说了个时间，你却一口气把主题、人手、一堆注意事项、几个场地全填了。务必遵守：",
+        "② 回一句『好，9月中旬先记下了～大概几点开始拍呢，白天/傍晚/晚上都行』。就这么多。这一轮【绝不】顺手写主题、【绝不】填 crew、【绝不】add_note——"
+        "每一样都【只在用户亲口说到那一项时】才记。反面教材（严禁）：用户才说了个时间，你却一口气把主题、人手、一堆注意事项全填了。务必遵守：",
         "1. ★【每条消息只问一个问题】。绝不把待办罗列出来甩给用户——不许出现『1. 2. 3. 4.』这样的清单，"
         "也不许说『我们要先弄清楚这几点』『先搭个大框架』之类的话。用户在你任何一条消息里，都只应该看到【一个】要回答的问题；"
         "问完这一件、等用户答了，下一轮再问下一件。",
         "2. ★ 开场别铺垫、别啰嗦：最多一句轻轻回应用户上一句，然后【直接】问第一个问题（一般从『大概什么时候拍』开始）。"
         "不要写『我先接住你的想法』『帮你搭个大框架』『按照拍摄流程』这类元叙述和客套。",
-        "3. 提议 ≠ 替用户决定。涉及创意选择的（尤其场地、主题），先在【文字里】给出你的提议再问『你觉得行吗，还是有别的想法』，等用户点头，才用工具记下来。"
-        "★★【场地绝不批量添加、绝不凭角色/原作设定脑补地点】：只有用户明确选定了某个地点，才 add_schedule_segment 记【一条】；"
-        "绝不一次加好几个地点，也绝不把原作里的排练室/live house 等场景自动填进去。主题(theme)同理——收集阶段别自动写一长串，等整组方向聊清楚了再记、而且要短。",
+        "3. 提议 ≠ 替用户决定。涉及创意选择的（尤其主题），先在【文字里】给出你的提议再问『你觉得行吗，还是有别的想法』，等用户点头，才用工具记下来。"
+        "主题(theme)收集阶段别自动写一长串，等整组方向聊清楚了再记、而且要短。",
         "4. 用户给了答案，就【当场】用对应工具记进计划，对号入座、别记错也别漏："
-        "  ·时间→update_overview(shoot_date)：【按用户原话记】，他说『9月中旬』就记『9月中旬』，绝不自己编成某月某日、更不能写错年份；"
-        "  ·主题→update_overview(theme)；  ·场地→add_schedule_segment(scene=那个地点)；"
+        "  ·日期→update_overview(shoot_date)：【按用户原话记】，他说『9月中旬』就记『9月中旬』，绝不自己编成某月某日、更不能写错年份；"
+        "  ·大概几点开始→update_overview(shoot_time)：如『下午2点起』『傍晚』『晚上八点』——【和 shoot_date 分开记】，绝不拼进 shoot_date 字符串里、也绝不覆盖已有的日期；"
+        "  ·主题→update_overview(theme)；"
         "  ·摄影/人手→update_overview(crew)：用户说找到摄影了，就立刻记 crew.photographers=1（主角 coser 一般 cosers=1）；"
         "  ·假发/服装/道具【某样没到位】→add_note 记一条实物待办（title 如『服装待做』『假发待买』，phase='pre'）。",
         "5. ★★【add_note 只记『用户提到的实物准备待办』，绝不记你自己的议程】：add_note 只在用户明确说某样东西还没到位时加，一条对应一件实物。"
@@ -585,19 +568,31 @@ def _suggest_options(char_name: str, messages: list[dict], reply_lang: str = "zh
     Returns [] on any failure — chips are a nicety, never block the reply."""
     system = (
         f"这是一个 cosplay 拍摄规划对话，角色是 {char_name}。\n"
-        "你的唯一任务：给用户几个能【一键回答助手最后那条消息】的快捷选项（2-4 个，第一人称、短，≤14字）。\n"
+        "下面对话数组的【最后一条】是助手刚刚说完的话——你唯一要做的：只针对【这最后一条】里【实际结尾问的那个问题】，"
+        "给用户几个能一键回答的快捷选项（2-4 个，第一人称、短，≤14字）。\n"
+        "★★ 前面更早的消息只用来理解背景，不能作为选项来源：哪怕早前某一轮出现过候选列表（如时段选项），"
+        "只要最后一条已经把那件事记下/说完，就绝不能把那个旧列表原样搬出来当选项——那会和最后一条的内容自相矛盾。\n"
         "规则：\n"
-        "1. 必须是对『助手最后那个问题』的直接回答，同一层级、同一主题，别跨层。\n"
-        "2. 如果助手列了候选（如「清晨、午后、傍晚」），就把每一个都做成选项、逐字照用、别漏。\n"
-        "3. 选项之间有区分度；其中通常留一个『还没定/还不确定』这类的兜底答案。\n"
+        "1. 必须是对『最后一条消息』结尾那个问题的直接回答，同一层级、同一主题，别跨层、别答早就解决了的旧问题。\n"
+        "2. 只有当【最后一条消息本身】就列出了候选（如它自己写『白天/傍晚/晚上你想选哪个』），才把每个候选做成选项、逐字照用；"
+        "如果最后一条只是个开放问题或确认问题，就自己想 2-4 个贴切的短答案，别硬套时段类模板。\n"
+        "3. 先判断最后一条问的是【开放式选择】（问你想怎样/选什么，答案还没定）还是【是非确认】（问你觉得这样行不行/同意不同意，"
+        "对方已经给了个具体方案）。只有【开放式选择】才留一个『还没定/还不确定』类兜底；【是非确认】的选项应该是"
+        "『同意/不同意/想改一下』这类态度性回答，绝不能出现『还没定』这种答非所问的选项——已经问『行不行』了，"
+        "不存在『还没定』这个答案。\n"
         "4. 和用户已经说过的保持一致，绝不矛盾。\n"
         "5. 扎在这个角色/这次拍摄的设定里，别用通用模板。\n"
         "整理好调用 submit_options。"
     )
     fast_model = FAST_LLM_MODEL_BY_PROVIDER.get(LLM_PROVIDER)
     try:
+        # Trim to a short recent window — a long full history gives a small/fast
+        # model more surface area to latch onto a stale earlier turn's candidate
+        # list instead of the fresh final reply (see finding: it regressed to an
+        # old "何时拍" quad even though the final reply had already moved on).
+        recent = messages[-6:] if len(messages) > 6 else messages
         res = call_with_tools(
-            messages=messages, system=system, tools=[_SUBMIT_OPTIONS_TOOL],
+            messages=recent, system=system, tools=[_SUBMIT_OPTIONS_TOOL],
             max_tokens=300, force_tool="submit_options", model=fast_model,
         )
     except Exception:
@@ -664,7 +659,8 @@ def chat(message: str, history: list[dict], project: dict, project_id: str,
     def _ex_update_overview(inp: dict) -> str:
         plan_service.update_overview(
             project_id, theme=inp.get("theme"),
-            shoot_date=inp.get("shoot_date"), crew=inp.get("crew"),
+            shoot_date=inp.get("shoot_date"), shoot_time=inp.get("shoot_time"),
+            crew=inp.get("crew"),
         )
         return _dirty("总览已更新。")
 
@@ -708,28 +704,6 @@ def chat(message: str, history: list[dict], project: dict, project_id: str,
         if r is None:
             return f"没找到 id 为 {inp['id']} 的注意事项，可能已被删除。"
         return _dirty(f"已删除注意事项「{r['title']}」。")
-
-    def _ex_add_schedule(inp: dict) -> str:
-        # Code-level guard: the model likes to dump every canonical location at once
-        # (排练室 + 音乐教室 + STARRY + 后藤家). Only the venue the user actually chose
-        # should land — cap to one add per turn.
-        if state.get("sched_added", 0) >= 1:
-            return ("这一轮已经加过一个场地了，别一次批量加多个地点——一个场地就够，"
-                    "其余等用户明确选了再加。已跳过这次。")
-        item = plan_service.add_schedule_segment(
-            project_id, scene=inp["scene"], time=inp.get("time"),
-            content=inp.get("content"), duration=inp.get("duration"),
-            light=inp.get("light"), priority=inp.get("priority"),
-            shot_ids=inp.get("shot_ids"),
-        )
-        state["sched_added"] = state.get("sched_added", 0) + 1
-        return _dirty(f"已添加拍摄时段「{item['scene']}」（id {item['id']}）。")
-
-    def _ex_remove_schedule(inp: dict) -> str:
-        r = plan_service.remove_schedule_segment(project_id, inp["id"])
-        if r is None:
-            return f"没找到 id 为 {inp['id']} 的拍摄时段，可能已被删除。"
-        return _dirty(f"已删除拍摄时段「{r['scene']}」。")
 
     # 服装/道具 + 名场面 mutations (设定层). Flag separate dirty flags so the caller
     # reloads + returns only what changed.
@@ -781,8 +755,6 @@ def chat(message: str, history: list[dict], project: dict, project_id: str,
         "remove_equipment":        _ex_remove_equipment,
         "add_note":                _ex_add_note,
         "remove_note":             _ex_remove_note,
-        "add_schedule_segment":    _ex_add_schedule,
-        "remove_schedule_segment": _ex_remove_schedule,
         "add_costume":             _ex_add_costume,
         "add_prop":                _ex_add_prop,
         "remove_wardrobe_item":    _ex_remove_wardrobe,
