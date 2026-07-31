@@ -137,6 +137,7 @@
         <Transition name="gen-overlay">
           <div v-if="generating" class="gen-overlay">
             <div class="gen-overlay-card">
+              <img src="/mascot/cheer.png" class="gen-mascot" alt="" draggable="false" />
               <div class="gen-spinner"></div>
               <span class="gen-label">{{ t('shotEditor.genOverlayTitle') }}</span>
               <span class="gen-sub">{{ t('shotEditor.genOverlaySub') }}</span>
@@ -194,6 +195,8 @@
           @mousedown.self="startPan"
           @click.self="onCanvasClick"
           @wheel.prevent="onWheel"
+          @dragover.prevent
+          @drop.prevent="onCanvasDropImage"
         >
           <div class="canvas-scene" :style="{ transform: sceneTransform }">
 
@@ -1040,14 +1043,9 @@ watch([versions, activeVersionId], () => {
     if (!(id in cardPositions.value)) cardPositions.value[id] = { x: def.x, y: def.y }
     if (!(id in cardSizes.value))     cardSizes.value[id]     = { w: def.w, h: def.h }
   }
-  // Auto-manage the initial blank node (same size as active card)
-  if (versions.value.length === 0) {
-    if (!blankNodes.value.some(b => b.isInitial)) {
-      blankNodes.value.push({ id: 'blank-initial', x: 0, y: 0, w: CARD_W_ACTIVE, h: CARD_H_ACTIVE, isDragOver: false, isInitial: true })
-    }
-  } else {
-    blankNodes.value = blankNodes.value.filter(b => !b.isInitial)
-  }
+  // No initial placeholder card — the canvas starts clean. Manual upload still
+  // works by dropping an image straight onto the empty canvas (onCanvasDropImage).
+  blankNodes.value = blankNodes.value.filter(b => !b.isInitial)
 }, { deep: false })
 
 // layoutNodes: versions with user-overridden positions/sizes
@@ -1737,6 +1735,13 @@ async function uploadUserImage(file: File) {
   await loadVersions()
 }
 
+// Dropping an image onto the empty canvas still uploads it (replaces the old
+// placeholder dropzone). Ignore non-image drops and drops onto existing cards.
+async function onCanvasDropImage(e: DragEvent) {
+  const file = e.dataTransfer?.files?.[0]
+  if (file?.type.startsWith('image/')) await uploadUserImage(file)
+}
+
 // ── Zoom ──────────────────────────────────────────────────
 function onWheel(e: WheelEvent) {
   const wrap = canvasWrapRef.value; if (!wrap) return
@@ -1864,6 +1869,10 @@ const SHOT_OPTS  = ['特写', '近景', '半身', '全身', '远景']
 const ANGLE_OPTS = ['平视', '俯视', '仰视']
 const ASPECT_OPTS = ['竖图', '横图']
 const cameraPanel = ref<{ shot: string; aspect: string; angle: string } | null>(null)
+// When the user generates from the camera panel, these explicit framing picks are
+// sent structurally so the backend forces them — the LLM can't silently swap in its
+// own earlier recommendation (景别/画幅/机位 must match what the user chose).
+const pendingFraming = ref<{ shot: string; aspect: string; angle: string } | null>(null)
 
 function openCameraPanel(c: { shot: string; aspect: string; angle: string } | null) {
   cameraPanel.value = {
@@ -1876,6 +1885,7 @@ function generateFromPanel() {
   if (!cameraPanel.value || chatLoading.value || generating.value) return
   const { shot, aspect, angle } = cameraPanel.value
   cameraPanel.value = null
+  pendingFraming.value = { shot, aspect, angle }
   chatInput.value = `就按这个生成：${shot}、${aspect}、${angle}`
   sendChat()
 }
@@ -2032,12 +2042,14 @@ async function sendChat(retryText?: string) {
     chatInput.value = ''
     aiMessages.value.push({ role: 'user', text })
   }
+  const framing = pendingFraming.value
+  pendingFraming.value = null
   chatLoading.value = true
   await nextTick()
   if (aiMsgContainer.value) aiMsgContainer.value.scrollTop = aiMsgContainer.value.scrollHeight
   try {
     const { reply, generating: gen, options, stage, camera, title } = await withRetry(() => api.shotChat(
-      projectId.value, shotId.value, text, [], selectedRefIds.value,
+      projectId.value, shotId.value, text, [], selectedRefIds.value, framing,
     ))
     if (reply) aiMessages.value.push({ role: 'agent', text: reply, options })
     if (stage === 'camera') openCameraPanel(camera); else cameraPanel.value = null
@@ -2664,20 +2676,30 @@ onUnmounted(() => {
   pointer-events: all;
 }
 .gen-overlay-card {
+  position: relative;
   display: flex; flex-direction: column; align-items: center; gap: 14px;
-  background: var(--surface); border: 1px solid var(--border-md);
-  border-radius: 16px; padding: 32px 40px;
-  box-shadow: 0 8px 32px rgba(0,0,0,.28);
+  background: none; border: none; box-shadow: none; padding: 0;
 }
+/* mascot cheering above the spinner while the image generates */
+.gen-mascot {
+  height: 132px; width: auto; pointer-events: none; user-select: none;
+  filter: drop-shadow(0 6px 14px rgba(0,0,0,.35));
+  animation: gen-mascot-bob 1.3s ease-in-out infinite;
+}
+@keyframes gen-mascot-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-8px); }
+}
+@media (prefers-reduced-motion: reduce) { .gen-mascot { animation: none; } }
 .gen-spinner {
   width: 36px; height: 36px;
-  border: 3px solid var(--border-md);
+  border: 3px solid rgba(255,255,255,.32);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin .8s linear infinite;
 }
-.gen-label { font-size: 15px; font-weight: 600; color: var(--text); }
-.gen-sub   { font-size: 12px; color: var(--text-lo, #999); }
+.gen-label { font-size: 15px; font-weight: 600; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,.4); }
+.gen-sub   { font-size: 12px; color: rgba(255,255,255,.85); text-shadow: 0 1px 4px rgba(0,0,0,.35); }
 
 /* fade-in / fade-out transition */
 .gen-overlay-enter-active, .gen-overlay-leave-active { transition: opacity .25s ease; }
