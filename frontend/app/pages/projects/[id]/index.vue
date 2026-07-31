@@ -2093,7 +2093,11 @@ let idleNudgeTimer: ReturnType<typeof setTimeout> | null = null
 function maybeNudgeHandbook() {
   if (hasNudgedHandbook.value) return
   if (shots.value.length < HANDBOOK_NUDGE_MIN_SHOTS) return
-  if (aiLoading.value || aiOptions.value.length) return   // don't interrupt a live exchange
+  // Only a request-in-flight actually blocks this — the agent almost always leaves
+  // quick-reply chips on screen after replying, so gating on aiOptions.length meant
+  // this nearly never fired. Chips sitting there isn't "a live exchange", the user
+  // can ignore them and type freely anytime; idleness itself is the real signal.
+  if (aiLoading.value) return
   hasNudgedHandbook.value = true
   aiMessages.value.push({
     role: 'agent',
