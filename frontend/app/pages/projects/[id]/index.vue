@@ -280,12 +280,15 @@
                           <span class="ei-icon"><component :is="equipIcon(e.category)" /></span>
                           <div class="ei-body">
                             <span class="ei-name">{{ e.name }}</span>
-                            <span v-if="e.desc" class="ei-desc">{{ e.desc }}</span>
+                            <span v-if="e.desc" class="ei-desc" :class="{ clamped: !expandedEquip.has(e.name) }">{{ e.desc }}</span>
+                            <button v-if="e.desc && e.desc.length > 22" class="ei-more" @click="toggleEquipDesc(e.name)">{{ expandedEquip.has(e.name) ? t('projectCanvas.detailHide') : t('projectCanvas.detailMore') }}</button>
+                            <div class="ei-meta">
+                              <span v-if="e.shotIds.length" class="ei-shots" :title="t('projectCanvas.fromShots')">{{ shotLabels(e.shotIds) }}</span>
+                              <span class="ei-status" :class="isPrepared(e) ? 'ready' : 'pending'">
+                                <component :is="isPrepared(e) ? CircleCheck : Clock" class="eis-ico" />{{ isPrepared(e) ? t('projectCanvas.prepared') : t('projectCanvas.pending') }}
+                              </span>
+                            </div>
                           </div>
-                          <span v-if="e.shotIds.length" class="ei-shots" :title="t('projectCanvas.fromShots')">{{ shotLabels(e.shotIds) }}</span>
-                          <span class="ei-status" :class="isPrepared(e) ? 'ready' : 'pending'">
-                            <component :is="isPrepared(e) ? CircleCheck : Clock" class="eis-ico" />{{ isPrepared(e) ? t('projectCanvas.prepared') : t('projectCanvas.pending') }}
-                          </span>
                         </div>
                     </div>
                   </template>
@@ -864,7 +867,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, ref, reactive, computed, watch } from 'vue'
+import { nextTick, onMounted, onBeforeUnmount, ref, reactive, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   MapPin, Clock, TriangleAlert, Package, Check, CircleCheck, X, Sun, Clapperboard, FileText,
@@ -1348,6 +1351,14 @@ const allEquipment = computed<EquipView[]>(() => rollup.value.equipment.map((e: 
   category: guessEquipCat(e.name), required: true,
   source: 'shot', shotIds: (e.shots ?? []).map((s: any) => s.shot_id),
 })))
+// Equipment purposes are aggregated across shots and can get long — clamp them
+// to 2 lines and let the user expand per item.
+const expandedEquip = ref<Set<string>>(new Set())
+function toggleEquipDesc(name: string) {
+  const s = expandedEquip.value
+  s.has(name) ? s.delete(name) : s.add(name)
+  expandedEquip.value = new Set(s)
+}
 // Equipment grouped by 必要 / 可选 for the detail list.
 const requiredEquip = computed(() => allEquipment.value.filter(e => e.required !== false))
 const optionalEquip = computed(() => allEquipment.value.filter(e => e.required === false))
@@ -1788,11 +1799,17 @@ onMounted(async () => {
     // state, or kick off the flow if this is a brand-new conversation.
     const savedHistory: { role: string; text: string; options?: any[] }[] = projectData.value?.plan?.chat_history ?? []
     agentState.value = projectData.value?.agent_state?.state ?? null
+    let fromHandbook = ''
+    try {
+      fromHandbook = sessionStorage.getItem('refimg_from_handbook') ?? ''
+      if (fromHandbook) sessionStorage.removeItem('refimg_from_handbook')
+    } catch {}
     if (savedHistory.length > 0) {
       aiMessages.value = savedHistory
-      // Mid-stage check-in: if a shot was just completed, the mascot congratulates
-      // + summarizes progress; otherwise the server returns nothing (no-op).
-      if (shots.value.length) sendStep('__resume')
+      // Back from the handbook → offer to lock in what's still undetermined.
+      // Otherwise the mid-stage check-in: congratulate + summarize (or no-op).
+      if (fromHandbook === projectId.value) sendStep('__handbook')
+      else if (shots.value.length) sendStep('__resume')
     } else {
       sendStep('')   // first entry → server emits the greeting (greet or mid-stage)
     }
@@ -1965,6 +1982,8 @@ function chipLabel(o: any): string {
     topic_feel: t('projectCanvas.aiOnboardTopicFeel'),
     topic_plan: t('projectCanvas.aiOnboardTopicPlan'),
     topic_take: t('projectCanvas.aiOnboardTopicTake', { name: onbName.value }),
+    finalize_go:    t('projectCanvas.aiFinalizeGo'),
+    finalize_later: t('projectCanvas.aiFinalizeLater'),
   }
   return m[o.action as string] ?? o.action ?? ''
 }
@@ -1973,6 +1992,9 @@ function pickChip(o: any) {
   if (o.action === 'go_shot') { quickAddShot(); return }                 // onboarding first shot
   if (o.action === 'new_shot') { newShotFlow(); return }                 // mid-stage: ask scene first
   if (o.action === 'make_shot') { quickAddShot(o.value || ''); return }  // scene picked → seed it
+  // Local-only nudge chips (never touch the backend/chat_history — see maybeNudgeHandbook).
+  if (o.action === 'open_handbook') { openHandbook(); return }
+  if (o.action === 'dismiss_nudge') { aiMessages.value.push({ role: 'user', text: o.label }); return }
   sendStep(o.value ?? o.label ?? '', chipLabel(o))
 }
 // Before building the next shot, offer to reuse a scene from an existing shot —
@@ -1991,8 +2013,10 @@ function newShotFlow() {
 }
 async function sendStep(message: string, displayLabel?: string) {
   if (aiLoading.value) return
-  const isGoto = message.startsWith('__goto:')
-  if (message && (!isGoto || displayLabel)) {
+  // internal control messages (__resume / __handbook / __gather / __goto:*) carry
+  // no user-visible text — only show a bubble when the chip supplied a real label.
+  const isInternal = message.startsWith('__')
+  if (message && (!isInternal || displayLabel)) {
     aiMessages.value.push({ role: 'user', text: displayLabel ?? message })
   }
   aiLoading.value = true
@@ -2056,6 +2080,44 @@ const mascotMood = computed<'normal' | 'cheer' | 'question' | 'cry'>(() => {
   return 'normal'
 })
 const mascotSrc = computed(() => `/mascot/${mascotMood.value}.png`)
+
+// ── Idle nudge: been sitting here a while with a decent-sized plan? offer the
+// handbook. Purely local/ephemeral — never touches chat_history or the backend,
+// so it can't pollute the real conversation and disappears on refresh. Fires at
+// most once per visit so it doesn't nag.
+const HANDBOOK_NUDGE_MIN_SHOTS = 3
+const HANDBOOK_NUDGE_IDLE_MS = 90_000
+const hasNudgedHandbook = ref(false)
+let idleNudgeTimer: ReturnType<typeof setTimeout> | null = null
+
+function maybeNudgeHandbook() {
+  if (hasNudgedHandbook.value) return
+  if (shots.value.length < HANDBOOK_NUDGE_MIN_SHOTS) return
+  if (aiLoading.value || aiOptions.value.length) return   // don't interrupt a live exchange
+  hasNudgedHandbook.value = true
+  aiMessages.value.push({
+    role: 'agent',
+    text: t('projectCanvas.handbookNudgeText'),
+    options: [
+      { label: t('projectCanvas.handbookNudgeGo'), value: '', action: 'open_handbook' },
+      { label: t('projectCanvas.handbookNudgeLater'), value: '', action: 'dismiss_nudge' },
+    ],
+  })
+}
+function resetIdleNudgeTimer() {
+  if (idleNudgeTimer) clearTimeout(idleNudgeTimer)
+  if (hasNudgedHandbook.value) return
+  idleNudgeTimer = setTimeout(maybeNudgeHandbook, HANDBOOK_NUDGE_IDLE_MS)
+}
+const IDLE_ACTIVITY_EVENTS = ['mousemove', 'keydown', 'click', 'scroll'] as const
+onMounted(() => {
+  IDLE_ACTIVITY_EVENTS.forEach(ev => window.addEventListener(ev, resetIdleNudgeTimer, { passive: true }))
+  resetIdleNudgeTimer()
+})
+onBeforeUnmount(() => {
+  IDLE_ACTIVITY_EVENTS.forEach(ev => window.removeEventListener(ev, resetIdleNudgeTimer))
+  if (idleNudgeTimer) clearTimeout(idleNudgeTimer)
+})
 
 function onAiInputEnter(e: KeyboardEvent) {
   if (e.isComposing) return
@@ -2858,6 +2920,7 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
   flex-shrink: 0; display: inline-flex; align-items: center; gap: 3px;
   font-size: 10px; font-weight: 600; white-space: nowrap;
 }
+.ei-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 3px; }
 .eis-ico { width: 12px; height: 12px; }
 .ei-status.ready   { color: var(--accent); }
 .ei-status.pending { color: var(--orange, #c9962f); }
@@ -2872,7 +2935,7 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 .egh-dot.opt { background: var(--border-focus); }
 .egh-count { font-weight: 500; color: var(--text-quiet); }
 .equip-item {
-  display: flex; align-items: center; gap: 9px;
+  display: flex; align-items: flex-start; gap: 9px;
   padding: 8px 10px; border-radius: 9px;
   border: 1px solid var(--border); background: var(--surface-inset);
 }
@@ -2884,8 +2947,15 @@ function handleMove({ target, panel, edge }: { target: PanelId; panel: PanelId; 
 }
 .ei-icon :deep(svg) { width: 16px; height: 16px; stroke-width: 2; }
 .ei-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.ei-name { font-size: 12.5px; font-weight: 600; color: var(--text-hi); line-height: 1.3; }
-.ei-desc { font-size: 10.5px; color: var(--text-quiet); line-height: 1.3; }
+.ei-name { font-size: 12.5px; font-weight: 600; color: var(--text-hi); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ei-desc { font-size: 10.5px; color: var(--text-quiet); line-height: 1.35; }
+.ei-desc.clamped { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ei-more {
+  align-self: flex-start; margin-top: 1px; padding: 0;
+  background: none; border: none; cursor: pointer; font-family: inherit;
+  font-size: 10px; font-weight: 600; color: var(--accent);
+}
+.ei-more:hover { text-decoration: underline; }
 /* × 删除按钮:平时淡,hover 变红 */
 .ei-del {
   flex-shrink: 0; width: 20px; height: 20px; padding: 0; border: none;
