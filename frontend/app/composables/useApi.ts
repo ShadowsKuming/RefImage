@@ -85,6 +85,10 @@ export const useApi = () => {
     return api<{ ok: boolean }>(`/projects/${projectId}`, { method: 'DELETE' })
   }
 
+  function getMe() {
+    return api<{ user_id: string }>('/auth/me')
+  }
+
   function uploadReference(projectId: string, file: File) {
     const fd = new FormData()
     fd.append('file', file)
@@ -288,6 +292,7 @@ export const useApi = () => {
     message: string,
     selectedVersionIds: string[] = [],
     selectedRefIds: string[] = [],
+    framing: { shot: string; aspect: string; angle: string } | null = null,
   ): Promise<{ reply: string; generating: boolean; options: string[]; stage: string; camera: { shot: string; aspect: string; angle: string } | null; title: string | null }> {
     return api<{ reply: string; generating: boolean; options: string[]; stage: string; camera: { shot: string; aspect: string; angle: string } | null; title: string | null }>(
       `/projects/${projectId}/shots/${shotId}/chat`,
@@ -298,6 +303,7 @@ export const useApi = () => {
           message,
           selected_version_ids: selectedVersionIds,
           selected_ref_ids: selectedRefIds,
+          ...(framing ? { framing } : {}),
         }),
       },
     )
@@ -475,6 +481,7 @@ export const useApi = () => {
     chat,
     verifyCharacter,
     deleteProject,
+    getMe,
     analyzeImage,
     createProject,
     uploadReference,
