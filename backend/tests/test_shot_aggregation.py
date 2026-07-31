@@ -142,6 +142,41 @@ def test_parse_minutes_variants():
     assert project_service._parse_minutes("无") == 0
 
 
+def test_clock_from_variants():
+    cf = project_service._clock_from
+    assert cf("15:00") == 15 * 60
+    assert cf("3点") == 3 * 60
+    assert cf("下午3点") == 15 * 60
+    assert cf("下午三点") == 15 * 60
+    assert cf("晚上八点") == 20 * 60
+    assert cf("上午10点") == 10 * 60
+    assert cf("九点半") == 9 * 60 + 30
+    assert cf("傍晚") is None          # too vague to place on a clock
+    assert cf("待定") is None
+    assert cf("") is None
+
+
+def test_schedule_time_concrete_start_lays_out_sequential(tmp_path, monkeypatch):
+    import services.plan_service as plan_service
+    monkeypatch.setattr(plan_service, "STORAGE_ROOT", tmp_path)
+    _mkshot(tmp_path, "p1", "s01", plan=_plan(location="卧室", duration="60 分钟"))
+    _mkshot(tmp_path, "p1", "s02", plan=_plan(location="客厅", duration="30 分钟"))
+    plan_service.update_overview("p1", shoot_time="下午3点")
+    rows = project_service.aggregate_schedule("p1")
+    assert rows[0]["time"] == "15:00"   # first segment starts at the given time
+    assert rows[1]["time"] == "16:00"   # + 60 min of the first segment
+
+
+def test_schedule_time_vague_labels_only_first_row(tmp_path, monkeypatch):
+    import services.plan_service as plan_service
+    monkeypatch.setattr(plan_service, "STORAGE_ROOT", tmp_path)
+    _mkshot(tmp_path, "p1", "s01", plan=_plan(location="卧室", duration="60 分钟"))
+    _mkshot(tmp_path, "p1", "s02", plan=_plan(location="客厅", duration="30 分钟"))
+    plan_service.update_overview("p1", shoot_time="傍晚")
+    rows = project_service.aggregate_schedule("p1")
+    assert rows[0]["time"] == "傍晚" and rows[1]["time"] == ""
+
+
 # ── compile / load sheet ──────────────────────────────────────────────────────
 
 def test_compile_snapshots_current_plan(tmp_path):

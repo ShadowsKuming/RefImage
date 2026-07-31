@@ -399,17 +399,30 @@ def aggregate_schedule(project_id: str) -> list[dict]:
             if shot.get("title"):
                 g["titles"].append(shot["title"])
             g["minutes"] += _parse_minutes((lg.get("timing") or {}).get("duration", ""))
+    # Seed the 时间 column from the project's rough start time. If it parses to a
+    # clock (e.g. "下午3点"), lay out sequential start times across segments using
+    # each one's duration; if it's only a vague phrase ("傍晚"), just label the first
+    # segment with it and leave the rest blank.
+    shoot_time = str(load_plan_data(project_id).get("shoot_time", "")).strip()
+    cursor = _clock_from(shoot_time)
     rows = []
-    for loc in order:
+    for i, loc in enumerate(order):
         g = groups[loc]
         labels = g["labels"]
+        if cursor is not None:
+            row_time = _fmt_clock(cursor)
+            cursor += g["minutes"]
+        elif i == 0 and shoot_time:
+            row_time = shoot_time
+        else:
+            row_time = ""
         rows.append({
             "scene": g["scene"],
             "shot_ids": g["shot_ids"],
             "shots": f"{labels[0]}–{labels[-1]}" if len(labels) > 1 else (labels[0] if labels else ""),
             "content": "、".join(g["titles"]),
             "duration_minutes": g["minutes"],
-            "time": "",
+            "time": row_time,
         })
     return rows
 
@@ -422,6 +435,37 @@ _DEFAULT_PALETTE = ["#efe7dc", "#c9b79a", "#3a3550", "#6a4f8a", "#c98a4a"]
 def _parse_minutes(s: str) -> int:
     m = re.search(r"\d+", s or "")
     return int(m.group()) if m else 0
+
+
+_CN_DIGIT = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
+             "六": 6, "七": 7, "八": 8, "九": 9, "十": 10, "十一": 11, "十二": 12}
+
+
+def _clock_from(s: str) -> int | None:
+    """Parse a concrete clock time → minutes past midnight, or None if the phrase
+    is too vague ('傍晚', '待定'). Handles '15:00', '3点', '下午三点', '晚上八点'."""
+    if not s:
+        return None
+    m = re.search(r"(\d{1,2}):(\d{2})", s)
+    if m:
+        return int(m.group(1)) * 60 + int(m.group(2))
+    m = re.search(r"(\d{1,2}|十[一二]?|[一二两三四五六七八九])\s*点(半)?", s)
+    if not m:
+        return None
+    tok = m.group(1)
+    hour = int(tok) if tok.isdigit() else _CN_DIGIT.get(tok)
+    if hour is None:
+        return None
+    if hour < 12 and any(w in s for w in ("下午", "晚上", "傍晚", "夜")):
+        hour += 12
+    if hour == 12 and any(w in s for w in ("上午", "早上", "早晨", "凌晨")):
+        hour = 0
+    return hour * 60 + (30 if m.group(2) else 0)
+
+
+def _fmt_clock(minutes: int) -> str:
+    minutes %= 24 * 60
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
 
 def get_handbook(project_id: str) -> dict:

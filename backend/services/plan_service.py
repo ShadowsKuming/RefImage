@@ -33,6 +33,7 @@ def _default_plan_data() -> dict:
     return {
         "theme": "",
         "shoot_date": "",
+        "shoot_time": "",           # rough start time of day (e.g. "傍晚", "下午3点") → schedule 时间列
         "crew": {},                 # { photographers, cosers, logistics }
         "equipment": [],            # [ { id, name, required, desc, category } ]
         "schedule": [],             # [ { id, time, scene, shot_ids, content, duration, light, priority } ]
@@ -101,18 +102,22 @@ def save_plan_data(project_id: str, data: dict) -> dict:
 # ── Granular mutations (the AI-tool surface; add / remove only) ─────────────────
 
 def update_overview(project_id: str, theme: str | None = None,
-                    shoot_date: str | None = None, crew: dict | None = None) -> dict:
-    """Overwrite the scalar overview fields that are provided (theme / date / crew).
-    Overview isn't a collection, so this is a set-in-place, not add/remove."""
+                    shoot_date: str | None = None, crew: dict | None = None,
+                    shoot_time: str | None = None) -> dict:
+    """Overwrite the scalar overview fields that are provided (theme / date / time /
+    crew). Overview isn't a collection, so this is a set-in-place, not add/remove."""
     data = load_plan_data(project_id)
     if theme is not None:
         data["theme"] = theme
     if shoot_date is not None:
         data["shoot_date"] = shoot_date
+    if shoot_time is not None:
+        data["shoot_time"] = shoot_time
     if crew is not None:
         data["crew"] = {k: v for k, v in crew.items() if v is not None}
     _write(project_id, data)
-    return {"theme": data["theme"], "shoot_date": data["shoot_date"], "crew": data["crew"]}
+    return {"theme": data["theme"], "shoot_date": data["shoot_date"],
+            "shoot_time": data.get("shoot_time", ""), "crew": data["crew"]}
 
 
 def add_equipment(project_id: str, name: str, required: bool = True,

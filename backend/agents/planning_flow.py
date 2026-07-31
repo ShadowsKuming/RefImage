@@ -34,6 +34,14 @@ def _rec_date(pid: str, value: str) -> str:
     return f"拍摄时间：{v}"
 
 
+def _rec_time(pid: str, value: str) -> str:
+    v = (value or "").strip()
+    if not v or v in ("待定", "未定", "TBD"):
+        return "拍摄时段：待定"
+    plan_service.update_overview(pid, shoot_time=v)   # feeds the schedule 时间列
+    return f"大概 {v} 开始"
+
+
 def _rec_crew(pid: str, value: str) -> str:
     if value == "found":
         plan_service.update_overview(pid, crew={"photographers": 1, "cosers": 1})
@@ -65,7 +73,13 @@ SLOT_STATES: dict[str, dict] = {
         "parse": "从用户的话里提取拍摄时间，并【算成具体的年月】：相对说法（'下个月'、'这周末'、'三个月后'）要"
                  "根据下面给的今天日期算成具体年月（如 '2026年8月'、'2026年8月中旬'）；只说了月份没说年份的（'10月2号'）"
                  "补上最近的合适年份；已是具体日期就保留。若用户说还没定/不知道/看情况/随便，输出 '待定'",
-        "record": _rec_date, "next": "plan_crew",
+        "record": _rec_date, "next": "plan_time",
+    },
+    "plan_time": {
+        "ask": "顺着刚才的时间，轻松问一句这次大概几点开始拍——白天 / 傍晚 / 晚上，说个大概时段就行（室内也没关系）",
+        "parse": "从用户的话里提取大概的拍摄开始时段/几点：如 '下午3点左右'、'傍晚'、'晚上八点'、'上午'——"
+                 "只说了时段就保留时段，说了具体点数就保留点数。若用户说还没定/看情况/随便，输出 '待定'",
+        "record": _rec_time, "next": "plan_crew",
     },
     "plan_crew": {
         "ask": "温柔地问用户，这次拍摄的摄影师有没有着落了",
@@ -327,13 +341,77 @@ def _resume(project: dict, project_id: str, char_name: str, gh: str, reply_lang:
     return {"reply": reply, "options": options, "state": "midstage", "plan": None, "replace": replace}
 
 
-def _menu_options(state: str, covered: list[str]) -> list[dict]:
+# ── handbook finalize: what's still undetermined ──────────────────────────────
+def _date_concrete(sd: str) -> bool:
+    """A resolved date carries a year ('2026年8月'); a relative/vague one
+    ('下个月', '待定') does not — the latter still counts as unsettled."""
+    return bool(sd) and "年" in sd and sd not in ("待定", "未定", "TBD")
+
+
+def _plan_pending(project: dict) -> list[str]:
+    """Detectable gaps (date not concrete / no crew) — decides whether the
+    handbook readiness gate opens at all. Wig & clothes have no stored 'done'
+    flag, so they never trigger the gate on their own."""
+    data = ((project.get("plan") or {}).get("data")) or {}
+    pending = []
+    if not _date_concrete(str(data.get("shoot_date", "")).strip()):
+        pending.append("plan_date")
+    crew = data.get("crew") or {}
+    if not crew.get("photographers") and not crew.get("cosers"):
+        pending.append("plan_crew")
+    return pending
+
+
+def _gather_queue(project: dict) -> list[str]:
+    """Once the user says they're ready, sweep the prep checklist. Date & crew are
+    included only when still unsettled; the rough start time, wig & clothes have no
+    stored 'done' flag so we always double-check them. Time rides right after date."""
+    pend = _plan_pending(project)
+    q = []
+    if "plan_date" in pend:
+        q.append("plan_date")
+    q.append("plan_time")
+    if "plan_crew" in pend:
+        q.append("plan_crew")
+    return q + ["plan_wig", "plan_clothes"]
+
+
+def _finalize_prompt(project: dict, project_id: str, char_name: str, gh: str,
+                     reply_lang: str, st: dict, history: list[dict]) -> dict:
+    """Triggered when the user comes back from viewing the handbook. If anything's
+    still undetermined, gently ask whether they're ready to lock it in — decided →
+    walk the pending slots; not yet → back to the check-in and keep brainstorming."""
+    if not _plan_pending(project):   # nothing detectable to nag about — stay quiet
+        return {"reply": "", "options": st.get("last_options", []),
+                "state": st.get("state") or "midstage", "plan": None, "replace": False}
+    intent = ("你注意到用户刚在整理拍摄手册。温柔地说一句：看 ta 在整理手册啦，这次的大方向定得差不多了吗——"
+              "定了的话你陪 ta 把还没敲定的几样（时间、人手、假发服装这些）一项项理一理；还想再琢磨也完全没问题。"
+              "先问 ta 准备好没，别急着追问细节。")
+    reply = _menu_reply(char_name, intent, reply_lang, gh)
+    options = [{"action": "finalize_go", "value": "__gather"},
+               {"action": "finalize_later", "value": "__resume"}]
+    agent_state_service.save_state(project_id, {
+        "state": "finalize", "covered": st.get("covered", []), "tone_turn": 0,
+        "acked_completed": st.get("acked_completed", 0), "last_sig": st.get("last_sig"),
+        "last_reply": reply, "last_options": options,
+    })
+    history.append({"role": "agent", "text": reply, "options": options})
+    project_service.save_chat_history(project_id, history)
+    return {"reply": reply, "options": options, "state": "finalize", "plan": None}
+
+
+def _menu_options(state: str, covered: list[str], has_shots: bool = False) -> list[dict]:
     if state == "fork":
         opts = [dict(_TOPIC_OPT[t]) for t in ("feel", "plan", "take") if t not in covered]
         if not opts:
             opts = [{"action": "go_shot"}]
-        return opts
-    return [dict(o) for o in MENU_STATES[state]["options"]]
+    else:
+        opts = [dict(o) for o in MENU_STATES[state]["options"]]
+    if has_shots:   # mid-project: "make the FIRST shot" → "brainstorm the NEXT one"
+        for o in opts:
+            if o.get("action") == "go_shot":
+                o["action"] = "new_shot"
+    return opts
 
 
 # ── engine ────────────────────────────────────────────────────────────────────
@@ -347,9 +425,17 @@ def run_step(project_id: str, message: str, reply_lang: str = "zh") -> dict:
     cur = st.get("state")
     covered = list(st.get("covered", []))
     tone_turn = int(st.get("tone_turn", 0))
+    queue = list(st.get("queue", []))     # remaining slots in a handbook-finalize gather
+    gather = bool(st.get("gather"))
+    has_shots = bool(project.get("shots"))
     plan_dirty = False
     ack = None
     inline: tuple[str, list[dict]] | None = None
+
+    # Back from the handbook: gently gate on readiness, then gather what's still
+    # open. Checked before the resume shortcut so it wins on first mount.
+    if message == "__handbook":
+        return _finalize_prompt(project, project_id, char_name, gh, reply_lang, st, history)
 
     # Mid-stage check-in: explicit resume, or first entry into a project that
     # already has shots. Congratulates on new completions + summarizes progress.
@@ -359,22 +445,37 @@ def run_step(project_id: str, message: str, reply_lang: str = "zh") -> dict:
     # 1. process the current turn → decide next state
     if cur is None:
         nxt = ENTRY   # brand-new project (no shots) → onboarding greeting
+    elif message == "__gather":   # user is ready → sweep date/crew/wig/clothes
+        q = _gather_queue(project)
+        gather = True
+        if q:
+            nxt, queue = q[0], q[1:]
+        else:
+            nxt, queue, gather = "plan_wrap", [], False
     elif message.startswith("__goto:"):
         nxt = message.split(":", 1)[1]
     elif cur == "open":
         nxt = "open"
+    elif cur == "finalize":
+        nxt = "open" if message.strip() else cur   # typed instead of picking → free chat
     elif cur in SLOT_STATES:
         cfg = SLOT_STATES[cur]
         ack = cfg["record"](project_id, _parse_value(message, cfg["parse"]))
         plan_dirty = True
-        nxt = cfg["next"]
+        if gather:
+            if queue:
+                nxt = queue.pop(0)
+            else:
+                nxt, gather = "plan_wrap", False   # gather done → wrap up
+        else:
+            nxt = cfg["next"]
     elif cur in CONVERSE_STATES:
         tone_turn += 1
         r, o, done = _converse(CONVERSE_STATES[cur], char_name, history, message, reply_lang, gh)
         if done:
             # LLM chose to wrap — its reply is already a summary; attach wrap menu.
             nxt = "tone_wrap"
-            inline = (r, _menu_options("tone_wrap", covered))
+            inline = (r, _menu_options("tone_wrap", covered, has_shots))
         elif tone_turn >= MAX_TONE_TURNS:
             # forced by turn cap — let tone_wrap render a proper summary reply.
             nxt = "tone_wrap"
@@ -423,11 +524,12 @@ def run_step(project_id: str, message: str, reply_lang: str = "zh") -> dict:
     elif nxt in MENU_STATES:
         intent = MENU_STATES[nxt]["intent"].format(char=char_name)
         reply = _menu_reply(char_name, intent, reply_lang, gh)
-        options = _menu_options(nxt, covered)
+        options = _menu_options(nxt, covered, has_shots)
     else:
         reply, options = "", []
 
     st = {"state": nxt, "covered": covered, "tone_turn": tone_turn,
+          "queue": queue, "gather": gather,
           "last_reply": reply, "last_options": options}
     agent_state_service.save_state(project_id, st)
 

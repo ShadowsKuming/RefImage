@@ -21,7 +21,7 @@ def _tmp_storage(tmp_path, monkeypatch):
 def test_empty_project_returns_default_shape():
     d = plan_service.load_plan_data("p1")
     assert set(d) == {
-        "theme", "shoot_date", "crew", "equipment", "schedule",
+        "theme", "shoot_date", "shoot_time", "crew", "equipment", "schedule",
         "notes", "location_meta", "prepared", "notes_done",
     }
     assert d["equipment"] == [] and d["theme"] == ""
