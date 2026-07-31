@@ -27,6 +27,7 @@ def shot_chat(
     background_tasks: BackgroundTasks,
     parent_version_ids: list[str] | None = None,
     selected_ref_ids: list[str] | None = None,
+    framing: dict | None = None,
 ) -> dict:
     """
     Run one turn of the per-shot AI assistant.
@@ -58,6 +59,7 @@ def shot_chat(
         message, llm_history, project, shot,
         shot_refs=shot_refs,
         selected_ref_ids=selected_ref_ids or [],
+        framing=framing,
     )
 
     project_service.append_shot_messages(project_id, shot_id, [

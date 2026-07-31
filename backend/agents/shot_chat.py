@@ -61,13 +61,22 @@ _FRAMING_ABSTRACT = ("景别", "机位", "画幅", "镜头", "构图")
 
 
 def _is_camera_phase(reply: str) -> bool:
-    """True once the assistant has reached the photography step — proposing the
-    shot's framing. The frontend then shows the camera panel (see above)."""
+    """True only once the assistant is actually PROPOSING the shot's framing (the
+    photography step → frontend shows the camera panel). A lone 景别 word inside a
+    pose/scene sentence (e.g. "全身蜷缩在角落") must NOT trigger it, or the funnel's
+    mood/expression questions lose their quick-reply chips."""
     r = reply.replace(" ", "")
-    if any(t in r for t in _FRAMING_CONCRETE):
+    concrete = [t for t in _FRAMING_CONCRETE if t in r]
+    has_ctx = any(t in r for t in _FRAMING_ABSTRACT)   # 景别/机位/画幅/镜头/构图
+    reco = ("建议" in r) or ("生成" in r) or ("调" in r)
+    # ≥2 framing terms (景别+画幅…) = a real framing proposal; or one term next to a
+    # framing-context/recommendation word. One bare term alone is just description.
+    if len(concrete) >= 2:
         return True
-    if any(t in r for t in _FRAMING_ABSTRACT):
-        return ("生成" in r) or ("建议" in r) or ("调" in r)
+    if concrete and (has_ctx or reco):
+        return True
+    if has_ctx and reco:
+        return True
     return False
 
 
@@ -428,6 +437,7 @@ def chat(
     shot: dict,
     shot_refs: list[dict] | None = None,
     selected_ref_ids: list[str] | None = None,
+    framing: dict | None = None,
 ) -> dict:
     """
     Process one shot-level chat message.
@@ -453,6 +463,21 @@ def chat(
         }
         from services.shot_params import normalize as _norm_params
         captured["params"] = _norm_params(inp.get("params") or {})
+        # The camera panel's explicit 景别/画幅/机位 are authoritative: force them
+        # into the framing fields + params so the LLM can't quietly substitute its
+        # own earlier recommendation. (Deterministic mapping = same one refine uses.)
+        if framing:
+            from services import shot_params as _sp
+            shot_v, aspect_v, angle_v = framing.get("shot"), framing.get("aspect"), framing.get("angle")
+            parts = captured["prompt_parts"]
+            if aspect_v in _sp._ASPECT_TO_ORIENTATION:
+                parts["orientation"] = _sp._ASPECT_TO_ORIENTATION[aspect_v]
+            frag = ". ".join(x for x in (_sp._SHOT_EN.get(shot_v), _sp._ANGLE_EN.get(angle_v)) if x)
+            if frag:
+                parts["composition"] = frag + ". Frame so the character stays the clear visual focus."
+            for k, v in (("shot", shot_v), ("aspect", aspect_v), ("angle", angle_v)):
+                if v:
+                    captured["params"][k] = v
         if inp.get("title"):
             captured["title"] = str(inp["title"]).strip()
         return "生成指令已收到，正在生成参考例图，请在回复中告知用户稍等片刻。"
