@@ -264,10 +264,11 @@ def chat(
     Returns:
         { reply: str, profile: dict | None, awaiting_confirm: bool }
         profile is non-null only when the agent called update_profile this turn.
-        awaiting_confirm is true only when this reply is a plain yes/no
-        identity-confirm question (single vision candidate, first turn) — the
-        frontend uses it to decide whether a quick "yes" chip makes sense, vs
-        an open-ended ask where only free text applies.
+        awaiting_confirm is true when this reply is a plain yes/no identity-confirm
+        question — single vision candidate, and the profile hasn't been built yet
+        this session (covers both the first-turn ask and a later re-ask after the
+        user corrects the guess) — the frontend uses it to decide whether a quick
+        "yes" chip makes sense, vs an open-ended ask where only free text applies.
     """
     system = SYSTEM_PROMPT + (
         f"\n\n【回复语言】始终使用{_LANG_NAMES.get(reply_lang, '中文')}回复用户，"
@@ -277,6 +278,7 @@ def chat(
     awaiting_confirm = False
 
     # Vision identification: run once per session on first chat turn, cache in session
+    session = None
     if session_id:
         from services import analyze_service
         session = analyze_service.get_session(session_id)
@@ -288,10 +290,16 @@ def chat(
                     session["char_hint"] = {"confidence": "none", "text": ""}
             char_hint_data = session.get("char_hint") or {"confidence": "none", "text": ""}
             char_hint = char_hint_data.get("text") or ""
-            # Only the very first turn ever produces the identify-and-confirm
-            # message the char_hint instructions below describe — later turns
-            # are free-form (corrections, candidate picks, plain chat).
-            awaiting_confirm = bool(char_hint) and char_hint_data.get("confidence") == "single" and not history
+            # A single confident vision guess keeps the confirm chip alive across
+            # turns, not just turn 1 — a user CORRECTION loops back into ANOTHER
+            # plain yes/no re-confirm ask (see the char_hint instructions below:
+            # "纠正后...再确认一次"), which also deserves the chip. Only once the
+            # profile is actually built does confirmation stop making sense.
+            awaiting_confirm = (
+                bool(char_hint)
+                and char_hint_data.get("confidence") == "single"
+                and not session.get("profile_confirmed")
+            )
             if char_hint:
                 lang_name = _LANG_NAMES.get(reply_lang, '中文')
                 system += (
@@ -368,8 +376,11 @@ def chat(
         )
 
     # A tool call this turn means the agent already resolved identity — there's
-    # nothing left to confirm even if the char_hint block said turn 1.
+    # nothing left to confirm. Persist that on the session so later turns (now
+    # free-form profile chat/edits) never bring the confirm chip back.
     if profile is not None:
         awaiting_confirm = False
+        if session is not None:
+            session["profile_confirmed"] = True
 
     return {"reply": reply or "", "profile": profile, "awaiting_confirm": awaiting_confirm}
