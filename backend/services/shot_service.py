@@ -11,9 +11,9 @@ from agents.shot_chat import chat as _shot_chat
 from services import project_service, generate_service
 
 
-# Default shot titles (zh/en/ja: "新分镜 N" / "Shot N" / "新規カット N"). We only
-# auto-name a shot from the AI's concept while it's still one of these placeholders.
-_DEFAULT_TITLE_RE = re.compile(r"^\s*(新分镜|新規カット|Shot)\s*\d*\s*$", re.IGNORECASE)
+# Default shot titles (zh/en/ja/pt: "新分镜 N" / "Shot N" / "新規カット N" / "Cena N").
+# We only auto-name a shot from the AI's concept while it's still one of these placeholders.
+_DEFAULT_TITLE_RE = re.compile(r"^\s*(新分镜|新規カット|Shot|Cena)\s*\d*\s*$", re.IGNORECASE)
 
 
 def _is_default_title(title: str) -> bool:
@@ -28,6 +28,7 @@ def shot_chat(
     parent_version_ids: list[str] | None = None,
     selected_ref_ids: list[str] | None = None,
     framing: dict | None = None,
+    reply_lang: str = "zh",
 ) -> dict:
     """
     Run one turn of the per-shot AI assistant.
@@ -60,6 +61,7 @@ def shot_chat(
         shot_refs=shot_refs,
         selected_ref_ids=selected_ref_ids or [],
         framing=framing,
+        reply_lang=reply_lang,
     )
 
     project_service.append_shot_messages(project_id, shot_id, [

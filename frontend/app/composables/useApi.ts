@@ -303,6 +303,7 @@ export const useApi = () => {
           message,
           selected_version_ids: selectedVersionIds,
           selected_ref_ids: selectedRefIds,
+          reply_lang: useLocale().locale.value,
           ...(framing ? { framing } : {}),
         }),
       },

@@ -10,6 +10,8 @@ from tools.llm import call_agent, call_with_tools
 from tools.search import web_search as _web_search
 from config import LLM_PROVIDER, FAST_LLM_MODEL_BY_PROVIDER
 
+_LANG = {"zh": "中文", "en": "English", "ja": "日本語", "pt": "Português"}
+
 
 _SUBMIT_OPTIONS_TOOL = {
     "name": "submit_options",
@@ -95,15 +97,17 @@ def _extract_camera_suggestion(reply: str) -> dict:
     return {"shot": shot, "aspect": aspect, "angle": angle}
 
 
-def _suggest_options(project: dict, messages: list[dict]) -> list[str]:
+def _suggest_options(project: dict, messages: list[dict], reply_lang: str = "zh") -> list[str]:
     """Generate 2-4 context-consistent quick-reply chips for the user's next turn.
 
     Runs as a dedicated cheap fast-model call with a FORCED tool_choice, so the
     output is always structured (no verbalizing) and — because it sees the whole
     conversation — always consistent with what the user already said (say 合练 →
     every option involves teammates, never 独自一人)."""
+    lang = _LANG.get(reply_lang, "中文")
     system = (
         f"{_canon_brief(project)}\n\n"
+        f"用{lang}输出选项。\n"
         "你的唯一任务：给用户几个能【一键回答助手最后那条消息】的快捷选项（2-4 个，第一人称、短，≤14字）。\n"
         "规则：\n"
         "1. 选项必须是对『助手最后那个问题』的直接回答，和问题同一层级、同一主题——"
@@ -286,7 +290,8 @@ TOOLS = [
 ]
 
 
-def _build_system(project: dict, shot: dict, shot_refs: list[dict] | None = None, selected_ref_ids: list[str] | None = None) -> str:
+def _build_system(project: dict, shot: dict, shot_refs: list[dict] | None = None,
+                  selected_ref_ids: list[str] | None = None, reply_lang: str = "zh") -> str:
     char_data   = project.get("character_data", {})
     char_bg     = char_data.get("characterBackground", {})
     if not isinstance(char_bg, dict): char_bg = {}
@@ -298,9 +303,11 @@ def _build_system(project: dict, shot: dict, shot_refs: list[dict] | None = None
     series_name = project.get("series", "")
     vs_text     = visual_spec.get("zh", "") if isinstance(visual_spec, dict) else str(visual_spec)
 
+    lang = _LANG.get(reply_lang, "中文")
     lines = [
         "你是一个懂拍摄策划的动漫创意搭档，和用户一起把这张参考图【一起构思出来】——"
         "不是拿一张问卷让他逐项填，而是像一个有想法的策划在陪他聊。",
+        f"【回复语言】始终使用{lang}回复用户，不要混用其他语言。",
         "",
         "【每一轮怎么说话 · 三段式，但要短】",
         "每轮回复【总共 2-3 句话、不超过 70 字】，自然连成一段，不要写成 1/2/3 列表，也不要长篇铺陈：",
@@ -438,6 +445,7 @@ def chat(
     shot_refs: list[dict] | None = None,
     selected_ref_ids: list[str] | None = None,
     framing: dict | None = None,
+    reply_lang: str = "zh",
 ) -> dict:
     """
     Process one shot-level chat message.
@@ -446,7 +454,7 @@ def chat(
         { reply: str, generating: bool, prompt_parts: dict | None,
           classify_ref: dict | None }
     """
-    system   = _build_system(project, shot, shot_refs, selected_ref_ids)
+    system   = _build_system(project, shot, shot_refs, selected_ref_ids, reply_lang)
     messages = history + [{"role": "user", "content": message}]
 
     captured: dict = {}
@@ -522,7 +530,7 @@ def chat(
             camera = _extract_camera_suggestion(result["text"])
         else:
             convo = messages + [{"role": "assistant", "content": result["text"]}]
-            options = _suggest_options(project, convo)
+            options = _suggest_options(project, convo, reply_lang)
 
     return {
         "reply":        result["text"],

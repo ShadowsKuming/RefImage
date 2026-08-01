@@ -40,6 +40,7 @@ class ChatRequest(BaseModel):
     selected_version_ids: list[str] = []
     selected_ref_ids: list[str] = []
     framing: dict | None = None   # {shot, aspect, angle} from the camera panel → forced
+    reply_lang: str = "zh"
 
 
 class RefineRequest(BaseModel):
@@ -232,6 +233,7 @@ def shot_chat(
             parent_version_ids=req.selected_version_ids,
             selected_ref_ids=req.selected_ref_ids,
             framing=req.framing,
+            reply_lang=req.reply_lang,
         )
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Project or shot not found")
