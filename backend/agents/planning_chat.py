@@ -17,7 +17,7 @@ from config import LLM_PROVIDER, FAST_LLM_MODEL_BY_PROVIDER
 
 STORAGE_ROOT = Path(__file__).parent.parent / "storage" / "projects"
 
-_LANG_NAMES = {"zh": "中文", "en": "English", "ja": "日本語"}
+_LANG_NAMES = {"zh": "中文", "en": "English", "ja": "日本語", "pt": "Português"}
 _PHASE_LABELS = {"pre": "拍摄前", "onsite": "拍摄当天", "other": "其他"}
 _PRIO_LABELS = {"high": "高", "mid": "中", "low": "低"}
 
@@ -58,7 +58,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "搜索关键词"},
-                "lang":  {"type": "string", "enum": ["zh-cn", "en", "ja"], "description": "搜索语言，默认 zh-cn"},
+                "lang":  {"type": "string", "enum": ["zh-cn", "en", "ja", "pt"], "description": "搜索语言，默认 zh-cn"},
             },
             "required": ["query"],
         },

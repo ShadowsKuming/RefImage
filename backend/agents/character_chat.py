@@ -26,7 +26,7 @@ from tools.llm import call_agent, call
 from tools.search import web_search as _web_search
 import tools.vision as vision
 
-_LANG_NAMES = {"zh": "中文", "en": "English", "ja": "日本語"}
+_LANG_NAMES = {"zh": "中文", "en": "English", "ja": "日本語", "pt": "Português"}
 
 
 SYSTEM_PROMPT = """你是一个动漫/游戏/影视角色档案助手。
@@ -78,7 +78,7 @@ WEB_SEARCH_TOOL = {
         "type": "object",
         "properties": {
             "query": {"type": "string", "description": "搜索关键词"},
-            "lang":  {"type": "string", "enum": ["zh-cn", "en", "ja"], "description": "搜索语言：zh-cn中文、en英文、ja日文"},
+            "lang":  {"type": "string", "enum": ["zh-cn", "en", "ja", "pt"], "description": "搜索语言：zh-cn中文、en英文、ja日文、pt葡萄牙文"},
         },
         "required": ["query", "lang"],
     },

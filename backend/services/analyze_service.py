@@ -43,6 +43,11 @@ _LABELS: dict[str, dict[str, str]] = {
         "lower_body": "下半身", "shoes": "シューズ", "proportions": "体型",
         "distinctive": "特徴", "color_palette": "配色",
     },
+    "pt": {
+        "hairstyle": "Penteado", "face_makeup": "Rosto e maquiagem", "upper_body": "Parte superior",
+        "lower_body": "Parte inferior", "shoes": "Sapatos", "proportions": "Proporções corporais",
+        "distinctive": "Características distintivas", "color_palette": "Paleta de cores",
+    },
 }
 
 
@@ -78,13 +83,13 @@ def _build_visual_spec(extracted_en: dict) -> tuple[dict, dict]:
     extraction) and compile visual spec. Falls back to English-only if the
     translation LLM call fails.
     Returns (visual_spec_by_lang, multilang_fields) — multilang_fields is the
-    full { zh: {field: val}, en: {...}, ja: {...} } structure, persisted as-is
-    to context/extracted.json so every saved project has all system languages
+    full { zh: {field: val}, en: {...}, ja: {...}, pt: {...} } structure, persisted
+    as-is to context/extracted.json so every saved project has all system languages
     per field, and used live for CharacterFigure tooltips during the wizard."""
     try:
         multilang = translate_visual_spec(extracted_en)
     except Exception:
-        multilang = {"zh": dict(extracted_en), "en": dict(extracted_en), "ja": dict(extracted_en)}
+        multilang = {"zh": dict(extracted_en), "en": dict(extracted_en), "ja": dict(extracted_en), "pt": dict(extracted_en)}
     return _compile_visual_spec(multilang), multilang
 
 

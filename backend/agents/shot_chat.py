@@ -169,7 +169,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "query": {"type": "string"},
-                "lang":  {"type": "string", "enum": ["zh-cn", "en", "ja"]},
+                "lang":  {"type": "string", "enum": ["zh-cn", "en", "ja", "pt"]},
             },
             "required": ["query"],
         },

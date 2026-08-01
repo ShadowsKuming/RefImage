@@ -7,8 +7,8 @@ On-disk layout per project:
     context/               — character/world context (read-only after creation)
       refs/                — original reference images used for visual spec extraction
       extra_refs/          — supplementary reference images added later
-      extracted.json       — per-field extraction, translated: { zh: {field: val}, en: {...}, ja: {...} }
-      visual_spec.json     — multilingual appearance spec { zh, en, ja, prompt }
+      extracted.json       — per-field extraction, translated: { zh: {field: val}, en: {...}, ja: {...}, pt: {...} }
+      visual_spec.json     — multilingual appearance spec { zh, en, ja, pt, prompt }
       world.json           — { series, worldSetting }
       character.json       — { character, series, characterBackground }
     plan/                  — global shooting plan (written by AI planning assistant)
@@ -236,7 +236,7 @@ def get_project(project_id: str) -> dict:
         visual_spec = json.loads(vs_json.read_text())
     else:
         text = vs_txt.read_text() if vs_txt.exists() else ""
-        visual_spec = {"zh": text, "en": text, "ja": text}
+        visual_spec = {"zh": text, "en": text, "ja": text, "pt": text}
 
     refs = sorted(
         f"/projects/{project_id}/refs/{f.name}"
@@ -895,8 +895,8 @@ def update_appearance_field(project_id: str, field: str, zh_value: str) -> dict:
     ctx = base / "context"
 
     ext_path = ctx / "extracted.json"
-    extracted = json.loads(ext_path.read_text()) if ext_path.exists() else {"zh": {}, "en": {}, "ja": {}}
-    for lang in ("zh", "en", "ja"):
+    extracted = json.loads(ext_path.read_text()) if ext_path.exists() else {"zh": {}, "en": {}, "ja": {}, "pt": {}}
+    for lang in ("zh", "en", "ja", "pt"):
         extracted.setdefault(lang, {})
 
     zh_value = (zh_value or "").strip()
@@ -905,12 +905,14 @@ def update_appearance_field(project_id: str, field: str, zh_value: str) -> dict:
         tr = translate_fields_to_en_ja({field: zh_value})
         extracted["en"][field] = tr["en"].get(field) or zh_value
         extracted["ja"][field] = tr["ja"].get(field) or zh_value
+        extracted["pt"][field] = tr["pt"].get(field) or zh_value
     else:
         extracted["en"][field] = None
         extracted["ja"][field] = None
+        extracted["pt"][field] = None
     ext_path.write_text(json.dumps(extracted, ensure_ascii=False, indent=2))
 
-    visual_spec = _compile_visual_spec(extracted)  # { zh, en, ja } blobs
+    visual_spec = _compile_visual_spec(extracted)  # { zh, en, ja, pt } blobs
     char_name = json.loads((ctx / "character.json").read_text()).get("character", "")
     try:
         visual_spec["prompt"] = _build_image_prompt(char_name, visual_spec.get("en", ""))

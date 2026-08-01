@@ -22,7 +22,7 @@ from services import plan_service, project_service, agent_state_service
 from tools.llm import call_with_tools
 from config import LLM_PROVIDER, FAST_LLM_MODEL_BY_PROVIDER
 
-_LANG = {"zh": "中文", "en": "English", "ja": "日本語"}
+_LANG = {"zh": "中文", "en": "English", "ja": "日本語", "pt": "Português"}
 ENTRY = "greet"
 MAX_TONE_TURNS = 3
 
@@ -180,10 +180,10 @@ def _parse_value(user_message: str, parse_intent: str) -> str:
     return ""
 
 
-_GENDER_WORD = {"female": {"zh": "女生", "en": "female", "ja": "女性"},
-                "male": {"zh": "男生", "en": "male", "ja": "男性"}}
-_PRONOUN = {"female": {"zh": "她", "en": "she/her", "ja": "彼女"},
-            "male": {"zh": "他", "en": "he/him", "ja": "彼"}}
+_GENDER_WORD = {"female": {"zh": "女生", "en": "female", "ja": "女性", "pt": "menina"},
+                "male": {"zh": "男生", "en": "male", "ja": "男性", "pt": "menino"}}
+_PRONOUN = {"female": {"zh": "她", "en": "she/her", "ja": "彼女", "pt": "ela"},
+            "male": {"zh": "他", "en": "he/him", "ja": "彼", "pt": "ele"}}
 
 
 def _detect_gender(project: dict) -> str | None:

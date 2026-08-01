@@ -89,7 +89,7 @@ VERIFY_SYSTEM = """你是一个动漫角色一致性判断专家。
 严格返回 JSON，不包含其他内容：
 {"same": true或false, "reason": "一句话说明判断依据"}"""
 
-_LANG_NAMES = {"zh": "中文", "en": "English", "ja": "日本語"}
+_LANG_NAMES = {"zh": "中文", "en": "English", "ja": "日本語", "pt": "Português"}
 
 
 def verify_same_character(image_bytes: bytes, existing_extracted: dict, reply_lang: str = "zh") -> dict:

@@ -18,6 +18,7 @@ _LANG_PARAMS = {
     "zh-cn": {"hl": "zh-cn", "gl": "cn"},
     "en":    {"hl": "en",    "gl": "us"},
     "ja":    {"hl": "ja",    "gl": "jp"},
+    "pt":    {"hl": "pt-br", "gl": "br"},
 }
 
 

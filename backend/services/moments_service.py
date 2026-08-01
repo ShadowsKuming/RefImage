@@ -127,10 +127,10 @@ def generate_moments(project_id: str, cid: str) -> dict:
     tools = [
         {
             "name": "web_search",
-            "description": "搜索角色相关信息,支持中/日/英多语言。",
+            "description": "搜索角色相关信息,支持中/日/英/葡多语言。",
             "input_schema": {"type": "object", "properties": {
                 "query": {"type": "string"},
-                "lang": {"type": "string", "enum": ["zh-cn", "en", "ja"]},
+                "lang": {"type": "string", "enum": ["zh-cn", "en", "ja", "pt"]},
             }, "required": ["query"]},
         },
         {
