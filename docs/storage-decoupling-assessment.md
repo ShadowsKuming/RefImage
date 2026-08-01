@@ -173,12 +173,12 @@ SSH 到线上实例（只读检查，未创建/删除/修改任何东西）：
 
 如果说要挑战一下"这个判断会不会也是路径依赖/懒得改"——反过来想：解耦到 S3 能解决的问题是"磁盘空间不够"和"要支持多实例"，而实测这两个问题现在都不存在（33MB 数据，19GB 盘，单实例零并发压力）。解耦真正回应不了、也不该用来回应的问题是"数据会不会丢"——这是备份该管的事，不是存储架构该管的事，两者不能混为一谈。用一次十几个文件的重构去换一个十五分钟 cron 脚本就能拿到的保障，成本收益完全不对称，这正是 CLAUDE.md 里"别为假设性未来需求做设计"想避免的情况。
 
-## 优先级排序的下一步
+## 执行状态（2026-08-01，已全部完成）
 
-1. **本周内**：按 Option A1 配好 S3 同步备份（IAM role/user + bucket + cron，约 30-40 分钟）——这是目前唯一一个"真出事就完全无法恢复"的缺口，优先级最高。
-2. **顺手做**：Option A2 的 EBS 快照策略（DLM，约 15 分钟）——补上 `.env`/系统配置这块 A1 覆盖不到的盲区。
-3. **别忘了 `server-capacity-notes.md` 里三个还没修的项**：加 swap、给 5 处 `OpenAI(...)` 客户端加 `timeout`、部署脚本里加 `docker builder prune`——这几个和这次的备份是两条独立的线，都还没做，重要性不比备份低。
-4. **重新评估解耦的时间点**：出现下面任意一条时再重新考虑 Option B，而不是现在：
+1. ✅ **Option A1（S3 同步备份）已上线**——bucket `refimage-backups-161583482522`（us-east-1，已开 versioning）；IAM role `RefImageBackupRole`（最小权限，只能碰这一个 bucket）已挂到实例上，走角色临时凭证，**机器上没有存任何静态密钥**；`/home/ubuntu/backup-storage.sh` 每天 3am UTC 跑 `aws s3 sync`。**踩过一个坑**：脚本一开始没加 `sudo`，`/var/lib/docker/volumes/...` 这条路径的父目录 `/var/lib/docker`（mode `0710`）对非 root 用户没有任何权限——`ubuntu` 用户虽在 `docker` 组，但那只管 docker daemon socket 权限，不代表能直接读宿主机上的卷文件，`aws s3 sync` 因此报"path does not exist"（Python 的 `os.path.exists` 把权限错误也归到"不存在"）。改成 `sudo` 跑之后手动验证：136 个文件、7 个项目全部同步成功。`ubuntu` 用户是 NOPASSWD sudo（`/etc/sudoers.d/90-cloud-init-users`），cron 非交互也能正常跑 `sudo`。
+2. ✅ **Option A2（EBS 快照）已上线**——用了比原计划更简单的路径：没有手动打标签+建自定义 DLM 策略，而是直接用 AWS 提供的"默认策略"（account 级，自动覆盖所有卷，账号里当时只有 3 块盘，覆盖全部成本可忽略）。`policy-0d4db873252914b8e`，Enabled，Every day / 保留 7 天，IAM role 用 DLM 的 Default role（AWS 自动创建，和 `RefImageBackupRole` 无关，是两个独立的角色）。
+3. ✅ **`server-capacity-notes.md` 里三个待修项也已全部完成**（同一天做的）：2GB swap（已写入 `/etc/fstab` 持久化）、5 处 `OpenAI(...)`/Anthropic client 加了显式 `timeout`（commit `a593146`，已部署到线上）、`docker builder prune` 每周日 4am UTC 的 cron（顺手手动跑了一次，回收 3.4GB，磁盘 60%→43%）。
+4. **重新评估解耦的时间点不变**：出现下面任意一条时再重新考虑 Option B，而不是现在：
    - 项目数量涨到实测显示磁盘真的开始吃紧（按当前 4.7MB/项目的速率，得涨到几百上千个项目）；
    - 真的要上第二台实例/负载均衡（目前代码、配置、文档里都没有这个方向的任何迹象）。
 
@@ -187,10 +187,10 @@ SSH 到线上实例（只读检查，未创建/删除/修改任何东西）：
 ```bash
 ssh -i refimage-key.pem ubuntu@100.59.43.246
 
-crontab -l                                              # 确认备份 cron 还在
-tail -20 /home/ubuntu/backup.log                        # 确认最近几次同步成功
-aws s3 ls s3://refimage-backups-<后缀>/projects/ --recursive | wc -l   # 确认 S3 上文件数和本地大致对得上
-aws dlm get-lifecycle-policies                          # 确认 EBS 快照策略还是 ENABLED
-aws ec2 describe-snapshots --owner-ids self --filters "Name=volume-id,Values=<volume-id>" \
-  --query "Snapshots[].StartTime"                       # 确认最近确实在打快照
+crontab -l                                              # 确认备份 cron 还在（S3 sync + build cache prune 两条）
+tail -20 /home/ubuntu/backup.log                        # 确认最近几次 S3 同步成功
+aws s3 ls s3://refimage-backups-161583482522/projects/ --recursive | wc -l   # 确认 S3 上文件数和本地大致对得上
+aws sts get-caller-identity                             # 确认走的是 RefImageBackupRole，不是某个静态密钥
 ```
+
+EBS 快照走的是账号级 DLM 默认策略，`RefImageBackupRole` 没有 `dlm:*`/`ec2:*` 权限查不到——去控制台 EC2 → Elastic Block Store → Lifecycle Manager 看，或 Snapshots 页面看最近快照时间。
