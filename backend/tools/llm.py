@@ -161,7 +161,7 @@ def _anthropic_tool_to_openai(tool: dict) -> dict:
 
 def _call_openai(messages, system, tools, max_tokens, force_tool=None, model=None):
     from openai import OpenAI
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=60.0)
     full_messages = [{"role": "system", "content": system}] + messages
     kwargs = dict(model=model or TEXT_MODEL["openai"], max_completion_tokens=max_tokens, messages=full_messages)
     if tools:
@@ -180,7 +180,7 @@ def _call_openai(messages, system, tools, max_tokens, force_tool=None, model=Non
 
 def _agent_openai(messages, system, tools, tool_executor, max_turns, max_tokens):
     from openai import OpenAI
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=60.0)
     openai_tools = [_anthropic_tool_to_openai(t) for t in tools]
     msgs = [{"role": "system", "content": system}] + list(messages)
     final_text = ""

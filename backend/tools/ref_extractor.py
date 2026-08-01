@@ -94,7 +94,7 @@ def _openai_image(image_bytes: bytes, ref_type: str) -> bytes:
         return generate_sketch(image_bytes)
 
     from openai import OpenAI
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=240.0)
 
     png = _to_png(image_bytes)
     prompt = _IMAGE_PROMPTS[ref_type]

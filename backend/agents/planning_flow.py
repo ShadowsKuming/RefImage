@@ -307,6 +307,19 @@ def _midstage(char_name: str, stats: dict, just_completed: bool, gender_hint: st
     return reply, _menu_options("midstage", [])
 
 
+def _pending_shot_invite(history: list[dict]) -> bool:
+    """True if the last agent turn offered an un-clicked "去构思「X」" chip
+    (agents/planning_flow.py's `open` branch prepends a `make_shot` chip when it
+    proposes a shot). The frontend fires `__resume` on every project-page mount,
+    so without this guard a reload right between the offer and the click
+    overwrites it with a stale mid-stage congratulations message."""
+    if not history:
+        return False
+    last = history[-1]
+    return last.get("role") == "agent" and any(
+        o.get("action") == "make_shot" for o in (last.get("options") or []))
+
+
 def _resume(project: dict, project_id: str, char_name: str, gh: str, reply_lang: str,
             st: dict, history: list[dict]) -> dict:
     """Mid-stage check-in, kept in sync with the project via a signature (shot count
@@ -440,6 +453,9 @@ def run_step(project_id: str, message: str, reply_lang: str = "zh") -> dict:
     # Mid-stage check-in: explicit resume, or first entry into a project that
     # already has shots. Congratulates on new completions + summarizes progress.
     if message == "__resume" or (cur is None and project.get("shots")):
+        if _pending_shot_invite(history):   # don't clobber an un-clicked invite
+            return {"reply": "", "options": st.get("last_options", []),
+                    "state": st.get("state") or "open", "plan": None}
         return _resume(project, project_id, char_name, gh, reply_lang, st, history)
 
     # 1. process the current turn → decide next state

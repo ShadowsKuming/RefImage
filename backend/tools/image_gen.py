@@ -97,7 +97,10 @@ _ORIENTATION_TO_SIZE = {
 
 def _openai(project_id: str, parts: dict, extra_images: list[bytes] | None = None) -> bytes:
     from openai import OpenAI
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    # gpt-image-2 can take up to ~190s at quality=high/auto (see memory/
+    # image_generation_findings.md) — timeout must clear that with margin, but
+    # still bound the worst case so a hung request can't pin a thread forever.
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=240.0)
     size = _ORIENTATION_TO_SIZE[parts.get("orientation", "square")]
 
     # Character reference images always come first (project-level, locked)
